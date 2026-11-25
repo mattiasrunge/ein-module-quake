@@ -1,15 +1,11 @@
 /**
  * Where the game data is: a folder in the household's shared home, so everyone signed in plays the
  * same games and may add to them. Each folder in it with a `pak0.pak` is a game, as Quake's `id1`
- * is: its paks, and in `music/` the CD's tracks it has of its own. The `music` folder beside the
- * games is what a game without music of its own plays. The module's services put the shareware
- * episode and LibreQuake here when the module is installed; a folder dropped on the page is
- * uploaded here.
+ * is: its paks, and in `music/` the CD's tracks, when it has music. The module's services put the
+ * shareware episode and LibreQuake here when the module is installed; a folder dropped on the page
+ * is uploaded here.
  */
 export const GAMES = '/groups/users/quake';
-
-/** The music beside the games, played by a game with none of its own. */
-export const SHARED_MUSIC = `${GAMES}/music`;
 
 /** A pak file, `pak<N>.pak` in any case: a DOS install's are `PAK0.PAK`. */
 export const PAK_FILE = /^pak(\d+)\.pak$/i;

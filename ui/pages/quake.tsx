@@ -464,8 +464,7 @@ function GameList({ games, error, active, onPlay, onDelete, onPick }: ListProps 
       </Text>
     );
   }
-  const music = (game: Game) => !game.music ? 'no music' : game.music.folder === `${GAMES}/${game.name}/music` ? 'its own music' : 'shared music';
-  const detail = (game: Game) => `${game.name} · ${formatBytes(game.size)} · ${music(game)}`;
+  const detail = (game: Game) => `${game.name} · ${formatBytes(game.size)} · ${game.music ? 'music' : 'no music'}`;
   return (
     <Stack gap={onDelete ? 'xs' : 2}>
       {games.map((game) => (

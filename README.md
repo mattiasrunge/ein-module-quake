@@ -76,17 +76,16 @@ all, and appears in the list under the folder's name.
   folder with id's `pak0.pak` and a `pak1.pak` **Quake**.
 - To make the shareware episode the whole game, add the whole game's `pak1.pak`
   to the `shareware` folder: id's `pak0.pak` is the same in both.
-- A game without music of its own plays the music in the `music` folder beside
-  the games, which is LibreQuake's.
 
 ## Add the music
 
 Quake played its music from the CD's audio tracks. To play the CD's music, or
 any other, with a game, choose the game, then **Add music** under ⋮ in the
 page's header, and pick the tracks: Ogg, MP3, or whatever else the browser
-plays. They are uploaded into a `music` folder in the game's own, and the game
-plays them instead of the shared music; the list says **its own music**. The
-shareware episode and the whole game share a folder, so its music is both's.
+plays. They are uploaded into a `music` folder in the game's own, and the list
+says **music** under the game. A game without its own music plays none: the
+shareware episode has none until you add it. The shareware episode and the whole
+game share a folder, so its music is both's.
 
 A track is known by the number its file's name starts with, after `track` or
 not: `track02.ogg`, `02 - Quake.mp3`, `Track 2.mp3`. Quake asks for the CD's

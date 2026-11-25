@@ -4,15 +4,15 @@
 # LibreQuake (https://github.com/lavenderdotpet/LibreQuake) is free game data for Quake's engine, its
 # art, sounds and music under a BSD licence and its game code under the GPL. Its lite release, the
 # one made for the original engine, is fetched, checked against the SHA-256 below, its paks put in a
-# game folder of its own and its music in the music folder beside the games, which every game
-# without music of its own plays. A marker beside the games says it was done, so a game deleted from
-# the page stays deleted. Without the network it tries again every ten minutes.
+# game folder of its own with its music in the folder's `music`. A marker beside the games says it
+# was done, so a game deleted from the page stays deleted. Without the network it tries again every
+# ten minutes.
 release=0.09-beta
 url=https://github.com/lavenderdotpet/LibreQuake/releases/download/v$release/lite.zip
 sha256=428e736b2f01d953e09a08c60bee975bdc4a0ac2219e97fa095c8af41754da83
 games=/groups/users/quake
 game=$games/librequake
-music=$games/music
+music=$game/music
 marker=$games/.librequake-$release
 # Unpacked outside the household's folders, where EiN's media pipelines would read the
 # release's pictures.
@@ -36,7 +36,7 @@ if ! attrs "$work.zip" | grep -q "$sha256"; then
   exit 1
 fi
 unzip -o -d "$work" "$work.zip" > /dev/null || exit 1
-mkdir -p "$game" "$music"
+mkdir -p "$music"
 # One someone uploaded under the same name is theirs to keep.
 for pak in pak0.pak pak1.pak; do
   if [ ! -e "$game/$pak" ]; then
