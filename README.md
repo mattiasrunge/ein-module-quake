@@ -18,8 +18,9 @@ archive.
 As an administrator, open **Settings → Modules**, choose **Install**, and give
 `https://github.com/mattiasrunge/ein-module-quake` under **From a repository**.
 
-Quake appears in the sidebar. While the module installs, it fetches two games,
-so there is something to play straight away:
+Quake appears in the sidebar under **Games**, a section between Browse and
+System that the Doom module gives its page too. While the module installs, it
+fetches two games, so there is something to play straight away:
 
 - **Quake (shareware)**: the first episode of id Software's Quake 1.06, which id
   let anyone play and pass on unchanged. The list has it first.
@@ -122,7 +123,7 @@ music.
 
 | Path                                   | What it is for                                                                                                                    |
 | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `mod.json`, `ui/nav.json`              | The manifest and the sidebar entry.                                                                                               |
+| `mod.json`, `ui/nav.json`              | The manifest, and the sidebar entry with its Games section.                                                                       |
 | `ui/pages/quake.tsx`                   | The page: the list of games, uploads, the game loop, keyboard, mouse, sound and fullscreen.                                       |
 | `ui/cards/demo.tsx`                    | The dashboard card, offered in `etc/dashboard.d/cards.json`: a game running its demos.                                            |
 | `ui/quake/games.ts`                    | Lists and deletes games.                                                                                                          |

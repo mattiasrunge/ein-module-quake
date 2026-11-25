@@ -1,5 +1,8 @@
 {
+  "sections": [
+    { "id": "games", "label": "Games", "order": 35 }
+  ],
   "sidebar": [
-    { "id": "quake.page", "section": "main", "label": "Quake", "icon": "letter-q", "to": "/quake", "order": 91, "signedIn": true }
+    { "id": "quake.page", "section": "games", "label": "Quake", "icon": "letter-q", "to": "/quake", "order": 20, "signedIn": true }
   ]
 }
