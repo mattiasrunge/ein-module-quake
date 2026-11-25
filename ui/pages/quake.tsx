@@ -1,4 +1,4 @@
-import { ActionIcon, Box, Loader, Menu, Paper, ScrollArea, Stack, Text, Tooltip, UnstyledButton } from '@mantine/core';
+import { ActionIcon, Box, Button, Loader, Menu, Paper, ScrollArea, Stack, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { EntityDetailHeader, TablerIcon } from '@ein/ui/components';
 import { usePhone } from '@ein/ui/hooks';
 import { formatBytes, shq } from '@ein/ui/lib';
@@ -6,7 +6,7 @@ import { addToQueue, currentUser, execCommand, notify, uploadBatchDone } from '@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { titlePicture } from '../quake/conback.ts';
 import { type Engine, quitted, startEngine } from '../quake/engine.ts';
-import { deleteGame, ENGINE_TITLES, type Game, GAMES, listGames } from '../quake/games.ts';
+import { deleteGame, ENGINE_TITLES, fetchGame, type Game, GAMES, listGames, type Offer, OFFERS } from '../quake/games.ts';
 import { K_MWHEELDOWN, K_MWHEELUP, mouseKey, quakeKey } from '../quake/keys.ts';
 import { useGameLoop } from '../quake/loop.ts';
 import { keeper, loadKept, savesFolder } from '../quake/saves.ts';
@@ -102,6 +102,20 @@ export default function Quake() {
     uploadBatchDone.subscribe((batch) => {
       if (batch?.dirs.some((dir) => dir === GAMES || dir.startsWith(`${GAMES}/`))) refresh();
     }), [refresh]);
+
+  // The offered games being fetched, by name: each is a command that runs as long as its download.
+  const [fetching, setFetching] = useState<string[]>([]);
+  const fetchOffer = useCallback(async (offer: Offer) => {
+    setFetching((names) => [...names, offer.name]);
+    try {
+      await fetchGame(offer.name);
+    } catch (error) {
+      notify({ message: `${offer.title} was not fetched: ${error instanceof Error ? error.message : String(error)}`, color: 'red' });
+    } finally {
+      setFetching((names) => names.filter((name) => name !== offer.name));
+      refresh();
+    }
+  }, [refresh]);
 
   const musicInput = useRef<HTMLInputElement>(null);
   const addMusic = (files: File[]) => {
@@ -322,7 +336,16 @@ export default function Quake() {
     frame.current?.focus();
   };
 
-  const list = { games, error: listError, active: state.kind === 'loading' || state.kind === 'running' ? state.game.name : selected?.name, onPlay: play };
+  const list = {
+    games,
+    error: listError,
+    active: state.kind === 'loading' || state.kind === 'running' ? state.game.name : selected?.name,
+    onPlay: play,
+    // Fetching takes curl, which EiN lets only the administrator run.
+    canFetch: currentUser.value?.admin === true,
+    fetching,
+    onFetch: fetchOffer,
+  };
 
   return (
     <Paper
@@ -433,7 +456,11 @@ export default function Quake() {
                       </Stack>
                     </UnstyledButton>
                   )
-                  : <Text c='gray.4' ta='center' size='sm'>{games ? 'No game data yet. Drop a folder with pak0.pak on the page.' : ''}</Text>}
+                  : (
+                    <Text c='gray.4' ta='center' size='sm'>
+                      {games ? 'No games yet. Fetch a free one from the list of games, or drop a folder with pak0.pak on the page.' : ''}
+                    </Text>
+                  )}
               </Stack>
             )}
           </Box>
@@ -459,24 +486,68 @@ type ListProps = {
   /** The game playing, loading, or chosen to play next. */
   active?: string;
   onPlay: (game: Game) => void;
+  /** The offered games being fetched, by name. */
+  fetching: string[];
+  onFetch: (offer: Offer) => void;
+  /** Whether this person may fetch, which only an administrator may. */
+  canFetch: boolean;
 };
 
 /**
- * The games, each a row that plays it. In the pane beside the game (`onDelete`, which gives each a
- * button that deletes it) a row is the game's title art with its title under it; in the phone's
- * menu, its title alone. `onPick` hears a row chosen.
+ * The games, each a row that plays it, and after them the offered games not here yet, each with a
+ * button that fetches it. In the pane beside the game (`onDelete`, which gives each game a button
+ * that deletes it) a game's row is its title art with its title under it; in the phone's menu, its
+ * title alone. `onPick` hears a game chosen.
  */
-function GameList({ games, error, active, onPlay, onDelete, onPick }: ListProps & { onDelete?: (game: Game) => void; onPick?: () => void }) {
+function GameList({ games, error, active, onPlay, onDelete, onPick, fetching, onFetch, canFetch }: ListProps & { onDelete?: (game: Game) => void; onPick?: () => void }) {
   if (error) return <Text size='sm' c='red' p='sm'>{error}</Text>;
   if (!games) return <Loader size='sm' m='sm' />;
-  if (games.length === 0) {
-    return (
-      <Text size='sm' c='dimmed' p='sm'>
-        No games yet. Quake's shareware episode, LibreQuake and Quake II's demo are fetched when the module is installed and show up here when they are in; drop a folder with
-        your own pak0.pak on the page to add a game.
-      </Text>
-    );
-  }
+  const offers = OFFERS.filter((offer) => !games.some((game) => game.name === offer.name));
+  return (
+    <Stack gap='md'>
+      {games.length === 0
+        ? (
+          <Text size='sm' c='dimmed' p='sm' pb={0}>
+            No games yet. Fetch one of the free ones below, or drop a folder with your own pak0.pak on the page.
+          </Text>
+        )
+        : <Games games={games} active={active} onPlay={onPlay} onDelete={onDelete} onPick={onPick} />}
+      {offers.length > 0 && (
+        <Stack gap='xs' px={onDelete ? 0 : 'xs'} pb='xs'>
+          <Text size='xs' c='dimmed' fw={600} tt='uppercase'>Free to fetch</Text>
+          {offers.map((offer) => (
+            <Stack key={offer.name} gap={4} data-quake-offer={offer.name}>
+              <Text size='sm'>{offer.title}</Text>
+              <Text size='xs' c='dimmed'>{offer.about}</Text>
+              {canFetch
+                ? (
+                  <Button
+                    size='xs'
+                    variant='light'
+                    color='orange'
+                    leftSection={<TablerIcon name='download' size={14} />}
+                    loading={fetching.includes(offer.name)}
+                    onClick={() => onFetch(offer)}
+                    style={{ alignSelf: 'flex-start' }}
+                  >
+                    Fetch · {formatBytes(offer.download)}
+                  </Button>
+                )
+                : <Text size='xs' c='dimmed' fs='italic'>An administrator can fetch it.</Text>}
+            </Stack>
+          ))}
+        </Stack>
+      )}
+    </Stack>
+  );
+}
+
+/** The games' rows: `GameList`'s. */
+function Games({ games, active, onPlay, onDelete, onPick }: Pick<ListProps, 'active' | 'onPlay'> & {
+  games: Game[];
+  onDelete?: (game: Game) => void;
+  onPick?: () => void;
+}) {
   const detail = (game: Game) => `${game.name} · ${ENGINE_TITLES[game.engine]} · ${formatBytes(game.size)} · ${game.music ? 'music' : 'no music'}`;
   return (
     <Stack gap={onDelete ? 'xs' : 2}>

@@ -1,0 +1,86 @@
+#!bash
+# quake-fetch — fetches one of the games the Quake page offers into its games folder, when someone
+# chooses Fetch there: Quake's shareware episode, Quake II's demo, or LibreQuake with its music. The
+# release is fetched from where its makers published it, checked against its SHA-256, and unpacked
+# into a game folder of its own; a file already there under the same name is left as it is. It runs
+# as whoever runs it, which has to be the administrator: EiN lets only the administrator fetch URLs.
+arg --desc "Fetch one of the games the Quake page offers into its games folder"
+arg --effect write
+arg '<game>' string "shareware (Quake's shareware episode), quake2-demo (Quake II's demo) or librequake (LibreQuake and its music)"
+arg --example "quake-fetch shareware"
+arg --returns "nothing; the game is in a folder of its own in /groups/users/quake, named as the game."
+arg --export
+
+games=/groups/users/quake
+case "$GAME" in
+  shareware)
+    # The shareware episode of Quake 1.06 is id Software's, free to play and to pass on unchanged;
+    # its release as the Internet Archive keeps it installed.
+    url=https://archive.org/download/Quake_802/zQUAKE_SW-play.zip
+    sha256=f6db68de2a4b7dd8b250e2d8ab1c9a83ea321fabd2bb63c4c0dd5fed6f69e61a
+    ;;
+  quake2-demo)
+    # The demo of Quake II 3.14 is id Software's, free to play and to pass on, by electronic means and
+    # free of charge, with its licence beside it; its release as id published it, a self-extracting
+    # zip, from a mirror of id's FTP site.
+    url=https://ftp.gwdg.de/pub/misc/ftp.idsoftware.com/idstuff/quake2/q2-314-demo-x86.exe
+    sha256=7ace5a43983f10d6bdc9d9b6e17a1032ba6223118d389bd170df89b945a04a1e
+    ;;
+  librequake)
+    # LibreQuake (https://github.com/lavenderdotpet/LibreQuake) is free game data for Quake's engine,
+    # its art, sounds and music under a BSD licence and its game code under the GPL; its lite
+    # release, the one made for the original engine.
+    url=https://github.com/lavenderdotpet/LibreQuake/releases/download/v0.09-beta/lite.zip
+    sha256=428e736b2f01d953e09a08c60bee975bdc4a0ac2219e97fa095c8af41754da83
+    ;;
+  *)
+    echo "quake-fetch: $GAME is not a game it fetches: shareware, quake2-demo or librequake" >&2
+    exit 2
+    ;;
+esac
+game=$games/$GAME
+# Unpacked outside the household's folders, where EiN's media pipelines would read the release's
+# pictures.
+work=/tmp/quake-fetch-$GAME
+
+mkdir -p "$games"
+# Game data and music, none of it the household's: EiN's media pipelines leave the folder alone.
+attrs -J 'processing=[]' "$games"
+if ! curl -fLs -o "$work.zip" "$url"; then
+  echo "quake-fetch: could not fetch $url" >&2
+  exit 1
+fi
+if ! attrs "$work.zip" | grep -q "$sha256"; then
+  echo "quake-fetch: $url is not the release it should be (its SHA-256 is not $sha256)" >&2
+  rm "$work.zip"
+  exit 1
+fi
+if ! unzip -o -d "$work" "$work.zip" > /dev/null; then
+  echo "quake-fetch: could not unpack $url" >&2
+  rm "$work.zip"
+  [ -e "$work" ] && rm -r "$work"
+  exit 1
+fi
+
+# Move a file of the release into the game's folder, unless one someone uploaded is there already.
+mkdir -p "$game"
+case "$GAME" in
+  shareware)
+    [ -e "$game/pak0.pak" ] || mv "$work/ID1/PAK0.PAK" "$game/pak0.pak"
+    ;;
+  quake2-demo)
+    [ -e "$game/pak0.pak" ] || mv "$work/Install/Data/baseq2/pak0.pak" "$game/pak0.pak"
+    mv "$work/Install/Data/DOCS/license.txt" "$game/license.txt"
+    ;;
+  librequake)
+    for pak in pak0.pak pak1.pak; do
+      [ -e "$game/$pak" ] || mv "$work/lite/id1/$pak" "$game/$pak"
+    done
+    mkdir -p "$game/music"
+    for track in 02 03 04 05 06 07 08 09 10 11; do
+      [ -e "$game/music/track$track.ogg" ] || mv "$work/lite/id1/music/track$track.ogg" "$game/music/track$track.ogg"
+    done
+    ;;
+esac
+rm -r "$work" "$work.zip"
+echo "quake-fetch: $GAME is in $game"

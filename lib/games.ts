@@ -4,8 +4,8 @@ import type { EngineName } from './api.ts';
  * Where the game data is: a folder in the household's shared home, so everyone signed in plays the
  * same games and may add to them. Each folder in it with a `pak0.pak` is a game, as Quake's `id1`
  * and Quake 2's `baseq2` are: its paks, and in `music/` the CD's tracks, when it has music. The
- * module's services put Quake's shareware episode, LibreQuake and Quake 2's demo here when the
- * module is installed; a folder dropped on the page is uploaded here.
+ * games the page offers (`OFFERS`) are fetched here by `quake-fetch`; a folder dropped on the page is
+ * uploaded here.
  */
 export const GAMES = '/groups/users/quake';
 
@@ -46,6 +46,21 @@ export function engineOf(files: Iterable<string>): EngineName {
   }
   return 'quake';
 }
+
+/** A game the page offers to fetch with `quake-fetch`, by the folder it is fetched into. */
+export type Offer = { name: string; title: string; about: string; download: number };
+
+/** The games the page offers, while their folders are not there: free ones, for something to play. */
+export const OFFERS: Offer[] = [
+  { name: 'shareware', title: 'Quake (shareware)', about: "The first episode of id Software's Quake, free to play and pass on.", download: 8_990_046 },
+  {
+    name: 'quake2-demo',
+    title: 'Quake II (demo)',
+    about: "The first three levels of id Software's Quake II, free to play at home under its licence, which comes with it; not for showing in public.",
+    download: 39_015_499,
+  },
+  { name: 'librequake', title: 'LibreQuake', about: "Free game data for Quake's engine, with its music.", download: 55_987_573 },
+];
 
 /** What the page calls each engine's games. */
 export const ENGINE_TITLES: Record<EngineName, string> = { quake: 'Quake', quake2: 'Quake II' };

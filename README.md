@@ -27,8 +27,11 @@ As an administrator, open **Settings → Modules**, choose **Install**, and give
 `https://github.com/mattiasrunge/ein-module-quake` under **From a repository**.
 
 Quake appears in the sidebar under **Games**, a section between Browse and
-System that the Doom module gives its page too. While the module installs, it
-fetches three games, so there is something to play straight away:
+System that the Doom module gives its page too. The module comes with no games.
+Until they are there, the page's list offers three free ones, each with a
+**Fetch** button for an administrator (EiN lets only the administrator fetch
+from the internet) that downloads it from where its makers published it, checks
+it against the release's SHA-256 and puts it in a folder of its own:
 
 - **Quake (shareware)**: the first episode of id Software's Quake 1.06, which id
   let anyone play and pass on unchanged. The list has it first.
@@ -133,13 +136,13 @@ The games are kept in `/groups/users/quake`, the household's shared folder, so
 everyone with an account plays the same ones and may add to them, and they stay
 when the module is updated or installed again. The folder's `processing`
 attribute is empty, so EiN's media pipelines leave the music alone. The bin
-beside a game deletes it for everyone. A deleted game the module fetched stays
-deleted; to fetch it again, delete `.shareware-1.06`, `.quake2-demo-3.14` or
-`.librequake-0.09-beta` in that folder and restart the `shareware`,
-`quake2-demo` or `librequake` service on the **Status**'s services tab.
+beside a game deletes it for everyone; one of the free ones is offered again
+once it is gone.
 
 In EiN's terminal, `quake-games` lists the games with their titles, engines,
-paks and music.
+paks and music, and `quake-fetch shareware`, `quake-fetch quake2-demo` or
+`quake-fetch librequake` fetches one of the free ones, as the page's **Fetch**
+does.
 
 ## Sound
 
@@ -167,11 +170,9 @@ music** turns the music on and off.
 | `ui/quake/sound.ts`                                                              | The effects and the music on Web Audio.                                                                                                                         |
 | `ui/quake/keys.ts`                                                               | Browser key codes and mouse buttons to Quake's, which are Quake II's too.                                                                                       |
 | `bin/quake-games`                                                                | Lists the games with their titles, engines, paks and music, for the page and the card's choice of game.                                                         |
-| `lib/games.ts`, `lib/api.ts`                                                     | Where the games are, which engine plays a game, the games known by name, and the shape `quake-games` answers in.                                                |
+| `lib/games.ts`, `lib/api.ts`                                                     | Where the games are, which engine plays a game, the games known by name, the free games the page offers, and the shape `quake-games` answers in.                |
 | `lib/paks.ts`                                                                    | Reads a pak's header and directory, for `quake-games` and the title art.                                                                                        |
-| `services/shareware/`                                                            | Fetches Quake's shareware episode into the games folder once, checked against its release's SHA-256, then ends.                                                 |
-| `services/quake2-demo/`                                                          | Fetches Quake II's demo and its licence the same way.                                                                                                           |
-| `services/librequake/`                                                           | Fetches LibreQuake and its music the same way.                                                                                                                  |
+| `bin/quake-fetch`                                                                | Fetches one of the free games the page offers into the games folder, checked against its release's SHA-256.                                                     |
 | `engine/quakegeneric_ein.c`                                                      | quakegeneric's platform layer for the page: the frame, keys, mouse and start-up.                                                                                |
 | `engine/sys_ein.c`                                                               | The system driver: files, the clock, and Quit and errors that end the game.                                                                                     |
 | `engine/snd_ein.c`                                                               | The sound card: the ring Quake's mixer paints, handed to the page.                                                                                              |
@@ -215,7 +216,7 @@ Mount the checkout read-only in EiN's container as `/modules-dev/quake` and set
 `DEV_MODULES_PATH=/modules-dev`; EiN sets the module up when it starts, and it
 runs instead of an installed one. The folder must be called `quake`, the
 module's name. After a change to a page, run `ui-build quake` in EiN's terminal
-and reload the browser; after a change to `mod.json` or a service,
+and reload the browser; after a change to `mod.json`,
 `mod setup quake`. A file in `assets/` is read as it is.
 
 The smoke test wants a running EiN with the module and a game, Google Chrome,
@@ -230,7 +231,7 @@ GPL-2.0-or-later, as quakegeneric, quake2generic and id's source are: see
 and quake2generic authors; their notices are in the source the builds fetch.
 `assets/quake.js` and `assets/quake2.js` are Emscripten's runtime, under the MIT
 licence. `assets/icon.svg` is the module's own drawing of Quake's Q, which is id
-Software's trademark. The module fetches and does not ship the games: Quake's
+Software's trademark. The module fetches, when asked, and does not ship the games: Quake's
 shareware episode is id Software's, under its own shareware licence; Quake II's
 demo is id Software's, under its own demo licence, which is fetched with it; and
 LibreQuake is under the BSD licence, its game code under the GPL.

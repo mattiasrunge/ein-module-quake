@@ -1,4 +1,0 @@
-{
-  "description": "Puts Quake's shareware episode in the Quake page's games once, when the module is installed",
-  "restartPolicy": "on-failure"
-}
