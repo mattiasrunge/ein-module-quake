@@ -1,0 +1,44 @@
+diff --git a/source/host.c b/source/host.c
+index 5c1e60a..fd43691 100644
+--- a/source/host.c
++++ b/source/host.c
+@@ -239,6 +239,9 @@ Host_WriteConfiguration
+ Writes key bindings and archived cvars to config.cfg
+ ===============
+ */
++// The platform layer's: Quake has written the file at path.
++void ein_wrote (const char *path);
++
+ void Host_WriteConfiguration (void)
+ {
+ 	FILE	*f;
+@@ -258,6 +261,7 @@ void Host_WriteConfiguration (void)
+ 		Cvar_WriteVariables (f);
+ 
+ 		fclose (f);
++		ein_wrote (va("%s/config.cfg",com_gamedir));
+ 	}
+ }
+ 
+diff --git a/source/host_cmd.c b/source/host_cmd.c
+index 7ccf300..a086fde 100644
+--- a/source/host_cmd.c
++++ b/source/host_cmd.c
+@@ -421,6 +421,9 @@ void Host_SavegameComment (char *text)
+ Host_Savegame_f
+ ===============
+ */
++// The platform layer's: Quake has written the file at path.
++void ein_wrote (const char *path);
++
+ void Host_Savegame_f (void)
+ {
+ 	char	name[256];
+@@ -508,6 +511,7 @@ void Host_Savegame_f (void)
+ 		fflush (f);
+ 	}
+ 	fclose (f);
++	ein_wrote (name);
+ 	Con_Printf ("done.\n");
+ }
+ 

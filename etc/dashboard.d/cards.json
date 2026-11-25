@@ -1,0 +1,19 @@
+[
+  {
+    "name": "demo",
+    "label": "Quake",
+    "description": "A Quake game playing its own demos, silently, as it does when nobody plays.",
+    "icon": "letter-q",
+    "color": "orange",
+    "route": "/cards/quake/demo",
+    "frame": "plain",
+    "size": [4, 3],
+    "min": [2, 2],
+    "params": {
+      "type": "object",
+      "properties": {
+        "game": { "type": "string", "title": "Game", "x-choices": { "command": "quake-games", "value": "name", "label": "title" } }
+      }
+    }
+  }
+]

@@ -1,0 +1,4 @@
+# Game data: paks and music live in EiN's tree, never in the repository.
+*.pak
+*.PAK
+*.ogg

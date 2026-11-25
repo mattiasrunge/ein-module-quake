@@ -1,0 +1,5 @@
+{
+  "sidebar": [
+    { "id": "quake.page", "section": "main", "label": "Quake", "icon": "letter-q", "to": "/quake", "order": 91, "signedIn": true }
+  ]
+}

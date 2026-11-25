@@ -1,0 +1,20 @@
+{
+  "name": "quake",
+  "version": "0.1.0",
+  "description": "Quake in EiN: quakegeneric built to WebAssembly, played on a page of its own",
+  "license": "GPL-2.0-or-later",
+  "coreApi": "^0.15.66",
+  "exports": {
+    "./api": "./lib/api.ts"
+  },
+  "imports": {
+    "@quake/api": "./lib/api.ts",
+    "@quake/games": "./lib/games.ts"
+  },
+  "ui": {
+    "routes": {
+      "/quake": "ui/pages/quake.tsx",
+      "/cards/quake/demo": "ui/cards/demo.tsx"
+    }
+  }
+}

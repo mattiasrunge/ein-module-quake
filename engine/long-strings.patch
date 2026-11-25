@@ -1,0 +1,44 @@
+diff --git a/source/pr_edict.c b/source/pr_edict.c
+index 250e426..0ccb00c 100644
+--- a/source/pr_edict.c
++++ b/source/pr_edict.c
+@@ -279,7 +279,9 @@ Returns a string describing *data in a type specific manner
+ */
+ char *PR_ValueString (etype_t type, eval_t *val)
+ {
+-	static char	line[256];
++	// As long as COM_Parse reads a token back from a save: the game
++	// code's strings may be longer than the 256 bytes this had.
++	static char	line[1024];
+ 	ddef_t		*def;
+ 	dfunction_t	*f;
+ 	
+@@ -288,7 +290,7 @@ char *PR_ValueString (etype_t type, eval_t *val)
+ 	switch (type)
+ 	{
+ 	case ev_string:
+-		sprintf (line, "%s", pr_strings + val->string);
++		snprintf (line, sizeof(line), "%s", pr_strings + val->string);
+ 		break;
+ 	case ev_entity:	
+ 		sprintf (line, "entity %i", NUM_FOR_EDICT(PROG_TO_EDICT(val->edict)) );
+@@ -331,7 +333,9 @@ Easier to parse than PR_ValueString
+ */
+ char *PR_UglyValueString (etype_t type, eval_t *val)
+ {
+-	static char	line[256];
++	// As long as COM_Parse reads a token back from a save: the game
++	// code's strings may be longer than the 256 bytes this had.
++	static char	line[1024];
+ 	ddef_t		*def;
+ 	dfunction_t	*f;
+ 	
+@@ -340,7 +344,7 @@ char *PR_UglyValueString (etype_t type, eval_t *val)
+ 	switch (type)
+ 	{
+ 	case ev_string:
+-		sprintf (line, "%s", pr_strings + val->string);
++		snprintf (line, sizeof(line), "%s", pr_strings + val->string);
+ 		break;
+ 	case ev_entity:	
+ 		sprintf (line, "%i", NUM_FOR_EDICT(PROG_TO_EDICT(val->edict)));

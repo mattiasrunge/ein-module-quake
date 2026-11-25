@@ -1,0 +1,32 @@
+diff --git a/source/quakegeneric.h b/source/quakegeneric.h
+index 78a5f35..57c6cc3 100644
+--- a/source/quakegeneric.h
++++ b/source/quakegeneric.h
+@@ -23,8 +23,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ 
+ #include "quakekeys.h"
+ 
++#ifndef QUAKEGENERIC_RES_X
+ #define QUAKEGENERIC_RES_X 320
++#endif
++#ifndef QUAKEGENERIC_RES_Y
+ #define QUAKEGENERIC_RES_Y 240
++#endif
+ 
+ #define QUAKEGENERIC_JOY_MAX_AXES 6
+ #define QUAKEGENERIC_JOY_AXIS_X 0
+diff --git a/source/vid_null.c b/source/vid_null.c
+index acb69cc..41229b7 100644
+--- a/source/vid_null.c
++++ b/source/vid_null.c
+@@ -26,8 +26,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ 
+ viddef_t	vid;				// global video state
+ 
+-#define	BASEWIDTH	320
+-#define	BASEHEIGHT	240
++#define	BASEWIDTH	QUAKEGENERIC_RES_X
++#define	BASEHEIGHT	QUAKEGENERIC_RES_Y
+ 
+ byte	vid_buffer[BASEWIDTH*BASEHEIGHT];
+ short	zbuffer[BASEWIDTH*BASEHEIGHT];

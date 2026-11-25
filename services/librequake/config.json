@@ -1,0 +1,4 @@
+{
+  "description": "Puts LibreQuake and its music in the Quake page's games once, when the module is installed",
+  "restartPolicy": "on-failure"
+}
