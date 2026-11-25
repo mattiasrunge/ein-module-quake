@@ -56,9 +56,16 @@ export async function loadKept(folder: string, engine: EngineName): Promise<Kept
 }
 
 /**
+ * The most a write may send and still be finished by the browser after the page has gone (`keepalive`,
+ * which allows 64 KiB in flight): config.cfg, which the page writes as it goes, is a few.
+ */
+const KEEPALIVE_MAX = 60 * 1024;
+
+/**
  * Keep what the game writes in `folder`, one write after the other, in the order the game wrote them,
  * so a slot saved twice in quick succession ends with the later save. `onError` hears a write that
- * could not be kept.
+ * could not be kept. A file in `folder` itself, as config.cfg is, goes out at once, with nothing to
+ * wait for first: `loadKept` made the folder.
  */
 export function keeper(folder: string, onError: (error: unknown) => void): (written: Written) => void {
   let queue = Promise.resolve();
@@ -71,9 +78,9 @@ export function keeper(folder: string, onError: (error: unknown) => void): (writ
     }
     for (const { name, data } of files) {
       const path = `${folder}/${name}`;
-      await execCommand(`mkdir -p ${shq(path.slice(0, path.lastIndexOf('/')))}`);
+      if (name.includes('/')) await execCommand(`mkdir -p ${shq(path.slice(0, path.lastIndexOf('/')))}`);
       // PUT stores the body at the path as it is, binary or not, making the file or replacing it.
-      const response = await fetch(fileUrl(path), { method: 'PUT', body: data });
+      const response = await fetch(fileUrl(path), { method: 'PUT', body: data, keepalive: data.length <= KEEPALIVE_MAX });
       if (!response.ok) throw new Error(`${name}: ${response.status} ${response.statusText}`);
     }
   };

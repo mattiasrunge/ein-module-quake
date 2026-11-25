@@ -128,6 +128,19 @@ export default function Quake() {
     if (document.pointerLockElement === frame.current) document.exitPointerLock();
   }, []);
   useEffect(() => stop, [stop]);
+  // Closing or reloading the tab unmounts nothing, so the player's settings are written as the page
+  // goes; the game runs on in a page brought back from the browser's cache.
+  useEffect(() => {
+    const onHide = () => {
+      try {
+        engine.current?.writeConfig();
+      } catch {
+        // A game that already ended wrote them when it did.
+      }
+    };
+    globalThis.addEventListener('pagehide', onHide);
+    return () => globalThis.removeEventListener('pagehide', onHide);
+  }, []);
 
   const play = useCallback(async (game: Game) => {
     stop();

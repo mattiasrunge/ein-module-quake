@@ -70,7 +70,7 @@ The game's **Save** and **Load** keep your games in your home, in
 `.quake/<game>/`, one folder for each game you play, so a save is loaded only
 into the game it was made in and nobody else sees it. Beside them is
 `config.cfg`, the game's settings and key bindings, written when you quit the
-game, choose another or go to another page of EiN's.
+game, choose another, go to another page of EiN's or close the tab.
 
 - Quake's slots are a file each, `s0.sav` to `s11.sav`, as Quake writes them.
 - Quake II's are a folder each, `save/<slot>/`, as Quake II writes them: the
