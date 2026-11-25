@@ -1,8 +1,35 @@
 #!ts
-/** quake-games — the games in the Quake page's folder, with each one's title, paks and music, as the page lists them. */
+/** quake-games — the games in the Quake page's folder, with each one's title, engine, paks and music, as the page lists them. */
 import type { CmdReturn, Command, NodeAttrs } from '@ein/client';
 import type { Game } from '@quake/api';
-import { byRank, GAMES, PAK_FILE, titleOf, tracksOf } from '@quake/games';
+import { byRank, engineOf, GAMES, PAK_FILE, titleOf, tracksOf } from '@quake/games';
+import { PAK_HEADER_SIZE, pakDirectory, pakEntries } from '@quake/paks';
+
+/** Seek from the start of the file: core's `ResourceSeekMode.Start`, which `@ein/client` does not export. */
+const SEEK_START = 0;
+
+/** The files in the pak at `path`, by their lower-case paths: only its header and directory are read. */
+async function pakFiles(cmd: Command, path: string): Promise<string[]> {
+  const handle = await cmd.sys.vfs.open(cmd.access, path, { mode: 'r' });
+  try {
+    const read = async (at: number, length: number) => {
+      await handle.seek(at, SEEK_START);
+      const bytes = new Uint8Array(length);
+      let filled = 0;
+      while (filled < length) {
+        const chunk = await handle.read(length - filled);
+        if (chunk.length === 0) break;
+        bytes.set(chunk, filled);
+        filled += chunk.length;
+      }
+      return bytes.subarray(0, filled);
+    };
+    const directory = pakDirectory(await read(0, PAK_HEADER_SIZE));
+    return directory ? [...pakEntries(await read(directory.offset, directory.length)).keys()] : [];
+  } finally {
+    await handle.close();
+  }
+}
 
 const quakeGames = async (cmd: Command): CmdReturn => {
   const vfs = cmd.sys.vfs;
@@ -19,7 +46,7 @@ const quakeGames = async (cmd: Command): CmdReturn => {
     if (name.startsWith('.')) continue;
     const node = await vfs.get(cmd.access, `${GAMES}/${name}`).catch(() => undefined);
     if (node?.type !== 'directory') continue;
-    // Quake loads pak0, pak1 and on, and stops at the first number missing.
+    // Quake and Quake 2 load pak0, pak1 and on, and stop at the first number missing.
     const found = new Map<number, string>();
     for (const file of await names(`${GAMES}/${name}`)) {
       const match = PAK_FILE.exec(file);
@@ -29,24 +56,34 @@ const quakeGames = async (cmd: Command): CmdReturn => {
     while (found.has(paks.length)) paks.push(found.get(paks.length)!);
     if (paks.length === 0) continue;
     const sizes = await Promise.all(paks.map(async (pak) => (await vfs.get<NodeAttrs & { size?: number }>(cmd.access, `${GAMES}/${name}/${pak}`)).attrs.size ?? 0));
+    // What the paks hold says which game it is; a pak that cannot be read says nothing.
+    const files = new Set((await Promise.all(paks.map((pak) => pakFiles(cmd, `${GAMES}/${name}/${pak}`).catch(() => [])))).flat());
     const music = await musicIn(`${GAMES}/${name}/music`);
-    games.push({ name, title: titleOf(name, sizes), paks, size: sizes.reduce((sum, size) => sum + size, 0), ...(music ? { music } : {}) });
+    games.push({
+      name,
+      title: titleOf(name, sizes, files),
+      engine: engineOf(files),
+      paks,
+      size: sizes.reduce((sum, size) => sum + size, 0),
+      ...(music ? { music } : {}),
+    });
   }
   games.sort(byRank);
 
   if (cmd.json) await cmd.writeJSON(games satisfies Game[]);
-  else for (const game of games) await cmd.writeLn(`${game.name}  ${game.title}  ${game.paks.join(' ')}${game.music ? `  music: ${game.music.folder} (${Object.keys(game.music.tracks).length} tracks)` : ''}`);
+  else for (const game of games) await cmd.writeLn(`${game.name}  ${game.title}  ${game.engine}  ${game.paks.join(' ')}${game.music ? `  music: ${game.music.folder} (${Object.keys(game.music.tracks).length} tracks)` : ''}`);
   return 0;
 };
 
 quakeGames.spec = {
   name: 'quake-games',
   effect: 'read' as const,
-  description: `List the games in ${GAMES}, which the Quake page plays: each folder with a pak0.pak, id's Quake first`,
+  description: `List the games in ${GAMES}, which the Quake page plays: each folder with a pak0.pak, Quake's or Quake 2's, id's games first`,
   args: [],
   flags: [],
   examples: ['quake-games'],
-  returns: 'One entry per game: its folder name, title, paks in load order, their size in bytes, and its music: the folder it is played from and the file of each track by number.',
+  returns:
+    'One entry per game: its folder name, title, the engine that plays it (quake or quake2, from the files in its paks), paks in load order, their size in bytes, and its music: the folder it is played from and the file of each track by number.',
 };
 
 export default quakeGames;

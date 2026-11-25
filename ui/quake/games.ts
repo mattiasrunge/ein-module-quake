@@ -1,10 +1,10 @@
 import { shq } from '@ein/ui/lib';
 import { execCommand } from '@ein/ui/signals';
 import type { Game } from '../../lib/api.ts';
-import { GAMES } from '../../lib/games.ts';
+import { ENGINE_TITLES, GAMES } from '../../lib/games.ts';
 
 export type { Game };
-export { GAMES };
+export { ENGINE_TITLES, GAMES };
 
 /**
  * The games in `GAMES`, as `quake-games` lists them. The folder is made when it is not there yet, so

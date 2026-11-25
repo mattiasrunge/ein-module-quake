@@ -1,0 +1,4 @@
+{
+  "description": "Puts Quake II's demo in the Quake page's games once, when the module is installed",
+  "restartPolicy": "on-failure"
+}

@@ -1,0 +1,159 @@
+diff --git a/client/cl_main.c b/client/cl_main.c
+index 3c40f3d..6d5aa5a 100644
+--- a/client/cl_main.c
++++ b/client/cl_main.c
+@@ -1557,6 +1557,9 @@ CL_WriteConfiguration
+ Writes key bindings and archived cvars to config.cfg
+ ===============
+ */
++// The platform layer's: Quake 2 has written the file or folder at path.
++void ein_wrote (const char *path);
++
+ void CL_WriteConfiguration (void)
+ {
+ 	FILE	*f;
+@@ -1578,6 +1581,7 @@ void CL_WriteConfiguration (void)
+ 	fclose (f);
+ 
+ 	Cvar_WriteVariables (path);
++	ein_wrote (path);
+ }
+ 
+ 
+diff --git a/other/q_system.c b/other/q_system.c
+index 94e766d..764256c 100644
+--- a/other/q_system.c
++++ b/other/q_system.c
+@@ -5,12 +5,15 @@
+ #include <string.h>
+ #include <ctype.h>
+ #include <errno.h>
++#include <dirent.h>
++#include <sys/stat.h>
+ 
+ 
+ #include "../qcommon/qcommon.h"
+ #include "../client/keys.h"
+ 
+ #include "../quakegeneric.h"
++#include "glob.h"
+ 
+ 
+ #define K_LAST 256
+@@ -208,19 +211,86 @@ void Sys_Mkdir(char *path)
+     QG_Mkdir(path);
+ }
+ 
+-char * Sys_FindFirst(char *path, unsigned musthave, unsigned canhave)
++// id's own, from the Linux port (q_shlinux.c): saving a game copies its levels' files by
++// listing them, which quakegeneric's stubs found none of.
++static char findbase[MAX_OSPATH];
++static char findpath[MAX_OSPATH];
++static char findpattern[MAX_OSPATH];
++static DIR *fdir;
++
++static qboolean CompareAttributes(char *path, char *name,
++	unsigned musthave, unsigned canthave )
+ {
+-	return NULL;
++	struct stat st;
++	char fn[MAX_OSPATH];
++
++// . and .. never match
++	if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
++		return false;
++
++	sprintf(fn, "%s/%s", path, name);
++	if (stat(fn, &st) == -1)
++		return false; // shouldn't happen
++
++	if ( ( st.st_mode & S_IFDIR ) && ( canthave & SFF_SUBDIR ) )
++		return false;
++
++	if ( ( musthave & SFF_SUBDIR ) && !( st.st_mode & S_IFDIR ) )
++		return false;
++
++	return true;
+ }
+ 
+-char * Sys_FindNext(unsigned musthave, unsigned canhave)
++static char *FindMatch (unsigned musthave, unsigned canhave)
+ {
++	struct dirent *d;
++
++	while ((d = readdir(fdir)) != NULL) {
++		if (!*findpattern || glob_match(findpattern, d->d_name)) {
++			if (CompareAttributes(findbase, d->d_name, musthave, canhave)) {
++				sprintf (findpath, "%s/%s", findbase, d->d_name);
++				return findpath;
++			}
++		}
++	}
+ 	return NULL;
+ }
+ 
+-void Sys_FindClose(void)
++char *Sys_FindFirst (char *path, unsigned musthave, unsigned canhave)
+ {
+-	
++	char *p;
++
++	if (fdir)
++		Sys_Error ("Sys_BeginFind without close");
++
++	strcpy(findbase, path);
++
++	if ((p = strrchr(findbase, '/')) != NULL) {
++		*p = 0;
++		strcpy(findpattern, p + 1);
++	} else
++		strcpy(findpattern, "*");
++
++	if (strcmp(findpattern, "*.*") == 0)
++		strcpy(findpattern, "*");
++
++	if ((fdir = opendir(findbase)) == NULL)
++		return NULL;
++	return FindMatch(musthave, canhave);
++}
++
++char *Sys_FindNext (unsigned musthave, unsigned canhave)
++{
++	if (fdir == NULL)
++		return NULL;
++	return FindMatch(musthave, canhave);
++}
++
++void Sys_FindClose (void)
++{
++	if (fdir != NULL)
++		closedir(fdir);
++	fdir = NULL;
+ }
+ 
+ void ProcessKeyEvent(int key, qboolean down)
+diff --git a/server/sv_ccmds.c b/server/sv_ccmds.c
+index ebe6203..faf68aa 100644
+--- a/server/sv_ccmds.c
++++ b/server/sv_ccmds.c
+@@ -225,6 +225,9 @@ void CopyFile (char *src, char *dst)
+ SV_CopySaveGame
+ ================
+ */
++// The platform layer's: Quake 2 has written the file or folder at path.
++void ein_wrote (const char *path);
++
+ void SV_CopySaveGame (char *src, char *dst)
+ {
+ 	char	name[MAX_OSPATH], name2[MAX_OSPATH];
+@@ -266,6 +269,10 @@ void SV_CopySaveGame (char *src, char *dst)
+ 		found = Sys_FindNext( 0, 0 );
+ 	}
+ 	Sys_FindClose ();
++
++	// A save slot, not the game in progress: the page keeps it.
++	if (strcmp (dst, "current"))
++		ein_wrote (va("%s/save/%s", FS_Gamedir(), dst));
+ }
+ 
+ 

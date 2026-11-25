@@ -1,0 +1,1 @@
+quake2generic 84f34ed5382323d96b81a44a44f73496791084a3 with signatures.patch, volume.patch and files.patch, software renderer, emsdk 6.0.13

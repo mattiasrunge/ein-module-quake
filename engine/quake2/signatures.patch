@@ -1,0 +1,35 @@
+diff --git a/game/g_turret.c b/game/g_turret.c
+index 0153fd9..f9862d7 100644
+--- a/game/g_turret.c
++++ b/game/g_turret.c
+@@ -271,7 +271,7 @@ Must NOT be on the team with the rest of the turret parts.
+ Instead it must target the turret_breach.
+ */
+ 
+-void infantry_die (edict_t *self, edict_t *inflictor, edict_t *attacker, int damage);
++void infantry_die (edict_t *self, edict_t *inflictor, edict_t *attacker, int damage, vec3_t point);
+ void infantry_stand (edict_t *self);
+ void monster_use (edict_t *self, edict_t *other, edict_t *activator);
+ 
+@@ -292,7 +292,7 @@ void turret_driver_die (edict_t *self, edict_t *inflictor, edict_t *attacker, in
+ 	self->target_ent->owner = NULL;
+ 	self->target_ent->teammaster->owner = NULL;
+ 
+-	infantry_die (self, inflictor, attacker, damage);
++	infantry_die (self, inflictor, attacker, damage, point);
+ }
+ 
+ qboolean FindTarget (edict_t *self);
+diff --git a/game/p_client.c b/game/p_client.c
+index 80e444d..0b9ef57 100644
+--- a/game/p_client.c
++++ b/game/p_client.c
+@@ -168,7 +168,7 @@ void SP_info_player_coop(edict_t *self)
+ The deathmatch intermission point will be at one of these
+ Use 'angles' instead of 'angle', so you can set pitch or roll as well as yaw.  'pitch yaw roll'
+ */
+-void SP_info_player_intermission(void)
++void SP_info_player_intermission(edict_t *ent)
+ {
+ }
+ 

@@ -1,0 +1,66 @@
+# Builds Quake 2 (quake2generic) to WebAssembly for the module's page: assets/quake2.js and
+# assets/quake2.wasm, single-threaded, with no SDL and no main loop (quake2generic_ein.c). The game
+# code, id's baseq2, is linked in, and the software renderer draws the frame. The sound is Quake 2's
+# own mixer, played by the page (snd_ein.c); the music is the page's (cd_ein.c).
+#
+#   docker buildx build --file engine/quake2/Containerfile --output type=local,dest=assets engine/quake2
+#
+# The local exporter writes the files on the host, so no bind mount needs to be writable.
+# Run from the repository's root directory; scripts/build-engine.sh does exactly this.
+
+# emsdk 6.0.13, the multi-platform index (linux/amd64 and linux/arm64), as Quake's build.
+FROM docker.io/emscripten/emsdk:6.0.13@sha256:fb7864e398acfda863dfcea78b8bc8adad359fa60c6a0bbeb845931de64aa68a AS build
+
+# quake2generic, pinned: id Software's Quake 2 with the game and the renderer linked in.
+# GPL-2.0-or-later, like this module.
+ARG QUAKE2GENERIC_COMMIT=84f34ed5382323d96b81a44a44f73496791084a3
+RUN git init -q /src \
+  && git -C /src fetch -q --depth 1 https://github.com/ozkl/quake2generic.git ${QUAKE2GENERIC_COMMIT} \
+  && git -C /src checkout -q FETCH_HEAD
+
+# Two of the game code's functions were defined with other parameters than they are called with,
+# which WebAssembly stops the game on: the intermission spot's spawn function, and the turret
+# driver's death calling the infantry's.
+COPY signatures.patch /src/
+RUN git -C /src apply /src/signatures.patch
+
+# The mixer looked up an 8-bit sound's volume with the wrong shift, which made every one silent;
+# id's own source has the right one.
+COPY volume.patch /src/
+RUN git -C /src apply /src/volume.patch
+
+# Saving a game copies its levels' files, which takes listing them (id's Sys_FindFirst for
+# Linux); and a save slot or config.cfg written tells the page, which keeps them in the player's
+# home (ein_wrote, quake2generic_ein.c).
+COPY files.patch /src/
+RUN git -C /src apply /src/files.patch
+
+WORKDIR /src
+COPY quake2generic_ein.c snd_ein.c cd_ein.c ./
+
+# The engine's sources: quake2generic's makefile's list for the software renderer, without its
+# null CD and sound drivers, its Unix network and its SDL start-up, and this build's in their place,
+# with the loopback network a game on its own needs.
+ARG SOURCES="client/cl_cin client/cl_ents client/cl_fx client/cl_newfx client/cl_input client/cl_inv client/cl_main client/cl_parse client/cl_pred client/cl_tent client/cl_scrn client/cl_view client/console client/keys client/menu client/snd_dma client/snd_mem client/snd_mix client/qmenu qcommon/cmd qcommon/cmodel qcommon/common qcommon/crc qcommon/cvar qcommon/files qcommon/md4 qcommon/net_chan qcommon/pmove server/sv_ccmds server/sv_ents server/sv_game server/sv_init server/sv_main server/sv_send server/sv_user server/sv_world other/q_hunk other/vid_menu other/vid_lib other/q_system other/glob net/net_loopback game/g_ai game/p_client game/g_cmds game/g_svcmds game/g_combat game/g_func game/g_items game/g_main game/g_misc game/g_monster game/g_phys game/g_save game/g_spawn game/g_target game/g_trigger game/g_turret game/g_utils game/g_weapon game/m_actor game/m_berserk game/m_boss2 game/m_boss3 game/m_boss31 game/m_boss32 game/m_brain game/m_chick game/m_flipper game/m_float game/m_flyer game/m_gladiator game/m_gunner game/m_hover game/m_infantry game/m_insane game/m_medic game/m_move game/m_mutant game/m_parasite game/m_soldier game/m_supertank game/m_tank game/p_hud game/p_trail game/p_view game/p_weapon game/q_shared game/g_chase game/m_flash ref_soft/r_aclip ref_soft/r_alias ref_soft/r_bsp ref_soft/r_draw ref_soft/r_edge ref_soft/r_image ref_soft/r_light ref_soft/r_main ref_soft/r_misc ref_soft/r_model ref_soft/r_part ref_soft/r_poly ref_soft/r_polyse ref_soft/r_rast ref_soft/r_scan ref_soft/r_sprite ref_soft/r_surf quake2generic_ein snd_ein cd_ein"
+
+# Two compilers at a time keep the build's memory small beside a running EiN. Quake 2's Com_Error
+# leaves a frame with longjmp, which Emscripten's own setjmp handles. The glue is headed with
+# Deno's ignore comments, so core's `deno fmt` and `deno lint` pass over the generated file.
+ENV EMCC_CORES=2
+RUN mkdir -p /out \
+  && emcc -O2 -std=gnu99 -w -Dstricmp=strcasecmp \
+    $(for name in ${SOURCES}; do echo "${name}.c"; done) \
+    -o /out/quake2.js \
+    -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=createQuake2 \
+    -sENVIRONMENT=web \
+    -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=128MB -sSTACK_SIZE=1MB \
+    -sSUPPORT_LONGJMP=emscripten \
+    -sEXPORTED_FUNCTIONS=_ein_start,_ein_tick,_ein_key,_ein_mouse,_ein_write_config,_ein_screen,_ein_width,_ein_height,_ein_frames,_ein_audio_rate,_ein_audio_render,_malloc \
+    -sEXPORTED_RUNTIME_METHODS=FS,HEAPU8,HEAP16,HEAPU32,stringToNewUTF8 \
+    -sFORCE_FILESYSTEM=1 \
+  && { printf '%s\n' '// deno-fmt-ignore-file' '// deno-lint-ignore-file' '// Generated by engine/quake2/Containerfile with Emscripten. Do not edit.'; cat /out/quake2.js; } > /out/quake2.js.new \
+  && mv /out/quake2.js.new /out/quake2.js \
+  && echo "quake2generic ${QUAKE2GENERIC_COMMIT} with signatures.patch, volume.patch and files.patch, software renderer, emsdk 6.0.13" > /out/quake2-build.txt
+
+FROM scratch
+COPY --from=build /out/ /

@@ -6,7 +6,7 @@ import { addToQueue, currentUser, execCommand, notify, uploadBatchDone } from '@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { titlePicture } from '../quake/conback.ts';
 import { type Engine, quitted, startEngine } from '../quake/engine.ts';
-import { deleteGame, type Game, GAMES, listGames } from '../quake/games.ts';
+import { deleteGame, ENGINE_TITLES, type Game, GAMES, listGames } from '../quake/games.ts';
 import { K_MWHEELDOWN, K_MWHEELUP, mouseKey, quakeKey } from '../quake/keys.ts';
 import { useGameLoop } from '../quake/loop.ts';
 import { keeper, loadKept, savesFolder } from '../quake/saves.ts';
@@ -19,9 +19,9 @@ type State =
   | { kind: 'idle' }
   | { kind: 'loading'; game: Game }
   | { kind: 'running'; game: Game }
-  | { kind: 'error'; message: string };
+  | { kind: 'error'; game: Game; message: string };
 
-/** How many of Quake's last printed lines an error shows, since `Sys_Error` prints its reason before it exits. */
+/** How many of the game's last printed lines an error shows, since `Sys_Error` prints its reason before it exits. */
 const LOG_TAIL = 6;
 
 /** The browser remembers the game last chosen and whether the sound was off. */
@@ -49,11 +49,11 @@ const BAR_BUTTON = { size: 36, icon: 22 };
 
 /**
  * The module's page: the games there are in a box at the left, as Chat's recent chats are, and the
- * game beside them. A click on a game plays it, which is also the click a browser wants before a
+ * game beside them, Quake's or Quake 2's, each played by its own engine. A click on a game plays it, which is also the click a browser wants before a
  * page may make sound. A folder of paks dropped anywhere on the page is uploaded into `GAMES` as a
  * game. A click on the running game hands it the mouse (the browser's pointer lock), which looks
  * around and fires; while the game has the mouse or the focus it takes every key it knows before the
- * shell does. A game saved from Quake's menu, and the player's settings, are kept in their home
+ * shell does. A game saved from the game's menu, and the player's settings, are kept in their home
  * (`savesFolder`), and Load lists the saves next time. Add music uploads the files picked into the
  * chosen game's own music folder, where it plays them for the CD's tracks.
  */
@@ -72,7 +72,7 @@ export default function Quake() {
   const [locked, setLocked] = useState(false);
   const [muted, setMuted] = useState(() => remembered(MUTED_KEY) === '1');
 
-  // The game to offer: the one chosen last, else the first, the shareware episode when it is there.
+  // The game to offer: the one chosen last, else the first, Quake's shareware episode when it is there.
   const selected = games?.find((game) => game.name === chosen) ?? games?.[0];
   const [cover, setCover] = useState<string>();
   // What the header names: the game playing or loading, else the one Play would start.
@@ -145,7 +145,7 @@ export default function Quake() {
       // last as long as the page.
       const username = currentUser.value?.username;
       const folder = username ? savesFolder(username, game.name) : undefined;
-      const kept = folder ? await loadKept(folder) : [];
+      const kept = folder ? await loadKept(folder, game.engine) : [];
       const started = await startEngine({
         game,
         sound: audio,
@@ -155,7 +155,7 @@ export default function Quake() {
           : {}),
         log: (line) => {
           log.current = [...log.current.slice(-(LOG_TAIL - 1)), line];
-          console.info(`[quake] ${line}`);
+          console.info(`[${game.engine}] ${line}`);
         },
       });
       // Another game was chosen while this one loaded.
@@ -166,13 +166,13 @@ export default function Quake() {
     } catch (error) {
       if (sound.current !== audio) return;
       stop();
-      setState({ kind: 'error', message: describe(error, log.current) });
+      setState({ kind: 'error', game, message: describe(error, log.current) });
     }
   }, [muted, stop]);
 
   const remove = useCallback(async (game: Game) => {
     if (!globalThis.confirm(`Delete ${game.title} (${game.name})? Everyone who plays here loses it.`)) return;
-    if (state.kind !== 'idle' && state.kind !== 'error' && state.game.name === game.name) {
+    if (state.kind !== 'idle' && state.game.name === game.name) {
       stop();
       setState({ kind: 'idle' });
     }
@@ -188,9 +188,9 @@ export default function Quake() {
     // The game has ended: it wrote its settings itself on Quit, and can write nothing after an error.
     engine.current = null;
     stop();
-    // Quit from Quake's menu leaves the page as it was before Play.
+    // Quit from the game's menu leaves the page as it was before Play.
     if (quitted(error)) setState({ kind: 'idle' });
-    else setState({ kind: 'error', message: describe(error, log.current) });
+    else if (state.kind === 'running') setState({ kind: 'error', game: state.game, message: describe(error, log.current) });
   });
 
   // A hidden page draws no frames, so the game stands still; its sound and music wait with it.
@@ -324,7 +324,7 @@ export default function Quake() {
       }}
     >
       <EntityDetailHeader
-        eyebrow={shown ? 'Quake' : undefined}
+        eyebrow={shown ? ENGINE_TITLES[shown.engine] : undefined}
         title={shown?.title ?? 'Quake'}
         name='Quake'
         pattern='mixed'
@@ -374,7 +374,7 @@ export default function Quake() {
             background: fullscreen ? '#000' : undefined,
           }}
         >
-          {/* 640 by 480, square pixels at 4:3, as large as fits beside the line under it. */}
+          {/* 4:3, as large as fits beside the line under it; the game's frame is 640 by 480 unless a Quake 2 player chose another mode. */}
           <Box
             pos='relative'
             style={{
@@ -405,7 +405,7 @@ export default function Quake() {
               >
                 {state.kind === 'error' && (
                   <Stack gap={4} maw={640} w='100%' data-quake-error>
-                    <Text c='red.5' fw={600}>Quake stopped</Text>
+                    <Text c='red.5' fw={600}>{state.game.title} stopped</Text>
                     <Text c='gray.3' size='sm' style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>{state.message}</Text>
                   </Stack>
                 )}
@@ -459,12 +459,12 @@ function GameList({ games, error, active, onPlay, onDelete, onPick }: ListProps 
   if (games.length === 0) {
     return (
       <Text size='sm' c='dimmed' p='sm'>
-        No games yet. The shareware episode and LibreQuake are fetched when the module is installed and show up here when they are in; drop a folder with your own pak0.pak on
-        the page to add a game.
+        No games yet. Quake's shareware episode, LibreQuake and Quake II's demo are fetched when the module is installed and show up here when they are in; drop a folder with
+        your own pak0.pak on the page to add a game.
       </Text>
     );
   }
-  const detail = (game: Game) => `${game.name} · ${formatBytes(game.size)} · ${game.music ? 'music' : 'no music'}`;
+  const detail = (game: Game) => `${game.name} · ${ENGINE_TITLES[game.engine]} · ${formatBytes(game.size)} · ${game.music ? 'music' : 'no music'}`;
   return (
     <Stack gap={onDelete ? 'xs' : 2}>
       {games.map((game) => (
@@ -515,7 +515,7 @@ function GameList({ games, error, active, onPlay, onDelete, onPick }: ListProps 
   );
 }
 
-/** A game's title art at 8:5, the console background's shape, or a dark tile when it has none to show. */
+/** A game's title art at 8:5, the shape of Quake's console background, Quake 2's 4:3 one cut to it, or a dark tile when it has none to show. */
 function TitleArt({ game }: { game: Game }) {
   const [picture, setPicture] = useState<string | null>();
   useEffect(() => {
@@ -540,7 +540,7 @@ function TitleArt({ game }: { game: Game }) {
       }}
     >
       {picture
-        ? <img src={picture} alt='' style={{ width: '100%', height: '100%', imageRendering: 'pixelated', display: 'block' }} />
+        ? <img src={picture} alt='' style={{ width: '100%', height: '100%', objectFit: 'cover', imageRendering: 'pixelated', display: 'block' }} />
         : picture === null && <TablerIcon name='/usr/modules/quake/assets/icon.svg' size={40} color='var(--mantine-color-dark-3)' />}
     </Box>
   );
@@ -584,11 +584,11 @@ function GameMenu(props: ListProps) {
   );
 }
 
-/** An error and the last lines Quake printed, which say why when the game itself gave up. */
+/** An error and the last lines the game printed, which say why when the game itself gave up. */
 function describe(error: unknown, lines: string[]): string {
-  // Quake ends with exit(1) when it gives up (`Sys_Error`); Emscripten throws its own ExitStatus,
+  // The game ends with exit(1) when it gives up (`Sys_Error`); Emscripten throws its own ExitStatus,
   // not an Error, and the lines before it say why.
   const exit = error as { name?: string; status?: number } | null;
-  const message = error instanceof Error ? error.message : exit?.name === 'ExitStatus' ? `Quake exited with status ${exit.status}` : String(error);
+  const message = error instanceof Error ? error.message : exit?.name === 'ExitStatus' ? `The game exited with status ${exit.status}` : String(error);
   return [message, ...lines].join('\n');
 }
