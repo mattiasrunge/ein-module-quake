@@ -1,6 +1,6 @@
 {
   "name": "quake",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Quake in EiN: quakegeneric built to WebAssembly, played on a page of its own",
   "license": "GPL-2.0-or-later",
   "coreApi": "^0.15.66",
