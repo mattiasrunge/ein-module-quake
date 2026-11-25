@@ -144,6 +144,7 @@ music.
 | `engine/resolution.patch`              | Makes the frame's size the build's, not quakegeneric's fixed 320 by 240.                                                          |
 | `engine/files.patch`                   | Tells the page when Quake has saved a game or written its settings, so it can keep them.                                          |
 | `engine/long-strings.patch`            | Saves strings longer than 256 bytes, as LibreQuake's are, instead of overrunning the buffer they were written into.               |
+| `assets/icon.svg`                      | The Q of Quake, drawn for the module: the sidebar's and the dashboard card's icon, filled with the text colour.                   |
 | `assets/quake.js`, `assets/quake.wasm` | The built engine, committed, since a module is installed as its repository stands. `assets/quake-build.txt` says what built them. |
 | `scripts/build-engine.sh`              | Rebuilds `assets/quake.js` and `assets/quake.wasm`.                                                                               |
 | `test/smoke.mjs`                       | Signs in with headless Chrome, plays a little, saves screenshots.                                                                 |
@@ -181,6 +182,7 @@ and Node 22 or later:
 GPL-2.0-or-later, as quakegeneric and Quake's source are: see `LICENSE`. Quake's
 source is © id Software and the quakegeneric authors; their notices are in the
 source the build fetches. `assets/quake.js` is Emscripten's runtime, under the
-MIT licence. The module fetches and does not ship the games: the shareware
+MIT licence. `assets/icon.svg` is the module's own drawing of Quake's Q, which is id
+Software's trademark. The module fetches and does not ship the games: the shareware
 episode is id Software's, under its own shareware licence, and LibreQuake is
 under the BSD licence, its game code under the GPL.

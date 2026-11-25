@@ -3,6 +3,6 @@
     { "id": "games", "label": "Games", "order": 35 }
   ],
   "sidebar": [
-    { "id": "quake.page", "section": "games", "label": "Quake", "icon": "letter-q", "to": "/quake", "order": 20, "signedIn": true }
+    { "id": "quake.page", "section": "games", "label": "Quake", "icon": "/usr/modules/quake/assets/icon.svg", "to": "/quake", "order": 20, "signedIn": true }
   ]
 }

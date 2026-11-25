@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24">
+  <!-- The Q of Quake: a ring open at the top, thick at the bottom, and a nail through it, drawn as
+       one silhouette that EiN fills with the text colour. The ring is cut where the nail crosses it. -->
+  <defs>
+    <path id="nail" d="M9.7 10.2H14.3V11.3H12.75V18.5L12 23.6L11.25 18.5V11.3H9.7Z" />
+    <mask id="cut">
+      <rect width="24" height="24" fill="white" />
+      <use xlink:href="#nail" fill="black" stroke="black" stroke-width="1.2" stroke-linejoin="round" />
+    </mask>
+  </defs>
+  <path mask="url(#cut)" d="M8 1.5A8 8 0 1 0 16 1.5L16.53 2.6A6.6 6.6 0 1 1 7.47 2.6Z" />
+  <use xlink:href="#nail" />
+</svg>

@@ -541,7 +541,7 @@ function TitleArt({ game }: { game: Game }) {
     >
       {picture
         ? <img src={picture} alt='' style={{ width: '100%', height: '100%', imageRendering: 'pixelated', display: 'block' }} />
-        : picture === null && <TablerIcon name='letter-q' size={40} color='var(--mantine-color-dark-3)' />}
+        : picture === null && <TablerIcon name='/usr/modules/quake/assets/icon.svg' size={40} color='var(--mantine-color-dark-3)' />}
     </Box>
   );
 }

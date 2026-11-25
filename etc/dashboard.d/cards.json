@@ -3,7 +3,7 @@
     "name": "demo",
     "label": "Quake",
     "description": "A Quake game playing its own demos, silently, as it does when nobody plays.",
-    "icon": "letter-q",
+    "icon": "/usr/modules/quake/assets/icon.svg",
     "color": "orange",
     "route": "/cards/quake/demo",
     "frame": "plain",
