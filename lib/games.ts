@@ -1,9 +1,10 @@
 /**
  * Where the game data is: a folder in the household's shared home, so everyone signed in plays the
  * same games and may add to them. Each folder in it with a `pak0.pak` is a game, as Quake's `id1`
- * is: its paks, and the music it has of its own in `music/`. The `music` folder beside the games
- * is what a game without music of its own plays. The module's services put the shareware episode
- * and LibreQuake here when the module is installed; a folder dropped on the page is uploaded here.
+ * is: its paks, and in `music/` the CD's tracks it has of its own. The `music` folder beside the
+ * games is what a game without music of its own plays. The module's services put the shareware
+ * episode and LibreQuake here when the module is installed; a folder dropped on the page is
+ * uploaded here.
  */
 export const GAMES = '/groups/users/quake';
 
@@ -13,8 +14,28 @@ export const SHARED_MUSIC = `${GAMES}/music`;
 /** A pak file, `pak<N>.pak` in any case: a DOS install's are `PAK0.PAK`. */
 export const PAK_FILE = /^pak(\d+)\.pak$/i;
 
-/** A track of the music, as Quake numbers the CD's: track 1 was the game's data, 2 on its music. */
-export const TRACK_FILE = /^track\d\d\.ogg$/i;
+/**
+ * A track of the music: a file the browser plays, its name starting with the track's number, after
+ * `track` or not: `track02.ogg`, `02 - Quake.mp3`, `Track 2.mp3`.
+ */
+const TRACK_FILE = /^(?:track\s*)?0*(\d{1,2})(?!\d).*\.(?:ogg|mp3|m4a|aac|flac|opus|wav)$/i;
+
+/**
+ * The tracks among the files `names`, by the number Quake asks for: the CD's, on which track 1 was
+ * the game's data and 2 on its music. A folder whose numbers start at 1 was ripped without the data
+ * track, so each of its tracks is the CD's one on. Of two files for one track, the first by name.
+ */
+export function tracksOf(names: string[]): Record<number, string> {
+  const found: [number, string][] = [];
+  for (const name of [...names].sort()) {
+    const match = TRACK_FILE.exec(name);
+    if (match && Number(match[1]) > 0) found.push([Number(match[1]), name]);
+  }
+  const shift = found.some(([number]) => number === 1) ? 1 : 0;
+  const tracks: Record<number, string> = {};
+  for (const [number, name] of found) tracks[number + shift] ??= name;
+  return tracks;
+}
 
 /** id's `pak0.pak` of Quake 1.06, the shareware episode's and the whole game's alike; `pak1.pak` is the rest of the game. */
 const QUAKE_PAK0_SIZE = 18689235;

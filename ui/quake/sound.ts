@@ -1,10 +1,12 @@
 import { fileUrl } from '@ein/ui/lib';
+import type { Game } from './games.ts';
 
 /**
  * The game's sound on Web Audio. Quake mixes its sound effects itself, into a ring of samples the
  * engine keeps (`engine/snd_ein.c`); a processor node asks it for them as it needs them. The music
- * was the CD's audio tracks; here it is `track<NN>.ogg` of the game's music folder, played by an
- * audio element through the same output, at the CD Music Volume of Quake's options.
+ * was the CD's audio tracks; here it is the file of the track in the game's music folder, an Ogg,
+ * an MP3 or whatever else the browser plays, played by an audio element through the same output,
+ * at the CD Music Volume of Quake's options.
  */
 
 /** Frames the effects are asked for at a time: about 43 ms at 48 kHz, inside the 100 ms Quake mixes ahead. */
@@ -23,8 +25,8 @@ export type Sound = {
   context: AudioContext;
   /** Pull the effects from `render`, which fills `left` and `right` with the next samples. */
   effects(render: (left: Float32Array, right: Float32Array) => void): void;
-  /** The music of the game whose tracks are in `folder`, or silence for none. */
-  music(folder: string | undefined): MusicSink;
+  /** The game's music, or silence for a game with none. */
+  music(music: Game['music']): MusicSink;
   muted(): boolean;
   setMuted(muted: boolean): void;
   /** Hold everything while the page is hidden, and go on when it shows again. */
@@ -64,15 +66,16 @@ export function openSound(): Sound {
       processor.onaudioprocess = (event) => render(event.outputBuffer.getChannelData(0), event.outputBuffer.getChannelData(1));
       processor.connect(master);
     },
-    music(folder) {
+    music(music) {
       return {
         play(number, looping) {
           stopTrack();
           paused = false;
-          if (!folder) return;
-          const audio = new Audio(fileUrl(`${folder}/track${String(number).padStart(2, '0')}.ogg`));
+          const file = music?.tracks[number];
+          if (!music || !file) return;
+          const audio = new Audio(fileUrl(`${music.folder}/${file}`));
           audio.loop = looping;
-          // A track the game has no file for, or one the browser cannot play, is silence.
+          // A track the browser cannot play is silence, as one the game has no file for is.
           audio.onerror = () => {
             if (track === audio) stopTrack();
           };

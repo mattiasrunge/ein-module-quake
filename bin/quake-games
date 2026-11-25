@@ -2,13 +2,17 @@
 /** quake-games — the games in the Quake page's folder, with each one's title, paks and music, as the page lists them. */
 import type { CmdReturn, Command, NodeAttrs } from '@ein/client';
 import type { Game } from '@quake/api';
-import { byRank, GAMES, PAK_FILE, SHARED_MUSIC, titleOf, TRACK_FILE } from '@quake/games';
+import { byRank, GAMES, PAK_FILE, SHARED_MUSIC, titleOf, tracksOf } from '@quake/games';
 
 const quakeGames = async (cmd: Command): CmdReturn => {
   const vfs = cmd.sys.vfs;
   const names = async (path: string) => (await vfs.exists(cmd.access, path)) ? (await vfs.children(cmd.access, path)).map((child) => child.name) : [];
-  const hasTracks = async (path: string) => (await names(path)).some((name) => TRACK_FILE.test(name));
-  const shared = await hasTracks(SHARED_MUSIC);
+  // A folder's tracks, or none when it has none.
+  const musicIn = async (folder: string) => {
+    const tracks = tracksOf(await names(folder));
+    return Object.keys(tracks).length > 0 ? { folder, tracks } : undefined;
+  };
+  const shared = await musicIn(SHARED_MUSIC);
 
   const games: Game[] = [];
   // No folder yet is no games yet: the page makes it, and the services fill it.
@@ -26,14 +30,13 @@ const quakeGames = async (cmd: Command): CmdReturn => {
     while (found.has(paks.length)) paks.push(found.get(paks.length)!);
     if (paks.length === 0) continue;
     const sizes = await Promise.all(paks.map(async (pak) => (await vfs.get<NodeAttrs & { size?: number }>(cmd.access, `${GAMES}/${name}/${pak}`)).attrs.size ?? 0));
-    const own = await hasTracks(`${GAMES}/${name}/music`);
-    const music = own ? `${GAMES}/${name}/music` : shared ? SHARED_MUSIC : undefined;
+    const music = (await musicIn(`${GAMES}/${name}/music`)) ?? shared;
     games.push({ name, title: titleOf(name, sizes), paks, size: sizes.reduce((sum, size) => sum + size, 0), ...(music ? { music } : {}) });
   }
   games.sort(byRank);
 
   if (cmd.json) await cmd.writeJSON(games satisfies Game[]);
-  else for (const game of games) await cmd.writeLn(`${game.name}  ${game.title}  ${game.paks.join(' ')}${game.music ? `  music: ${game.music}` : ''}`);
+  else for (const game of games) await cmd.writeLn(`${game.name}  ${game.title}  ${game.paks.join(' ')}${game.music ? `  music: ${game.music.folder} (${Object.keys(game.music.tracks).length} tracks)` : ''}`);
   return 0;
 };
 
@@ -44,7 +47,7 @@ quakeGames.spec = {
   args: [],
   flags: [],
   examples: ['quake-games'],
-  returns: 'One entry per game: its folder name, title, paks in load order, their size in bytes, and the folder its music is played from.',
+  returns: 'One entry per game: its folder name, title, paks in load order, their size in bytes, and its music: the folder it is played from and the file of each track by number.',
 };
 
 export default quakeGames;

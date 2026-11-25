@@ -1,8 +1,8 @@
 import { ActionIcon, Box, Loader, Menu, Paper, ScrollArea, Stack, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { EntityDetailHeader, TablerIcon } from '@ein/ui/components';
 import { usePhone } from '@ein/ui/hooks';
-import { formatBytes } from '@ein/ui/lib';
-import { currentUser, notify } from '@ein/ui/signals';
+import { formatBytes, shq } from '@ein/ui/lib';
+import { addToQueue, currentUser, execCommand, notify, uploadBatchDone } from '@ein/ui/signals';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { titlePicture } from '../quake/conback.ts';
 import { type Engine, quitted, startEngine } from '../quake/engine.ts';
@@ -54,7 +54,8 @@ const BAR_BUTTON = { size: 36, icon: 22 };
  * game. A click on the running game hands it the mouse (the browser's pointer lock), which looks
  * around and fires; while the game has the mouse or the focus it takes every key it knows before the
  * shell does. A game saved from Quake's menu, and the player's settings, are kept in their home
- * (`savesFolder`), and Load lists the saves next time.
+ * (`savesFolder`), and Load lists the saves next time. Add music uploads the files picked into the
+ * chosen game's own music folder, where it plays them for the CD's tracks.
  */
 export default function Quake() {
   const phone = usePhone();
@@ -96,6 +97,23 @@ export default function Quake() {
     }).catch((error) => setListError(error instanceof Error ? error.message : String(error)));
   }, []);
   useEffect(refresh, [refresh]);
+  // Uploads land in the games folder: a game dropped on the page, or music added to one.
+  useEffect(() =>
+    uploadBatchDone.subscribe((batch) => {
+      if (batch?.dirs.some((dir) => dir === GAMES || dir.startsWith(`${GAMES}/`))) refresh();
+    }), [refresh]);
+
+  const musicInput = useRef<HTMLInputElement>(null);
+  const addMusic = (files: File[]) => {
+    if (!selected || files.length === 0) return;
+    const folder = `${GAMES}/${selected.name}/music`;
+    // The folder is made when the files go, so a game gets one only when it has music.
+    const target = async () => {
+      await execCommand(`mkdir -p ${shq(folder)}`);
+      return folder;
+    };
+    addToQueue(files, target, { label: `${selected.title}'s music` });
+  };
 
   const stop = useCallback(() => {
     // The player's settings are kept as Quit keeps them, when the game is still there to write them.
@@ -315,11 +333,24 @@ export default function Quake() {
         coverArt={cover ? <img src={cover} alt='' style={{ width: '100%', height: '100%', objectFit: 'cover', imageRendering: 'pixelated' }} /> : undefined}
         controls={phone ? <GameMenu {...list} /> : undefined}
         actions={{
-          upload: { path: GAMES, name: 'Quake', keepFolders: true, onUploaded: refresh },
+          upload: { path: GAMES, name: 'Quake', keepFolders: true },
           items: [
             { label: muted ? 'Sound on' : 'Sound off', icon: muted ? 'volume-off' : 'volume', onClick: toggleMuted, button: true, iconOnly: true, stays: true },
             { label: 'Fullscreen', icon: 'maximize', onClick: toggleFullscreen, disabled: state.kind !== 'running', button: true, iconOnly: true, stays: true },
+            { label: selected ? `Add music to ${selected.title}` : 'Add music', icon: 'music', onClick: () => musicInput.current?.click(), disabled: !selected },
           ],
+        }}
+      />
+      {/* The music's files: picked here, uploaded into the chosen game's music folder. */}
+      <input
+        ref={musicInput}
+        type='file'
+        accept='audio/*'
+        multiple
+        hidden
+        onChange={(event) => {
+          addMusic([...(event.currentTarget.files ?? [])]);
+          event.currentTarget.value = '';
         }}
       />
       <Box style={{ display: 'flex', flex: 1, minHeight: 0 }}>
@@ -433,7 +464,8 @@ function GameList({ games, error, active, onPlay, onDelete, onPick }: ListProps 
       </Text>
     );
   }
-  const detail = (game: Game) => `${game.name} · ${formatBytes(game.size)}${game.music ? '' : ' · no music'}`;
+  const music = (game: Game) => !game.music ? 'no music' : game.music.folder === `${GAMES}/${game.name}/music` ? 'its own music' : 'shared music';
+  const detail = (game: Game) => `${game.name} · ${formatBytes(game.size)} · ${music(game)}`;
   return (
     <Stack gap={onDelete ? 'xs' : 2}>
       {games.map((game) => (

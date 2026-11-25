@@ -75,9 +75,24 @@ all, and appears in the list under the folder's name.
   folder with id's `pak0.pak` and a `pak1.pak` **Quake**.
 - To make the shareware episode the whole game, add the whole game's `pak1.pak`
   to the `shareware` folder: id's `pak0.pak` is the same in both.
-- A game with music of its own has it in a `music` folder inside its own, as
-  `track02.ogg` on, the numbers of the CD's tracks. A game without it plays the
-  music in the `music` folder beside the games, which is LibreQuake's.
+- A game without music of its own plays the music in the `music` folder beside
+  the games, which is LibreQuake's.
+
+## Add the music
+
+Quake played its music from the CD's audio tracks. To play the CD's music, or
+any other, with a game, choose the game, then **Add music** under ⋮ in the
+page's header, and pick the tracks: Ogg, MP3, or whatever else the browser
+plays. They are uploaded into a `music` folder in the game's own, and the game
+plays them instead of the shared music; the list says **its own music**. The
+shareware episode and the whole game share a folder, so its music is both's.
+
+A track is known by the number its file's name starts with, after `track` or
+not: `track02.ogg`, `02 - Quake.mp3`, `Track 2.mp3`. Quake asks for the CD's
+numbers, on which track 1 was the game's data and the music runs from 2 to 11;
+a rip numbered from 1 skipped the data track, so when a folder has a track 1,
+each of its tracks plays as the CD's one on. Rename a file whose name starts
+otherwise, the artist's name say, in EiN's file browser.
 
 Mods that need a game under them (`-game` in Quake) are not played yet.
 
@@ -98,8 +113,8 @@ music.
 The sound effects are Quake's own mixer, id's `snd_dma.c` and `snd_mix.c`,
 painting a ring of samples ahead of where the page plays it, as it painted a
 sound card's DMA buffer; Web Audio plays the ring. Quake played its music from
-the CD's audio tracks; here the page plays the game's `track<NN>.ogg` when Quake
-asks for a track. The browser plays the Ogg files itself (Safari from 18.4).
+the CD's audio tracks; here the page plays the game's file for the track Quake
+asks for. The browser plays the files itself (Ogg in Safari from 18.4).
 **Options → Sound Volume** and **CD Music Volume** set the effects and the
 music.
 

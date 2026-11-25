@@ -8,6 +8,6 @@ export type Game = {
   paks: string[];
   /** Bytes, the paks together. */
   size: number;
-  /** The folder whose `track<NN>.ogg` are the game's music: its own `music`, else the one beside the games. */
-  music?: string;
+  /** The game's music: its own `music` folder, else the one beside the games, and the file of each track Quake asks for by number. */
+  music?: { folder: string; tracks: Record<number, string> };
 };
