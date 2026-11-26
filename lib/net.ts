@@ -4,9 +4,9 @@
  * to the address it is for, and keeps those that come up a link for the socket they are for until
  * the engine reads them.
  *
- * A link is one player's connection to the server's socket node, which carries messages both ways.
- * Each datagram goes framed: the length of what follows (two bytes, big-endian), the port it is
- * from, the port it is for, then its bytes. `Deframer` puts them back together on the other side.
+ * A link is one player's connection to the server's socket node, which carries whole messages both
+ * ways, so each datagram is one message, framed: the port it is from and the port it is for (two
+ * bytes each, big-endian), then its bytes.
  *
  * Addresses are fake: the server gives each player one of its own (`playerAddress`), which tells it
  * which link a datagram goes down, and a player sees the server at `SERVER_ADDRESS`, whatever
@@ -17,11 +17,11 @@
 /** What the server is to its players: the address their engine connects to. */
 export const SERVER_ADDRESS = '10.66.0.1';
 
-/** The bytes before a datagram's own: its length, the port it is from and the port it is for. */
-export const FRAME_HEADER = 6;
+/** The bytes before a datagram's own: the port it is from and the port it is for. */
+export const FRAME_HEADER = 4;
 
-/** The longest datagram a frame carries; Quake's are at most 8 KiB, Quake 2's 1400 bytes. */
-export const MAX_DATAGRAM = 65535 - 4;
+/** The longest datagram a frame carries, UDP's; Quake's are at most 8 KiB, Quake 2's 1400 bytes. */
+export const MAX_DATAGRAM = 65535;
 
 /** How many datagrams a socket keeps unread before it drops the oldest: a game that stopped reading (a hidden page) falls behind no further. */
 const SOCKET_QUEUE = 256;
@@ -45,41 +45,15 @@ export const playerAddress = (index: number): string => addressText(addressNumbe
 export function frame(from: number, to: number, data: Uint8Array): Uint8Array {
   if (data.length > MAX_DATAGRAM) throw new Error(`a datagram of ${data.length} bytes is longer than a frame carries`);
   const framed = new Uint8Array(FRAME_HEADER + data.length);
-  const view = new DataView(framed.buffer);
-  view.setUint16(0, data.length + 4);
-  view.setUint16(2, from);
-  view.setUint16(4, to);
+  framed.set([from >> 8, from & 255, to >> 8, to & 255]);
   framed.set(data, FRAME_HEADER);
   return framed;
 }
 
-/** Puts a link's frames back together, whichever way it split or joined them. */
-export class Deframer {
-  #held = new Uint8Array(0);
-
-  /** The datagrams `chunk` completes, in order; what it ends with that is not whole yet waits for the next. */
-  push(chunk: Uint8Array): Datagram[] {
-    let bytes = chunk;
-    if (this.#held.length > 0) {
-      bytes = new Uint8Array(this.#held.length + chunk.length);
-      bytes.set(this.#held);
-      bytes.set(chunk, this.#held.length);
-    }
-    const datagrams: Datagram[] = [];
-    let at = 0;
-    while (bytes.length - at >= 2) {
-      const length = (bytes[at] << 8) | bytes[at + 1];
-      if (bytes.length - at < 2 + length) break;
-      if (length >= 4) {
-        const from = (bytes[at + 2] << 8) | bytes[at + 3];
-        const to = (bytes[at + 4] << 8) | bytes[at + 5];
-        datagrams.push({ from, to, data: bytes.slice(at + FRAME_HEADER, at + 2 + length) });
-      }
-      at += 2 + length;
-    }
-    this.#held = bytes.slice(at);
-    return datagrams;
-  }
+/** The datagram a link's message `framed` carries, or undefined for one too short to be a frame. */
+export function unframe(framed: Uint8Array): Datagram | undefined {
+  if (framed.length < FRAME_HEADER) return undefined;
+  return { from: (framed[0] << 8) | framed[1], to: (framed[2] << 8) | framed[3], data: framed.subarray(FRAME_HEADER) };
 }
 
 /** A datagram waiting for its socket: from whom, the address and port, and its bytes. */
@@ -146,10 +120,10 @@ export const RING_BYTES = 1 << 22;
 
 /**
  * The players' datagrams on their way to the server's worker, in memory both share: the service
- * writes each datagram a player's connection gives with the player's address, and the worker reads them
+ * writes each frame a player's connection gives with the player's address, and the worker reads them
  * whenever its game reads, even while it runs without returning, when no message could reach it. One
- * writer, one reader. A record is the address, the length of what follows, the ports and the bytes;
- * one that does not fit is dropped, as the network drops a datagram.
+ * writer, one reader. A record is the address, the length of the frame, and the frame; one that does
+ * not fit is dropped, as the network drops a datagram.
  */
 export class Ring {
   readonly #positions: Int32Array;
@@ -160,12 +134,9 @@ export class Ring {
     this.#bytes = new Uint8Array(buffer, 8);
   }
 
-  /** Write the datagram from the player at `ip`; answers whether there was room. */
-  write(ip: number, datagram: Datagram): boolean {
-    const bytes = new Uint8Array(4 + datagram.data.length);
-    bytes.set([datagram.from >> 8, datagram.from & 255, datagram.to >> 8, datagram.to & 255]);
-    bytes.set(datagram.data, 4);
-    return this.#put(ip, bytes);
+  /** Write the frame `framed` from the player at `ip`; answers whether there was room. */
+  write(ip: number, framed: Uint8Array): boolean {
+    return this.#put(ip, framed);
   }
 
   /** Each datagram written since the last read, in order, with the address of the player it is from. */
@@ -178,8 +149,8 @@ export class Ring {
       const ip = view.getUint32(0);
       const length = view.getUint32(4);
       at = (at + 8) >>> 0;
-      const bytes = this.#take(at, length);
-      each(ip, { from: (bytes[0] << 8) | bytes[1], to: (bytes[2] << 8) | bytes[3], data: bytes.subarray(4) });
+      const datagram = unframe(this.#take(at, length));
+      if (datagram) each(ip, datagram);
       at = (at + length) >>> 0;
     }
     Atomics.store(this.#positions, 1, at | 0);

@@ -1,7 +1,7 @@
 import { fetchInvitation, NODE_SOCKET_CLOSE, type NodeSocketMode, openNodeSocket, shq } from '@ein/ui/lib';
 import { execCommand } from '@ein/ui/signals';
 import type { EngineName, GameMode, Invite, Seat, ServerInfo } from '../../lib/api.ts';
-import { addressNumber, Deframer, Network, SERVER_ADDRESS } from '../../lib/net.ts';
+import { addressNumber, Network, SERVER_ADDRESS, unframe } from '../../lib/net.ts';
 
 export type { GameMode, Invite, Seat, ServerInfo };
 
@@ -95,10 +95,10 @@ export async function openLink(seat: Seat, open: OpenSocket = openNodeSocket): P
   const network = new Network(() => (framed) => {
     if (socket.readyState === WebSocket.OPEN) socket.send(framed as Uint8Array<ArrayBuffer>);
   });
-  const deframer = new Deframer();
   const server = addressNumber(SERVER_ADDRESS);
   socket.addEventListener('message', (event) => {
-    for (const datagram of deframer.push(new Uint8Array(event.data as ArrayBuffer))) network.deliver(server, datagram);
+    const datagram = unframe(new Uint8Array(event.data as ArrayBuffer));
+    if (datagram) network.deliver(server, datagram);
   });
   const ended = new Promise<string>((resolve) => {
     socket.addEventListener('close', (event) =>

@@ -3,7 +3,7 @@ import { USERS_PATH } from '@ein/paths';
 import type { EngineName, ServerInfo, ServerPlayer } from './api.ts';
 import { openReader, readWhole } from './catalog.ts';
 import { GAMES, PAK_FILE, SERVERS } from './games.ts';
-import { addressNumber, addressText, Deframer, playerAddress, Ring } from './net.ts';
+import { addressNumber, addressText, FRAME_HEADER, MAX_DATAGRAM, playerAddress, Ring } from './net.ts';
 import { packPak, PAK_HEADER_SIZE, pakDirectory, pakEntries } from './paks.ts';
 import type { FromWorker, StartServer, ToWorker } from './server-worker.ts';
 import { messageOf, readServer, serverPath, serverSocket, SHARED_FOLDER_MODE, writeServer } from './servers.ts';
@@ -23,8 +23,8 @@ const START_MS = 120_000;
 /** How often the service looks over the servers even when nothing in their folders changed: for games left empty. */
 const SCAN_MS = 2_000;
 
-/** How much of a player's connection is passed on at once. */
-const CHUNK = 64 * 1024;
+/** How much of a player's connection is read at once: a whole frame, so each read is one datagram. */
+const CHUNK = FRAME_HEADER + MAX_DATAGRAM;
 
 /** Who may connect to a game's socket: every account, which the service, its owner, listens for. */
 const SOCKET_MODE = 0o666;
@@ -310,13 +310,12 @@ export class QuakeService {
     const seat: Seat = { name, ip, connection };
     running.seats.set(ip, seat);
     await this.#log(`${running.id}: ${name} sits at ${addressText(ip)}`);
-    const deframer = new Deframer();
     try {
       for (;;) {
-        const bytes = await connection.read(CHUNK);
-        if (bytes.length === 0) break;
+        const framed = await connection.read(CHUNK);
+        if (framed.length === 0) break;
         // A server too far behind to take more drops what does not fit, as the network would.
-        for (const datagram of deframer.push(bytes)) running.ring.write(ip, datagram);
+        if (framed.length >= FRAME_HEADER) running.ring.write(ip, framed);
       }
     } catch {
       // Closed under the read.

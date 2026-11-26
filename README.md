@@ -93,8 +93,8 @@ server, built for it beside the game (`assets/quake-server.wasm`,
 `assets/quake2-server.wasm`), in a worker of EiN's own, so a slow frame never
 holds up EiN. The service listens on each game's socket node, and joining
 connects your page to it over a WebSocket, which carries the game's datagrams
-both ways. Over it every datagram goes framed: the length of what follows (two
-bytes, big-endian), the port it is from, the port it is for, and its bytes. The
+both ways, each datagram one message: the port it is from, the port it is for,
+and its bytes. The
 service seats each connection under its account's name (`guest` for an
 invitation's) and gives each seat a fake address (10.66.0.2 and on), which a
 page reloaded gets again. The server is 10.66.0.1 to each player; the game
