@@ -257,6 +257,7 @@ music** turns the music on and off.
 | `engine/quake2/volume.patch`                                                                  | The mixer's volume of an 8-bit sound, which quake2generic had made silent.                                                                                                     |
 | `engine/quake2/files.patch`                                                                   | Lists a folder's files, which saving a game needs, and tells the page when Quake II has saved a game or written its settings.                                                  |
 | `engine/quake2/menu.patch`                                                                    | Makes the main menu's Multiplayer the player setup, without the menus of joining and starting a server, which the page does.                                                   |
+| `engine/quake2/video.patch`                                                                   | Leaves the driver, fullscreen and windowed mouse out of the Video menu, which would change nothing in the page.                                                                |
 | `engine/quake2/net_ein.c`, `engine/quake2/server_ein.c`, `engine/quake2/build.sh`             | Quake II's network, its dedicated server's platform layer, and the build of the game and the server.                                                                           |
 | `assets/icon.svg`                                                                             | The Q of Quake, drawn for the module: the sidebar's and the dashboard card's icon, filled with the text colour.                                                                |
 | `assets/quake.js`, `assets/quake.wasm`, `assets/quake2.js`, `assets/quake2.wasm`              | The built engines, committed, since a module is installed as its repository stands. `assets/quake-build.txt` and `assets/quake2-build.txt` say what built them.                |
@@ -282,8 +283,9 @@ with `engine/resolution.patch`, `engine/files.patch` and
 added.
 The source of `assets/quake2.wasm` is quake2generic at the commit
 `engine/quake2/Containerfile` pins, with `engine/quake2/signatures.patch`,
-`engine/quake2/volume.patch`, `engine/quake2/files.patch` and
-`engine/quake2/menu.patch` applied and the `engine/quake2/` files added.
+`engine/quake2/volume.patch`, `engine/quake2/files.patch`,
+`engine/quake2/menu.patch` and `engine/quake2/video.patch` applied and the
+`engine/quake2/` files added.
 
 ## Developing
 
