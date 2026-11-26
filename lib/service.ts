@@ -82,6 +82,8 @@ type Running = {
  */
 export class QuakeService {
   readonly #games = new Map<string, Running>();
+  /** The games being started: loading their paks takes a while, and a scan meanwhile must not start them again. */
+  readonly #starting = new Set<string>();
   #scanning?: Promise<void>;
   #again = false;
 
@@ -143,8 +145,11 @@ export class QuakeService {
           await this.#log(`${id}: nobody has played for ${EMPTY_MS / 60_000} minutes`);
           await this.#stop(id);
         } else if (running.started) await this.#seats(running);
+      } else if (this.#starting.has(id)) {
+        continue;
       } else if (info?.state === 'starting') {
-        void this.#start(id, info);
+        this.#starting.add(id);
+        void this.#start(id, info).finally(() => this.#starting.delete(id));
       } else if (info?.state !== 'failed' || Date.now() - Date.parse(info.startedAt) > FAILED_MS) {
         // Stopped, failed a while ago, left from before, or not a server at all.
         if (info || Date.now() - (await vfs.get(this.cmd.access, serverPath(id))).props.birthtime.timestamp > FAILED_MS) await this.#remove(serverPath(id));
