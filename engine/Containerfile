@@ -26,7 +26,9 @@ RUN git init -q /quake \
   && git -C /quake checkout -q FETCH_HEAD \
   && cp /quake/WinQuake/snd_dma.c /quake/WinQuake/snd_mem.c /quake/WinQuake/snd_mix.c /src/source/
 
-# The frame's size is the build's, not quakegeneric's fixed 320 by 240.
+# The frame's size is the build's, not quakegeneric's fixed 320 by 240, and so is the buffer the
+# view is drawn into under water, which was 320 by 200 on the stack while quakegeneric let the view
+# be as large as the frame.
 COPY resolution.patch /src/
 RUN git -C /src apply /src/resolution.patch
 
