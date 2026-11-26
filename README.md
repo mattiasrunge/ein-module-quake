@@ -70,10 +70,17 @@ A player who has played before starts with their own settings: the game's
 **Options** and the keys bound in its controls menu are kept (below), and the
 WASD keys, free look, always run and the crosshair are only the first settings
 of a player who has none yet. Until you choose a name in the game's
-**Multiplayer** menu, you play under your account's. Quake's frame is always 640
-by 480. In Quake II, **Video** sets the frame's size, from 320 by 240 to 1600 by
-1200, once you choose **apply**, and the game keeps it; the page shows any of
-them at 4:3.
+**Multiplayer** menu, you play under your account's.
+
+The game's frame is 640 by 480 until you choose another size, which the game
+keeps. In Quake, **Options** > **Video Options** lists the modes, from 320 by 240
+up to 1920 by 1200, 4:3 and widescreen (16:9 and 16:10); **Enter** sets the one
+under the cursor. A wider frame sees more at its sides, not less above and below.
+The console's `vid_width` and `vid_height` set any size up to 1920 by 1200. In
+Quake II, **Video** sets the frame's size, from 320 by 240 to 1600 by 1200, once
+you choose **apply**. The page shows the frame at its shape. The game draws its
+menus and status bar at their own size, so a large frame makes them small, and
+it takes more of the computer to draw.
 
 ## Play together
 
@@ -247,7 +254,7 @@ music** turns the music on and off.
 | `engine/snd_ein.c`                                                                            | The sound card: the ring Quake's mixer paints, handed to the page.                                                                                                           |
 | `engine/cd_ein.c`                                                                             | The CD player: tracks and their volume, handed to the page.                                                                                                                  |
 | `engine/Containerfile`                                                                        | Quake's build: pinned emsdk image, quakegeneric commit and id's Quake source, for the sound.                                                                                 |
-| `engine/resolution.patch`                                                                     | Makes the frame's size the build's, not quakegeneric's fixed 320 by 240.                                                                                                     |
+| `engine/resolution.patch`                                                                     | Makes the frame's size the mode the player chooses, up to the build's, with Video Options, and a field of view as wide as the frame.                                         |
 | `engine/files.patch`                                                                          | Tells the page when Quake has saved a game or written its settings, so it can keep them.                                                                                     |
 | `engine/long-strings.patch`                                                                   | Saves strings longer than 256 bytes, as LibreQuake's are, instead of overrunning the buffer they were written into.                                                          |
 | `engine/net_ein.c`, `engine/connect.patch`                                                    | Quake's network: the loopback, and id's datagram driver over the page's or the worker's; connecting without waiting in a loop for answers.                                   |

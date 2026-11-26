@@ -19,7 +19,9 @@ See the GNU General Public License for more details.
 // /id1, calls ein_start once, then ein_tick from requestAnimationFrame,
 // copies the frame from ein_screen onto its canvas whenever ein_frames
 // moves on, and hands over keys with ein_key, already in Quake's key
-// codes, and the mouse's movement with ein_mouse. The game's saves and
+// codes, and the mouse's movement with ein_mouse. The frame is the size of
+// the mode the player chose (vid_null.c), so ein_width and ein_height can
+// change between frames. The game's saves and
 // config.cfg are files in /id1 too: the page writes the player's there
 // before ein_start and hears from ein_wrote when Quake has written one.
 // Sound is snd_ein.c, the music cd_ein.c.
@@ -48,9 +50,11 @@ static int mouse_dx = 0;
 static int mouse_dy = 0;
 
 // The frame as 0xAABBGGRR words, R first in memory, as a canvas's
-// ImageData has its bytes.
-static uint32_t screen[QUAKEGENERIC_RES_X * QUAKEGENERIC_RES_Y];
+// ImageData has its bytes, and its size.
+static uint32_t *screen = NULL;
 static uint32_t palette[256];
+static int width = 0;
+static int height = 0;
 
 // How many frames the game has finished: the page blits when it moves.
 static uint32_t frames = 0;
@@ -74,12 +78,20 @@ void QG_SetPalette(unsigned char pal[768])
 		palette[i] = 0xff000000u | (pal[i * 3 + 2] << 16) | (pal[i * 3 + 1] << 8) | pal[i * 3];
 }
 
+// The renderer's frame, at vid's size: the mode's.
 void QG_DrawFrame(void *pixels)
 {
 	const unsigned char *indexes = pixels;
 	int i;
 
-	for (i = 0; i < QUAKEGENERIC_RES_X * QUAKEGENERIC_RES_Y; i++)
+	if (vid.width != width || vid.height != height)
+	{
+		width = vid.width;
+		height = vid.height;
+		free(screen);
+		screen = malloc(width * height * sizeof(uint32_t));
+	}
+	for (i = 0; i < width * height; i++)
 		screen[i] = palette[indexes[i]];
 	frames++;
 }
@@ -194,13 +206,13 @@ uint32_t *ein_screen(void)
 EMSCRIPTEN_KEEPALIVE
 int ein_width(void)
 {
-	return QUAKEGENERIC_RES_X;
+	return width;
 }
 
 EMSCRIPTEN_KEEPALIVE
 int ein_height(void)
 {
-	return QUAKEGENERIC_RES_Y;
+	return height;
 }
 
 EMSCRIPTEN_KEEPALIVE

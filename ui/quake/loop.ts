@@ -3,11 +3,16 @@ import type { Engine } from './engine.ts';
 
 /**
  * Run `engine` while it is set: the time since the last on every animation frame, and a blit onto
- * `canvas` when the game drew, the canvas as large as the game's frame, which a Quake 2 player
- * changes with the video mode. `onEnd` hears the error the game ended with, Quit included. A hidden
- * page draws no frames, so the game stands still while it is hidden.
+ * `canvas` when the game drew, the canvas as large as the game's frame, which the player changes
+ * with the video mode; `onSize` hears each new size. `onEnd` hears the error the game ended with,
+ * Quit included. A hidden page draws no frames, so the game stands still while it is hidden.
  */
-export function useGameLoop(engine: Engine | null, canvas: RefObject<HTMLCanvasElement | null>, onEnd: (error: unknown) => void) {
+export function useGameLoop(
+  engine: Engine | null,
+  canvas: RefObject<HTMLCanvasElement | null>,
+  onEnd: (error: unknown) => void,
+  onSize: (width: number, height: number) => void,
+) {
   useEffect(() => {
     const context = canvas.current?.getContext('2d');
     if (!engine || !context) return;
@@ -28,6 +33,7 @@ export function useGameLoop(engine: Engine | null, canvas: RefObject<HTMLCanvasE
           context.canvas.width = width;
           context.canvas.height = height;
           image = context.createImageData(width, height);
+          onSize(width, height);
         }
         engine.draw(image);
         context.putImageData(image, 0, 0);

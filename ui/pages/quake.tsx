@@ -372,6 +372,19 @@ export default function Quake() {
     setRemote(null);
   }, [state, remote, stop]);
 
+  // The game's frame, which the player sizes with the video mode, and how many of the screen's pixels
+  // it is shown across: a frame shown larger than it is keeps its pixels square, a smaller one is
+  // smoothed.
+  const [frameSize, setFrameSize] = useState({ width: 640, height: 480 });
+  const [shownPixels, setShownPixels] = useState(0);
+  useEffect(() => {
+    const node = canvas.current;
+    if (!node) return;
+    const observer = new ResizeObserver(() => setShownPixels(node.clientWidth * devicePixelRatio));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
   useGameLoop(state.kind === 'running' ? engine.current : null, canvas, (error) => {
     // The game has ended: it wrote its settings itself on Quit, and can write nothing after an error.
     engine.current = null;
@@ -379,7 +392,7 @@ export default function Quake() {
     // Quit from the game's menu leaves the page as it was before Play.
     if (quitted(error)) setState({ kind: 'idle' });
     else if (state.kind === 'running') setState({ kind: 'error', game: state.game, message: describe(error, log.current) });
-  });
+  }, (width, height) => setFrameSize({ width, height }));
 
   // A hidden page draws no frames, so the game stands still; its sound and music wait with it.
   useEffect(() => {
@@ -584,12 +597,14 @@ export default function Quake() {
             background: fullscreen ? '#000' : undefined,
           }}
         >
-          {/* 4:3, as large as fits beside the line under it; the game's frame is 640 by 480 unless a Quake 2 player chose another mode. */}
+          {/* The frame's shape, as large as fits beside the line under it: 4:3 until the player chooses a wider mode. */}
           <Box
             pos='relative'
             style={{
-              width: fullscreen ? 'min(100cqw, 133.333cqh)' : 'min(100cqw, calc((100cqh - 2.5rem) * 4 / 3))',
-              aspectRatio: '4 / 3',
+              width: fullscreen
+                ? `min(100cqw, calc(100cqh * ${frameSize.width} / ${frameSize.height}))`
+                : `min(100cqw, calc((100cqh - 2.5rem) * ${frameSize.width} / ${frameSize.height}))`,
+              aspectRatio: `${frameSize.width} / ${frameSize.height}`,
               background: '#000',
               flex: 'none',
             }}
@@ -599,7 +614,13 @@ export default function Quake() {
               width={640}
               height={480}
               // The pointer would stand over the game's view; once the game has the mouse the browser hides it anyway.
-              style={{ width: '100%', height: '100%', imageRendering: 'pixelated', display: 'block', cursor: state.kind === 'running' ? 'none' : undefined }}
+              style={{
+                width: '100%',
+                height: '100%',
+                imageRendering: frameSize.width <= shownPixels ? 'pixelated' : 'auto',
+                display: 'block',
+                cursor: state.kind === 'running' ? 'none' : undefined,
+              }}
             />
             {state.kind !== 'running' && (
               <Stack

@@ -1,5 +1,5 @@
 diff --git a/source/d_iface.h b/source/d_iface.h
-index fc29f14..463e5a2 100644
+index fc29f14..1b97e7a 100644
 --- a/source/d_iface.h
 +++ b/source/d_iface.h
 @@ -19,8 +19,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
@@ -11,8 +11,8 @@ index fc29f14..463e5a2 100644
 +#include "quakegeneric.h"
 +
 +// The buffer the view is drawn into under water before it is warped onto
-+// the frame: as large as the frame, which vid_null.c's maxwarpwidth and
-+// maxwarpheight say it is.
++// the frame: as large as the largest frame, which vid_null.c's maxwarpwidth
++// and maxwarpheight say it is.
 +#define WARP_WIDTH		QUAKEGENERIC_RES_X
 +#define WARP_HEIGHT		QUAKEGENERIC_RES_Y
  
@@ -36,7 +36,7 @@ index 78a5f35..57c6cc3 100644
  #define QUAKEGENERIC_JOY_MAX_AXES 6
  #define QUAKEGENERIC_JOY_AXIS_X 0
 diff --git a/source/r_main.c b/source/r_main.c
-index 2729157..b5e7aa0 100644
+index 2729157..d154abc 100644
 --- a/source/r_main.c
 +++ b/source/r_main.c
 @@ -923,7 +923,8 @@ r_refdef must be set before the first call
@@ -44,23 +44,338 @@ index 2729157..b5e7aa0 100644
  void R_RenderView_ (void)
  {
 -	byte	warpbuffer[WARP_WIDTH * WARP_HEIGHT];
-+	// Static: the frame's size is too much for the stack.
++	// Static: the largest frame's size is too much for the stack.
 +	static byte	warpbuffer[WARP_WIDTH * WARP_HEIGHT];
  
  	r_warpbuffer = warpbuffer;
  
+diff --git a/source/r_shared.h b/source/r_shared.h
+index f721b64..ab20d49 100644
+--- a/source/r_shared.h
++++ b/source/r_shared.h
+@@ -28,9 +28,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ #define	MAXVERTS	16					// max points in a surface polygon
+ #define MAXWORKINGVERTS	(MAXVERTS+4)	// max points in an intermediate
+ 										//  polygon (while processing)
+-// !!! if this is changed, it must be changed in d_ifacea.h too !!!
+-#define	MAXHEIGHT		1024
+-#define	MAXWIDTH		1280
++#include "quakegeneric.h"
++
++// The largest frame: the build's (quakegeneric.h), which the player's modes
++// are no larger than.
++#define	MAXHEIGHT		QUAKEGENERIC_RES_Y
++#define	MAXWIDTH		QUAKEGENERIC_RES_X
+ #define MAXDIMENSION	((MAXHEIGHT > MAXWIDTH) ? MAXHEIGHT : MAXWIDTH)
+ 
+ #define SIN_BUFFER_SIZE	(MAXDIMENSION+CYCLE)
+diff --git a/source/screen.c b/source/screen.c
+index 3d82948..4cb97b7 100644
+--- a/source/screen.c
++++ b/source/screen.c
+@@ -209,6 +209,24 @@ float CalcFov (float fov_x, float width, float height)
+         return a;
+ }
+ 
++/*
++====================
++AdaptFovx
++
++The horizontal field of view that shows as much from top to bottom as fov_x
++does on a 4:3 frame: a wider frame sees more at its sides, not less above
++and below.
++====================
++*/
++static float AdaptFovx (float fov_x, float width, float height)
++{
++	float	a;
++
++	a = atan (0.75 * width / height * tan (fov_x / 360 * M_PI));
++
++	return a * 360 / M_PI;
++}
++
+ /*
+ =================
+ SCR_CalcRefdef
+@@ -242,7 +260,7 @@ static void SCR_CalcRefdef (void)
+ 	if (scr_fov.value > 170)
+ 		Cvar_Set ("fov","170");
+ 
+-	r_refdef.fov_x = scr_fov.value;
++	r_refdef.fov_x = AdaptFovx (scr_fov.value, vid.width, vid.height);
+ 	r_refdef.fov_y = CalcFov (r_refdef.fov_x, r_refdef.vrect.width, r_refdef.vrect.height);
+ 
+ // intermission is always full screen	
 diff --git a/source/vid_null.c b/source/vid_null.c
-index acb69cc..41229b7 100644
+index acb69cc..6841597 100644
 --- a/source/vid_null.c
 +++ b/source/vid_null.c
-@@ -26,8 +26,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+@@ -17,7 +17,12 @@ along with this program; if not, write to the Free Software
+ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ 
+ */
+-// vid_null.c -- null video driver to aid porting efforts
++// vid_null.c -- the frame the page shows. The software renderer draws into
++// a frame of the mode the player chose, from 320 by 240 up to the build's
++// largest, QUAKEGENERIC_RES_X by QUAKEGENERIC_RES_Y; 640 by 480 until they
++// choose. The mode is vid_width and vid_height, which config.cfg keeps, and
++// the Options menu's Video Options lists the modes there are. A new mode
++// takes effect once the frame drawn in the old one is shown.
+ 
+ #include "quakedef.h"
+ #include "d_local.h"
+@@ -26,13 +31,52 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  
  viddef_t	vid;				// global video state
  
 -#define	BASEWIDTH	320
 -#define	BASEHEIGHT	240
-+#define	BASEWIDTH	QUAKEGENERIC_RES_X
-+#define	BASEHEIGHT	QUAKEGENERIC_RES_Y
++static cvar_t	vid_width = {"vid_width", "640", true};
++static cvar_t	vid_height = {"vid_height", "480", true};
  
- byte	vid_buffer[BASEWIDTH*BASEHEIGHT];
- short	zbuffer[BASEWIDTH*BASEHEIGHT];
+-byte	vid_buffer[BASEWIDTH*BASEHEIGHT];
+-short	zbuffer[BASEWIDTH*BASEHEIGHT];
+-byte	*surfcache;
+-size_t	surfcache_size;
++// The frame, its depth buffer and the surface cache, as large as the mode.
++static byte	*vid_buffer;
++static short	*zbuffer;
++static byte	*surfcache;
++
++typedef struct
++{
++	int		width, height;
++	char	*shape;
++} vidmode_t;
++
++// The modes Video Options offers: 4:3, then widescreen.
++static vidmode_t	vid_modes[] =
++{
++	{320, 240, "4:3"},
++	{640, 480, "4:3"},
++	{800, 600, "4:3"},
++	{1024, 768, "4:3"},
++	{1280, 960, "4:3"},
++	{1600, 1200, "4:3"},
++	{848, 480, "16:9"},
++	{1280, 720, "16:9"},
++	{1600, 900, "16:9"},
++	{1920, 1080, "16:9"},
++	{1280, 800, "16:10"},
++	{1680, 1050, "16:10"},
++	{1920, 1200, "16:10"},
++};
++
++#define VID_NUM_MODES	(sizeof (vid_modes) / sizeof (vid_modes[0]))
++
++// The mode Video Options' cursor is on.
++static int	vid_cursor;
++
++// menu.c's, which menu.h does not declare.
++extern void (*vid_menudrawfn)(void);
++extern void (*vid_menukeyfn)(int key);
++void M_Menu_Options_f (void);
++void M_Print (int cx, int cy, char *str);
++void M_PrintWhite (int cx, int cy, char *str);
++void M_DrawPic (int x, int y, qpic_t *pic);
++void M_DrawTransPic (int x, int y, qpic_t *pic);
++void M_DrawCharacter (int cx, int line, int num);
+ 
+ void	VID_SetPalette (unsigned char *palette)
+ {
+@@ -46,22 +90,163 @@ void	VID_ShiftPalette (unsigned char *palette)
+ 	QG_SetPalette(palette);
+ }
+ 
++/*
++================
++VID_SetFrame
++
++Draws from now on into a frame of `width` by `height`. The surfaces cached
++for the old frame are dropped before their cache is.
++================
++*/
++static void VID_SetFrame (int width, int height)
++{
++	int		i;
++	int		size;
++
++	D_FlushCaches ();
++	free (vid_buffer);
++	free (zbuffer);
++	free (surfcache);
++
++	vid.width = vid.conwidth = width;
++	vid.height = vid.conheight = height;
++	vid_buffer = malloc (width * height);
++	vid.buffer = vid.conbuffer = vid_buffer;
++	vid.rowbytes = vid.conrowbytes = width;
++
++	zbuffer = malloc (width * height * sizeof (short));
++	d_pzbuffer = zbuffer;
++
++	size = D_SurfaceCacheForRes (width, height);
++	surfcache = malloc (size);
++	D_InitCaches (surfcache, size);
++
++	vid.recalc_refdef = 1;
++	if (con_initialized)
++		Con_CheckResize ();
++
++	for (i = 0 ; i < VID_NUM_MODES ; i++)
++		if (vid_modes[i].width == width && vid_modes[i].height == height)
++			vid_cursor = i;
++}
++
++/*
++================
++VID_AskMode
++
++Sets vid_width and vid_height, as whole numbers, which config.cfg keeps.
++================
++*/
++static void VID_AskMode (int width, int height)
++{
++	Cvar_Set ("vid_width", va ("%i", width));
++	Cvar_Set ("vid_height", va ("%i", height));
++}
++
++/*
++================
++VID_CheckMode
++
++Takes the mode vid_width and vid_height ask for, once it fits the build;
++asked for one that does not, they go back to the mode there is.
++================
++*/
++static void VID_CheckMode (void)
++{
++	int		width = (int) vid_width.value;
++	int		height = (int) vid_height.value;
++
++	if (width == vid.width && height == vid.height)
++		return;
++	if (width < 320 || width > QUAKEGENERIC_RES_X || height < 200 || height > QUAKEGENERIC_RES_Y)
++	{
++		Con_Printf ("%ix%i is not a mode: from 320x200 to %ix%i\n", width, height, QUAKEGENERIC_RES_X, QUAKEGENERIC_RES_Y);
++		VID_AskMode (vid.width, vid.height);
++		return;
++	}
++	VID_SetFrame (width, height);
++}
++
++/*
++================
++VID_MenuDraw
++
++Video Options: the modes, the one played in white, and the cursor.
++================
++*/
++static void VID_MenuDraw (void)
++{
++	static int	has_title = -1;
++	int		i, handle, y;
++	char	line[32];
++	qpic_t	*p;
++
++	// Not every game has the title's picture; those without have Options'.
++	if (has_title < 0)
++	{
++		has_title = COM_OpenFile ("gfx/vidmodes.lmp", &handle) != -1;
++		if (has_title)
++			COM_CloseFile (handle);
++	}
++	M_DrawTransPic (16, 4, Draw_CachePic ("gfx/qplaque.lmp"));
++	p = Draw_CachePic (has_title ? "gfx/vidmodes.lmp" : "gfx/p_option.lmp");
++	M_DrawPic ((320 - p->width) / 2, 4, p);
++
++	for (i = 0 ; i < VID_NUM_MODES ; i++)
++	{
++		y = 32 + i * 8;
++		sprintf (line, "%4i x %-4i  %s", vid_modes[i].width, vid_modes[i].height, vid_modes[i].shape);
++		if (vid_modes[i].width == vid.width && vid_modes[i].height == vid.height)
++			M_PrintWhite (88, y, line);
++		else
++			M_Print (88, y, line);
++	}
++	M_DrawCharacter (72, 32 + vid_cursor * 8, 12 + ((int) (realtime * 4) & 1));
++}
++
++static void VID_MenuKey (int key)
++{
++	switch (key)
++	{
++	case K_ESCAPE:
++		S_LocalSound ("misc/menu1.wav");
++		M_Menu_Options_f ();
++		break;
++
++	case K_UPARROW:
++		S_LocalSound ("misc/menu1.wav");
++		if (--vid_cursor < 0)
++			vid_cursor = VID_NUM_MODES - 1;
++		break;
++
++	case K_DOWNARROW:
++		S_LocalSound ("misc/menu1.wav");
++		if (++vid_cursor >= VID_NUM_MODES)
++			vid_cursor = 0;
++		break;
++
++	case K_ENTER:
++		S_LocalSound ("misc/menu2.wav");
++		VID_AskMode (vid_modes[vid_cursor].width, vid_modes[vid_cursor].height);
++		break;
++	}
++}
++
+ void	VID_Init (unsigned char *palette)
+ {
+-	vid.maxwarpwidth = vid.width = vid.conwidth = BASEWIDTH;
+-	vid.maxwarpheight = vid.height = vid.conheight = BASEHEIGHT;
++	Cvar_RegisterVariable (&vid_width);
++	Cvar_RegisterVariable (&vid_height);
++
++	vid.maxwarpwidth = WARP_WIDTH;
++	vid.maxwarpheight = WARP_HEIGHT;
+ 	vid.aspect = 1.0;
+ 	vid.numpages = 1;
+ 	vid.colormap = host_colormap;
+ 	vid.fullbright = 256 - LittleLong (*((int *)vid.colormap + 2048));
+-	vid.buffer = vid.conbuffer = vid_buffer;
+-	vid.rowbytes = vid.conrowbytes = BASEWIDTH;
+-	
+-	d_pzbuffer = zbuffer;
++	VID_SetFrame ((int) vid_width.value, (int) vid_height.value);
+ 
+-	surfcache_size = D_SurfaceCacheForRes(BASEWIDTH, BASEHEIGHT);
+-	surfcache = malloc(surfcache_size);
+-	D_InitCaches (surfcache, surfcache_size);
++	vid_menudrawfn = VID_MenuDraw;
++	vid_menukeyfn = VID_MenuKey;
+ 
+ 	// quake generic
+ 	QG_Init();
+@@ -69,13 +254,14 @@ void	VID_Init (unsigned char *palette)
+ 
+ void	VID_Shutdown (void)
+ {
+-		free(surfcache);
++	free (surfcache);
+ }
+ 
+ void	VID_Update (vrect_t *rects)
+ {
+ 	// quake generic
+ 	QG_DrawFrame(vid.buffer);
++	VID_CheckMode ();
+ }
+ 
+ /*
+@@ -96,5 +282,3 @@ D_EndDirectRect
+ void D_EndDirectRect (int x, int y, int width, int height)
+ {
+ }
+-
+-

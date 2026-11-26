@@ -14,9 +14,10 @@ CLIENT="snd_dma snd_mem snd_mix quakegeneric_ein snd_ein cd_ein"
 # The dedicated server's: no frame and no sound (quakegeneric's null sound and CD).
 SERVER="snd_null cd_null server_ein"
 
-# The frame: 640 by 480, WinQuake's VGA mode, drawn by the software renderer.
-WIDTH=640
-HEIGHT=480
+# The largest frame the software renderer draws, the 16:10 one of full HD's width: the player
+# chooses the mode up to it in Video Options (vid_null.c), 640 by 480 until they do.
+WIDTH=1920
+HEIGHT=1200
 
 sources() {
   for name in "$@"; do echo "$name.c"; done
