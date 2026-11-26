@@ -74,13 +74,17 @@ yet. In Quake II, **Video** sets the frame's size; the page shows any of them at
 
 ## Play together
 
-Under **Multiplayer** in the list of games, **Host** starts a game that everyone
-here can join: choose the game, the map, deathmatch (everyone against everyone)
-or cooperative (together against the monsters), and how many may play, from 2 to
-16. You play in it at once. The list shows the games people host, who plays in
-each and their frags, and **Join** beside each; the one who hosted a game, or an
-administrator, has **Stop**. A game nobody has played in for five minutes stops
-by itself.
+Playing together is in the bottom right of the page's header, beside the sound
+and full screen, for the game chosen. **Start server** starts a server of it that
+everyone here can play on: choose the map, deathmatch (everyone against
+everyone) or cooperative (together against the monsters), and how many may play,
+from 2 to 16. While it runs, **Play** enters the game on it, for everyone here
+who has the game, and says whose server it is and who plays; the one who started
+it, or an administrator, has **Stop server**, which drops everyone in it. A
+server nobody has played on for five minutes stops by itself.
+
+The games' own menus have no network games: **Multiplayer** in them opens the
+player's setup (name, colours or skin), and the servers are the page's.
 
 The game's server runs on EiN, not in anyone's browser: the module's
 `quake-server` service runs each hosted game as Quake's or Quake II's dedicated
@@ -103,10 +107,12 @@ it.
 
 ### Someone from another EiN
 
-**Invite** beside a game gives a link to send to someone on another EiN. On
-their Quake page they paste it under **Multiplayer** and choose **Join**; they
-play with their own EiN's copy of the game, so it has to be there (the same
-game, or one of the same engine with the map). The link is one of EiN's
+While a server runs, **Invite** gives a link to send to someone on another EiN.
+On their Quake page they choose **Connect** and paste it, and **Play** then
+enters the game on your server; **Disconnect** leaves it. They play with their
+own EiN's copy of the game, so it has to be there (the same game, or one of the
+same engine with the map). **Connect** is there while no server of the game runs
+on their own EiN, and **Start server** while they are not connected to another. The link is one of EiN's
 invitations: it opens one guest's seat, without an account here, for twelve
 hours, and `invitation list` and `invitation remove` show and end it.
 
@@ -150,9 +156,8 @@ recorded in its paks, one after the other. It makes no sound and takes no keys.
 
 A game is a folder of paks, as Quake's `id1` and Quake II's `baseq2` are:
 `pak0.pak`, and `pak1.pak` and on when it has them. Drag the folder from your
-computer and drop it anywhere on the page, or choose **Upload** in the page's
-header; it is uploaded, paks and all, and appears in the list under the
-folder's name.
+computer and drop it anywhere on the page; it is uploaded, paks and all, and
+appears in the list under the folder's name.
 
 Which engine plays it, the paks say: a game whose paks have Quake II's pictures
 (`pics/`), wall textures (`.wal`), models (`.md2`) or players' skins
@@ -170,10 +175,10 @@ Which engine plays it, the paks say: a game whose paks have Quake II's pictures
 ## Add the music
 
 Quake and Quake II played their music from the CD's audio tracks. To play the
-CD's music, or any other, with a game, choose the game, then **Add music** under
-⋮ in the page's header, and pick the tracks: Ogg, MP3, or whatever else the
-browser plays. They are uploaded into a `music` folder in the game's own, and the
-list says **music** under the game. A game without its own music plays none: the
+CD's music, or any other, with a game, put the tracks in a `music` folder in the
+game's own, `/groups/users/quake/<game>/music`, with EiN's files or `scp`: Ogg,
+MP3, or whatever else the browser plays. The list then says **music** under the
+game. A game without its own music plays none: the
 shareware episode and Quake II's demo have none until you add it. The shareware
 episode and the whole game share a folder, so its music is both's.
 
