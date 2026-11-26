@@ -1,4 +1,4 @@
-import { type Command, isStreamWriter, shq, type StreamWriter } from '@ein/client';
+import { type Command, isStreamWriter, type NodeAttrs, shq, type StreamWriter } from '@ein/client';
 import type { EngineName, ServerInfo, ServerPlayer } from './api.ts';
 import { openReader, readWhole } from './catalog.ts';
 import { GAMES, PAK_FILE, SERVERS } from './games.ts';
@@ -13,7 +13,10 @@ const MODULE = '/usr/modules/quake';
 /** A game nobody has played in this long stops. */
 const EMPTY_MS = 5 * 60_000;
 
-/** A seat nobody has had open in this long, and whose player the server does not list, is taken away. */
+/**
+ * A seat nobody has had open in this long, and whose player the server does not list, is taken away;
+ * a guest's (`invitedUntil`, `quake-invite`) not before its invitation runs out.
+ */
 const SEAT_IDLE_MS = 60_000;
 
 /** A game that failed stays listed this long, with why, before its folder goes. */
@@ -267,16 +270,17 @@ export class QuakeService {
   /** Attach the seats made in a game's `players/` since the last look, and take away those gone or left empty. */
   async #seats(running: Running): Promise<void> {
     const vfs = this.cmd.sys.vfs;
-    const names = new Set(
-      (await vfs.children(this.cmd.access, seatsPath(running.id)).catch(() => [])).filter((child) => child.node.type === 'directory').map((child) => child.name),
+    const folders = (await vfs.children<NodeAttrs & { invitedUntil?: number }>(this.cmd.access, seatsPath(running.id)).catch(() => [])).filter((child) =>
+      child.node.type === 'directory'
     );
-    for (const [name, seat] of running.seats) if (!names.has(name)) await this.#detach(running, seat);
-    for (const name of names) {
+    const invited = new Map(folders.map((child) => [child.name, child.node.attrs.invitedUntil ?? 0]));
+    for (const [name, seat] of running.seats) if (!invited.has(name)) await this.#detach(running, seat);
+    for (const [name, until] of invited) {
       const seat = running.seats.get(name) ?? await this.#attach(running, name);
       if (!seat) continue;
       const open = await vfs.stat(this.cmd.access, seatIn(running.id, name)).then((stat) => (stat as { writer?: boolean }).writer === true, () => false);
       const playing = running.info.players.some((player) => player.seat === name);
-      if (open || playing) seat.idleSince = undefined;
+      if (open || playing || until > Date.now()) seat.idleSince = undefined;
       else if ((seat.idleSince ??= Date.now()) < Date.now() - SEAT_IDLE_MS) {
         await this.#detach(running, seat);
         await this.#remove(`${seatsPath(running.id)}/${name}`);

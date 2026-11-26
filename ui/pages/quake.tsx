@@ -2,6 +2,7 @@ import {
   ActionIcon,
   Box,
   Button,
+  CopyButton,
   Group,
   Loader,
   Menu,
@@ -13,12 +14,13 @@ import {
   Select,
   Stack,
   Text,
+  TextInput,
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
 import { EntityDetailHeader, TablerIcon } from '@ein/ui/components';
 import { usePhone, usePolledCommand } from '@ein/ui/hooks';
-import { formatBytes, shq } from '@ein/ui/lib';
+import { formatBytes, formatDateTime, shq } from '@ein/ui/lib';
 import { addToQueue, currentUser, execCommand, notify, uploadBatchDone } from '@ein/ui/signals';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { titlePicture } from '../quake/conback.ts';
@@ -27,7 +29,22 @@ import { deleteGame, ENGINE_TITLES, fetchGame, type Game, GAMES, listGames, type
 import { K_MWHEELDOWN, K_MWHEELUP, mouseKey, quakeKey } from '../quake/keys.ts';
 import { DEFAULT_PLAYERS, defaultMap, MAX_PLAYERS } from '../../lib/games.ts';
 import { useGameLoop } from '../quake/loop.ts';
-import { type GameMode, hostServer, joinServer, type Link, openLink, type Seat, type ServerInfo, SERVERS_COMMAND, stopServer } from '../quake/multiplayer.ts';
+import {
+  acceptInvitation,
+  type GameMode,
+  hostServer,
+  type Invite,
+  invitedGame,
+  inviteToServer,
+  type Joined,
+  joinServer,
+  type Link,
+  openLink,
+  type Seat,
+  type ServerInfo,
+  SERVERS_COMMAND,
+  stopServer,
+} from '../quake/multiplayer.ts';
 import { keeper, loadKept, savesFolder } from '../quake/saves.ts';
 import { openSound, type Sound } from '../quake/sound.ts';
 
@@ -188,7 +205,7 @@ export default function Quake() {
   }, []);
 
   /** Play `game`: on its own, or on a server someone hosts, in the seat `sit` takes there. */
-  const play = useCallback(async (game: Game, sit?: () => Promise<Seat>) => {
+  const play = useCallback(async (game: Game, sit?: () => Promise<Joined>) => {
     stop();
     setChosen(game.name);
     remember(CHOSEN_KEY, game.name);
@@ -205,8 +222,9 @@ export default function Quake() {
       const username = currentUser.value?.username;
       const folder = username ? savesFolder(username, game.name) : undefined;
       const kept = folder ? await loadKept(folder, game.engine) : [];
-      const seat = sit ? await sit() : undefined;
-      const online = seat ? await openLink(seat) : undefined;
+      const joined = sit ? await sit() : undefined;
+      const seat = joined && { ...joined.seat, title: game.title };
+      const online = joined && seat ? await openLink(seat, joined.open) : undefined;
       if (sound.current !== audio) {
         online?.close();
         return;
@@ -263,21 +281,41 @@ export default function Quake() {
   const failed = (what: string) => (error: unknown) => notify({ message: `${what}: ${error instanceof Error ? error.message : String(error)}`, color: 'red' });
   const join = useCallback((server: ServerInfo) => {
     const game = games?.find((found) => found.name === server.game);
-    if (game) void play(game, () => joinServer(server.id));
+    if (game) void play(game, async () => ({ seat: await joinServer(server.id) }));
   }, [games, play]);
+  // A game on another EiN, which its invitation's link opens, played with the game here that the link names.
+  const joinInvited = useCallback((link: string) => {
+    const invited = invitedGame(link);
+    const game = invited && (games?.find((found) => found.name === invited.game && found.engine === invited.engine) ??
+      games?.find((found) => found.engine === invited.engine && found.maps.includes(invited.map)));
+    if (!invited) return failed('The invitation was not taken')(new Error('the link does not say which game it is for: it ends in #<engine>:<game>:<map>'));
+    if (!game) {
+      return failed('The invitation was not taken')(new Error(`there is no ${invited.engine === 'quake2' ? 'Quake II' : 'Quake'} game here with the map ${invited.map}`));
+    }
+    void play(game, () => acceptInvitation(link, invited));
+  }, [games, play]);
+  const [invite, setInvite] = useState<Invite>();
+  const inviteGuest = useCallback((server: ServerInfo) => {
+    inviteToServer(server.id).then(setInvite, failed('Nobody was invited'));
+  }, []);
   // The one who hosts a game plays in it, from the click that hosted it.
   const host = useCallback((game: Game, map: string, maxPlayers: number, mode: GameMode) => {
     setHosting(false);
     void play(game, async () => {
       const server = await hostServer(game.name, map, maxPlayers, mode);
       void servers.refetch();
-      return await joinServer(server.id);
+      return { seat: await joinServer(server.id) };
     });
   }, [play, servers.refetch]);
   const stopHosted = useCallback((server: ServerInfo) => {
     if (!globalThis.confirm(`Stop ${server.startedBy}'s game of ${server.title} on ${server.map}? Everyone in it is dropped.`)) return;
+    // Whoever stops the game they play in leaves it first, rather than be told it stopped.
+    if (state.kind === 'running' && state.seat?.server === server.id) {
+      stop();
+      setState({ kind: 'idle' });
+    }
     stopServer(server.id).catch(failed('The game was not stopped')).finally(() => void servers.refetch());
-  }, [servers.refetch]);
+  }, [state, stop, servers.refetch]);
 
   useGameLoop(state.kind === 'running' ? engine.current : null, canvas, (error) => {
     // The game has ended: it wrote its settings itself on Quit, and can write nothing after an error.
@@ -409,6 +447,8 @@ export default function Quake() {
     servers: servers.data ?? [],
     playingOn: state.kind === 'running' ? state.seat?.server : undefined,
     onJoin: join,
+    onJoinInvited: joinInvited,
+    onInvite: inviteGuest,
     onHost: () => setHosting(true),
     onStop: stopHosted,
     error: listError,
@@ -462,6 +502,7 @@ export default function Quake() {
           event.currentTarget.value = '';
         }}
       />
+      <InviteDialog invite={invite} onClose={() => setInvite(undefined)} />
       <HostDialog opened={hosting} games={games ?? []} chosen={selected} onClose={() => setHosting(false)} onHost={host} />
       <Box style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <GamePane {...list} onDelete={remove} />
@@ -566,6 +607,9 @@ type ListProps = {
   servers: ServerInfo[];
   playingOn?: string;
   onJoin: (server: ServerInfo) => void;
+  /** Join a game on another EiN with its invitation's link. */
+  onJoinInvited: (link: string) => void;
+  onInvite: (server: ServerInfo) => void;
   onHost: () => void;
   onStop: (server: ServerInfo) => void;
   error?: string;
@@ -586,7 +630,7 @@ type ListProps = {
  * title alone. `onPick` hears a game chosen.
  */
 function GameList(
-  { games, servers, playingOn, onJoin, onHost, onStop, error, active, onPlay, onDelete, onPick, fetching, onFetch, canFetch }: ListProps & {
+  { games, servers, playingOn, onJoin, onJoinInvited, onInvite, onHost, onStop, error, active, onPlay, onDelete, onPick, fetching, onFetch, canFetch }: ListProps & {
     onDelete?: (game: Game) => void;
     onPick?: () => void;
   },
@@ -612,6 +656,11 @@ function GameList(
             onPick?.();
             onJoin(server);
           }}
+          onJoinInvited={(link) => {
+            onPick?.();
+            onJoinInvited(link);
+          }}
+          onInvite={onInvite}
           onHost={() => {
             onPick?.();
             onHost();
@@ -655,11 +704,11 @@ function GameList(
  * for the one who hosted it and an administrator; and a button that hosts one. A game whose folder is
  * not here cannot be joined from here.
  */
-function Servers({ games, servers, playingOn, onJoin, onHost, onStop, inset }: Pick<ListProps, 'servers' | 'playingOn' | 'onJoin' | 'onHost' | 'onStop'> & {
-  games: Game[];
-  inset: boolean;
-}) {
+function Servers({ games, servers, playingOn, onJoin, onJoinInvited, onInvite, onHost, onStop, inset }:
+  & Pick<ListProps, 'servers' | 'playingOn' | 'onJoin' | 'onJoinInvited' | 'onInvite' | 'onHost' | 'onStop'>
+  & { games: Game[]; inset: boolean }) {
   const user = currentUser.value;
+  const [link, setLink] = useState('');
   return (
     <Stack gap='xs' px={inset ? 'xs' : 0} pb='xs' data-quake-servers>
       <Group justify='space-between' gap='xs' wrap='nowrap'>
@@ -693,6 +742,7 @@ function Servers({ games, servers, playingOn, onJoin, onHost, onStop, inset }: P
                 </Button>
               )}
               {server.state === 'starting' && <Text size='xs' c='dimmed'>Starting…</Text>}
+              {server.state === 'running' && user && <Button size='compact-xs' variant='subtle' onClick={() => onInvite(server)} data-quake-invite={server.id}>Invite</Button>}
               {mine && server.state !== 'failed' && (
                 <Button size='compact-xs' variant='subtle' color='red' onClick={() => onStop(server)} data-quake-stop={server.id}>Stop</Button>
               )}
@@ -701,7 +751,40 @@ function Servers({ games, servers, playingOn, onJoin, onHost, onStop, inset }: P
           </Stack>
         );
       })}
+      <Group gap='xs' wrap='nowrap'>
+        <TextInput
+          size='xs'
+          style={{ flex: 1 }}
+          placeholder='Invitation link from another EiN'
+          value={link}
+          onChange={(event) => setLink(event.currentTarget.value)}
+          data-quake-invitation
+        />
+        <Button size='compact-xs' variant='light' disabled={!link.trim()} onClick={() => onJoinInvited(link)} data-quake-join-invited>Join</Button>
+      </Group>
     </Stack>
+  );
+}
+
+/** A guest's invitation, to pass on: the link opens their seat in the game, played with their own EiN's copy of it. */
+function InviteDialog({ invite, onClose }: { invite?: Invite; onClose: () => void }) {
+  return (
+    <Modal opened={!!invite} onClose={onClose} title='Invite someone from another EiN' centered>
+      {invite && (
+        <Stack gap='sm'>
+          <Text size='sm'>
+            Send this link to someone on another EiN. On their Quake page they paste it under Multiplayer and join {invite.title} on {invite.map}{' '}
+            with their own copy of the game. It lets one guest in, until {formatDateTime(invite.expires)}.
+          </Text>
+          <Group gap='xs' wrap='nowrap'>
+            <TextInput style={{ flex: 1 }} readOnly value={invite.link} onFocus={(event) => event.currentTarget.select()} data-quake-invite-link />
+            <CopyButton value={invite.link}>
+              {({ copied, copy }) => <Button variant='light' onClick={copy}>{copied ? 'Copied' : 'Copy'}</Button>}
+            </CopyButton>
+          </Group>
+        </Stack>
+      )}
+    </Modal>
   );
 }
 

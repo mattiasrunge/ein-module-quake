@@ -1,9 +1,9 @@
-import { openNodeSocket, shq } from '@ein/ui/lib';
+import { fetchInvitation, NODE_SOCKET_CLOSE, openNodeSocket, shq } from '@ein/ui/lib';
 import { execCommand } from '@ein/ui/signals';
-import type { GameMode, Seat, ServerInfo } from '../../lib/api.ts';
+import type { EngineName, GameMode, Invite, Seat, ServerInfo } from '../../lib/api.ts';
 import { addressNumber, Deframer, Network, SERVER_ADDRESS } from '../../lib/net.ts';
 
-export type { GameMode, Seat, ServerInfo };
+export type { GameMode, Invite, Seat, ServerInfo };
 
 /** The games people host here, as `quake-servers` lists them. */
 export const SERVERS_COMMAND = 'quake-servers';
@@ -16,6 +16,47 @@ export async function hostServer(game: string, map: string, maxPlayers: number, 
 /** Take a seat in the server `id` (`quake-join`). */
 export async function joinServer(id: string): Promise<Seat> {
   return await execCommand<Seat>(`quake-join ${shq(id)}`);
+}
+
+/** Invite a guest from another EiN into the server `id` (`quake-invite`): the link, made whole with this EiN's address. */
+export async function inviteToServer(id: string): Promise<Invite> {
+  const invite = await execCommand<Invite>(`quake-invite ${shq(id)}`);
+  return { ...invite, link: new URL(invite.link, globalThis.location.origin).href };
+}
+
+/** What an invitation's link says of its game after `#`: `<engine>:<game>:<map>`, as `quake-invite` writes it. */
+export type InvitedGame = { engine: EngineName; game: string; map: string };
+
+/** The game an invitation's link names, when it names one. */
+export function invitedGame(link: string): InvitedGame | undefined {
+  const match = /#(quake2?):([^:]*):(.+)$/.exec(link.trim());
+  return match ? { engine: match[1] as EngineName, game: decodeURIComponent(match[2]), map: decodeURIComponent(match[3]) } : undefined;
+}
+
+/**
+ * The seat an invitation's `link` opens on the EiN it is from, and how its streams are opened there:
+ * with the invitation's token, from this page.
+ */
+export async function acceptInvitation(link: string, invited: InvitedGame): Promise<Joined> {
+  const invitation = await fetchInvitation(link);
+  const input = invitation.nodes.find((node) => node.mode === 'w');
+  const output = invitation.nodes.find((node) => node.mode === 'r');
+  if (!input || !output) throw new Error('the invitation does not open a seat in a game');
+  const server = /\/servers\/([^/]+)\/players\//.exec(input.path)?.[1] ?? new URL(invitation.origin).host;
+  return {
+    seat: {
+      server,
+      game: invited.game,
+      title: invited.game,
+      engine: invited.engine,
+      map: invited.map,
+      seat: input.path.split('/').at(-2) ?? 'guest',
+      in: input.path,
+      out: output.path,
+      address: SERVER_ADDRESS,
+    },
+    open: (path, mode) => openNodeSocket(path, mode, { origin: invitation.origin, invite: invitation.token }),
+  };
 }
 
 /** Stop the server `id` (`quake-stop`), which drops everyone in it. */
@@ -32,6 +73,9 @@ export type Link = { network: Network; ended: Promise<string>; close(): void };
 
 /** Opens a socket on a seat's stream: `openNodeSocket` on this instance's own. */
 export type OpenSocket = (path: string, mode: 'r' | 'w') => WebSocket;
+
+/** A seat taken, here or with an invitation on another EiN, and how its streams are opened. */
+export type Joined = { seat: Seat; open?: OpenSocket };
 
 /** Wait until `socket` is open; rejects with why when it closes first. */
 function opened(socket: WebSocket): Promise<void> {
@@ -68,7 +112,14 @@ export async function openLink(seat: Seat, open: OpenSocket = openNodeSocket): P
     for (const datagram of deframer.push(new Uint8Array(event.data as ArrayBuffer))) network.deliver(server, datagram);
   });
   const ended = new Promise<string>((resolve) => {
-    const closed = (event: CloseEvent) => resolve(event.reason || 'the connection to the server closed');
+    const closed = (event: CloseEvent) =>
+      resolve(
+        event.code === NODE_SOCKET_CLOSE.ended
+          ? 'the server stopped'
+          : event.code === NODE_SOCKET_CLOSE.gone
+          ? 'the seat was taken away, or its invitation ran out'
+          : event.reason || 'the connection to the server closed',
+      );
     out.addEventListener('close', closed, { once: true });
     writer.addEventListener('close', closed, { once: true });
   });

@@ -1,0 +1,56 @@
+#!ts
+/** quake-invite — invite someone on another EiN into a hosted game: a guest's seat, and an invitation that opens it. */
+import type { CmdReturn, Command } from '@ein/client';
+import { collectUnknownFlags, parseArgs, reportUnknownFlags, shq } from '@ein/client';
+import type { Invite } from '@quake/api';
+import { messageOf, readServer, takeSeat } from '@quake/servers';
+
+/** How long an invitation opens its seat when the inviter says nothing: an evening's play. */
+const DEFAULT_HOURS = 12;
+
+const quakeInvite = async (cmd: Command): CmdReturn => {
+  const unknown: string[] = [];
+  const flags = parseArgs(cmd.args, { string: ['hours'], unknown: collectUnknownFlags(unknown) });
+  if (await reportUnknownFlags(cmd, unknown)) return 1;
+  const [id] = flags._.map(String);
+  const fail = async (message: string) => {
+    await cmd.writeError(`quake-invite: ${message}\n`);
+    return 1;
+  };
+  if (!id) return await fail('which server? quake-servers lists them');
+  if (!cmd.env.USER) return await fail('sign in to invite someone');
+  const hours = flags.hours === undefined ? DEFAULT_HOURS : Number(flags.hours);
+  if (!(hours > 0 && hours <= 24 * 7)) return await fail('--hours takes more than 0 and at most a week, 168');
+  const info = await readServer(cmd, id);
+  if (!info) return await fail(`there is no server ${id}; quake-servers lists them`);
+  if (info.state !== 'running') return await fail(`${id} is ${info.state}${info.error ? `: ${info.error}` : ''}`);
+
+  const expires = Date.now() + hours * 60 * 60 * 1000;
+  try {
+    const seat = await takeSeat(cmd, info, 'guest', expires);
+    // The invitation opens the guest's seat as the one who invites: they made it, and may write its in and read its out.
+    const made = await cmd.execute(`JSON_OUTPUT=1 invitation create --write ${shq(seat.in)} --read ${shq(seat.out)} --expires ${expires}`);
+    if (made.code !== 0) throw new Error(made.stderr.trim() || `invitation create failed with ${made.code}`);
+    const created = JSON.parse(made.stdout) as { link: string; expiresAt: number };
+    const invite: Invite = { ...seat, link: `${created.link}#${info.engine}:${info.game}:${info.map}`, expires: new Date(created.expiresAt).toISOString() };
+    if (cmd.json) await cmd.writeJSON(invite satisfies Invite);
+    else await cmd.writeLn(`${invite.link}  on this EiN's address, for ${seat.seat} in ${id} until ${invite.expires}`);
+    return 0;
+  } catch (error) {
+    return await fail(messageOf(error));
+  }
+};
+
+quakeInvite.spec = {
+  name: 'quake-invite',
+  effect: 'write' as const,
+  description:
+    "Invite someone on another EiN into a hosted Quake or Quake II game: a guest's seat in it, and an invitation that opens the seat's two streams to whoever has its link, played with their own EiN's copy of the game",
+  args: [{ name: 'server', type: 'string' as const, description: "the server's id, as quake-servers lists it" }],
+  flags: [{ name: 'hours', type: 'number' as const, description: `how long the link lets the guest in, at most a week; ${DEFAULT_HOURS} when not given` }],
+  examples: ['quake-invite k3x9', 'quake-invite k3x9 --hours 2'],
+  returns:
+    "The guest's seat as quake-join answers it, with the invitation's link, its path on this EiN's address followed by #<engine>:<game>:<map>, and when it expires.",
+};
+
+export default quakeInvite;

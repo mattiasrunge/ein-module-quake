@@ -56,25 +56,26 @@ const SEAT_READY_MS = 15_000;
 
 /**
  * Take a seat in the running game `info` for `name`: the caller's own seat of that name again when
- * nobody has it open (a page reloaded), else the first free of `name-2`, `name-3` and on. The seat is
+ * nobody has it open (a page reloaded), else the first free of `name-2`, `name-3` and on; with
+ * `invitedUntil`, a new seat always, kept until then for a guest to take (`quake-invite`). The seat is
  * the caller's: a folder in the server's `players/` with `in`, which only they write (and read), and
  * `out`, which only they read; the service, the administrator, reads the one and writes the other.
  * Answers once the service reads `in`, so nothing the player sends before is lost.
  */
-export async function takeSeat(cmd: Command, info: ServerInfo, name: string): Promise<Seat> {
+export async function takeSeat(cmd: Command, info: ServerInfo, name: string, invitedUntil?: number): Promise<Seat> {
   const vfs = cmd.sys.vfs;
   let seat = name;
   for (let n = 2;; n++) {
     const path = seatPath(info.id, seat);
     if (!(await vfs.exists(cmd.access, path))) {
-      await vfs.create(cmd.access, 'directory', seatsPath(info.id), seat, { props: { mode: 0o755 } });
+      await vfs.create(cmd.access, 'directory', seatsPath(info.id), seat, { props: { mode: 0o755 }, ...(invitedUntil ? { attrs: { invitedUntil } } : {}) });
       await vfs.create(cmd.access, 'stream', path, 'in', { props: { mode: 0o600 } });
       await vfs.create(cmd.access, 'stream', path, 'out', { props: { mode: 0o400 } });
       break;
     }
     const mine = (await vfs.get(cmd.access, path)).props.uid === cmd.access.uid;
     const open = await vfs.stat(cmd.access, seatIn(info.id, seat)).then((stat) => (stat as { writer?: boolean }).writer === true, () => true);
-    if (mine && !open) break;
+    if (mine && !open && !invitedUntil) break;
     seat = `${name}-${n}`;
   }
   const read = await waitFor(async () => {

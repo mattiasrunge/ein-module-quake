@@ -78,3 +78,11 @@ export type Seat = {
   out: string;
   address: string;
 };
+
+/**
+ * A guest's seat, as `quake-invite` answers: the seat, and the invitation that opens its two streams
+ * to someone on another EiN, until `expires` (ISO 8601). `link` is the invitation's path on this
+ * EiN's own address, `/__invite/<token>`, followed by `#<engine>:<game>:<map>`, which tells the
+ * guest's page which of its own games to play.
+ */
+export type Invite = Seat & { link: string; expires: string };
