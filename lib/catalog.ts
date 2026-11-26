@@ -1,7 +1,7 @@
 import type { Command, NodeAttrs } from '@ein/client';
 import type { Game } from './api.ts';
 import { byRank, DATA_FOLDERS, engineOf, GAMES, mapsOf, PAK_FILE, titleOf, tracksOf } from './games.ts';
-import { PAK_HEADER_SIZE, pakDirectory, type PakEntry, pakEntries } from './paks.ts';
+import { PAK_HEADER_SIZE, pakDirectory, pakEntries, type PakEntry } from './paks.ts';
 
 /** Seek from the start of the file: core's `ResourceSeekMode.Start`, which `@ein/client` does not export. */
 const SEEK_START = 0;

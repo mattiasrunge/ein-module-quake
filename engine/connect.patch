@@ -1,0 +1,384 @@
+--- a/source/net_main.c
++++ b/source/net_main.c
+@@ -49,8 +49,8 @@
+ static double	slistStartTime;
+ static int		slistLastShown;
+ 
+-static void Slist_Send(void);
+-static void Slist_Poll(void);
++static void Slist_Send(void *unused);
++static void Slist_Poll(void *unused);
+ PollProcedure	slistSendProcedure = {NULL, 0.0, Slist_Send};
+ PollProcedure	slistPollProcedure = {NULL, 0.0, Slist_Poll};
+ 
+@@ -312,7 +312,7 @@
+ }
+ 
+ 
+-static void Slist_Send(void)
++static void Slist_Send(void *unused)
+ {
+ 	for (net_driverlevel=0; net_driverlevel < net_numdrivers; net_driverlevel++)
+ 	{
+@@ -328,7 +328,7 @@
+ }
+ 
+ 
+-static void Slist_Poll(void)
++static void Slist_Poll(void *unused)
+ {
+ 	for (net_driverlevel=0; net_driverlevel < net_numdrivers; net_driverlevel++)
+ 	{
+@@ -384,6 +384,11 @@
+ 			goto JustDoIt;
+ 		}
+ 
++		// An address is connected to as it is: the search for games on the LAN, which would tell a
++		// name's address, waits for answers in a loop, and nothing answers in a browser meanwhile.
++		if (*host >= '0' && *host <= '9')
++			goto JustDoIt;
++
+ 		if (hostCacheCount)
+ 		{
+ 			for (n = 0; n < hostCacheCount; n++)
+--- a/source/net_dgrm.c
++++ b/source/net_dgrm.c
+@@ -312,6 +312,10 @@
+ }
+ 
+ 
++// The connection asked for and not answered yet (_Datagram_Connect).
++static qsocket_t *connecting;
++static int Datagram_GetConnectReply (qsocket_t *sock);
++
+ int	Datagram_GetMessage (qsocket_t *sock)
+ {
+ 	unsigned int	length;
+@@ -321,6 +325,9 @@
+ 	unsigned int	sequence;
+ 	unsigned int	count;
+ 
++	if (sock == connecting)
++		return Datagram_GetConnectReply (sock);
++
+ 	if (!sock->canSend)
+ 		if ((net_time - sock->lastSendTime) > 1.0)
+ 			ReSendMessage (sock);
+@@ -516,10 +523,10 @@
+ static int		testDriver;
+ static int		testSocket;
+ 
+-static void Test_Poll(void);
++static void Test_Poll(void *unused);
+ PollProcedure	testPollProcedure = {NULL, 0.0, Test_Poll};
+ 
+-static void Test_Poll(void)
++static void Test_Poll(void *unused)
+ {
+ 	struct qsockaddr clientaddr;
+ 	int		control;
+@@ -644,10 +651,10 @@
+ static int		test2Driver;
+ static int		test2Socket;
+ 
+-static void Test2_Poll(void);
++static void Test2_Poll(void *unused);
+ PollProcedure	test2PollProcedure = {NULL, 0.0, Test2_Poll};
+ 
+-static void Test2_Poll(void)
++static void Test2_Poll(void *unused)
+ {
+ 	struct qsockaddr clientaddr;
+ 	int		control;
+@@ -813,6 +820,8 @@
+ 
+ void Datagram_Close (qsocket_t *sock)
+ {
++	if (sock == connecting)
++		connecting = NULL;
+ 	sfunc.CloseSocket(sock->socket);
+ }
+ 
+@@ -1211,17 +1220,47 @@
+ }
+ 
+ 
++/*
++A connection asked for and not answered yet. id's Datagram_Connect waited
++for the answer in a loop, reading the socket until it came; in a browser
++nothing comes while the game's code runs, so the request is sent here and
++the answer read by Datagram_GetMessage in the frames that follow, as any
++other message is. The client counts as connected meanwhile, and can send
++nothing until the server accepts it.
++*/
++static int connectTries;
++static double connectSent;
++
++// How often, and how many times, the request is sent before giving up.
++#define CONNECT_WAIT	2.5
++#define CONNECT_TRIES	4
++
++static void SendConnectRequest (qsocket_t *sock)
++{
++	byte buffer[64];
++	sizebuf_t request;
++
++	request.allowoverflow = false;
++	request.overflowed = false;
++	request.data = buffer;
++	request.maxsize = sizeof(buffer);
++	request.cursize = 0;
++	// save space for the header, filled in later
++	MSG_WriteLong(&request, 0);
++	MSG_WriteByte(&request, CCREQ_CONNECT);
++	MSG_WriteString(&request, "QUAKE");
++	MSG_WriteByte(&request, NET_PROTOCOL_VERSION);
++	*((int *)request.data) = BigLong(NETFLAG_CTL | (request.cursize & NETFLAG_LENGTH_MASK));
++	net_landrivers[sock->landriver].Write (sock->socket, request.data, request.cursize, &sock->addr);
++	connectTries++;
++	connectSent = net_time;
++}
++
+ static qsocket_t *_Datagram_Connect (char *host)
+ {
+ 	struct qsockaddr sendaddr;
+-	struct qsockaddr readaddr;
+ 	qsocket_t	*sock;
+ 	int			newsock;
+-	int			ret;
+-	int			reps;
+-	double		start_time;
+-	int			control;
+-	char		*reason;
+ 
+ 	// see if we can resolve the host name
+ 	if (dfunc.GetAddrFromName(host, &sendaddr) == -1)
+@@ -1233,149 +1272,99 @@
+ 
+ 	sock = NET_NewQSocket ();
+ 	if (sock == NULL)
+-		goto ErrorReturn2;
++	{
++		dfunc.CloseSocket(newsock);
++		return NULL;
++	}
+ 	sock->socket = newsock;
+ 	sock->landriver = net_landriverlevel;
++	Q_memcpy(&sock->addr, &sendaddr, sizeof(struct qsockaddr));
++	dfunc.GetNameFromAddr (&sendaddr, sock->address);
++
++	// send the connection request; Datagram_GetMessage reads the answer
++	Con_Printf("trying...\n");
++	connecting = sock;
++	connectTries = 0;
++	sock->canSend = false;
++	SendConnectRequest (sock);
++	sock->lastMessageTime = SetNetTime();
+ 
+-	// connect to the host
+-	if (dfunc.Connect (newsock, &sendaddr) == -1)
+-		goto ErrorReturn;
+-
+-	// send the connection request
+-	Con_Printf("trying...\n"); SCR_UpdateScreen ();
+-	start_time = net_time;
++	m_return_onerror = false;
++	return sock;
++}
++
++/*
++The answer to a connection request, when it has come: 0 while it has not,
++-1 when the server refused or never answered, and otherwise what reading
++the first messages on the accepted connection gives.
++*/
++static int Datagram_GetConnectReply (qsocket_t *sock)
++{
++	struct qsockaddr readaddr;
++	int ret, control;
++	char *reason;
+ 
+-	for (reps = 0; reps < 3; reps++)
++	for (;;)
+ 	{
+-		SZ_Clear(&net_message);
+-		// save space for the header, filled in later
+-		MSG_WriteLong(&net_message, 0);
+-		MSG_WriteByte(&net_message, CCREQ_CONNECT);
+-		MSG_WriteString(&net_message, "QUAKE");
+-		MSG_WriteByte(&net_message, NET_PROTOCOL_VERSION);
+-		*((int *)net_message.data) = BigLong(NETFLAG_CTL | (net_message.cursize & NETFLAG_LENGTH_MASK));
+-		dfunc.Write (newsock, net_message.data, net_message.cursize, &sendaddr);
+-		SZ_Clear(&net_message);
+-		do
++		ret = sfunc.Read (sock->socket, net_message.data, net_message.maxsize, &readaddr);
++		if (ret == 0)
+ 		{
+-			ret = dfunc.Read (newsock, net_message.data, net_message.maxsize, &readaddr);
+-			// if we got something, validate it
+-			if (ret > 0)
++			if (net_time - connectSent < CONNECT_WAIT)
++				return 0;
++			if (connectTries >= CONNECT_TRIES)
+ 			{
+-				// is it from the right place?
+-				if (sfunc.AddrCompare(&readaddr, &sendaddr) != 0)
+-				{
+-#ifdef DEBUG
+-					Con_Printf("wrong reply address\n");
+-					Con_Printf("Expected: %s\n", StrAddr (&sendaddr));
+-					Con_Printf("Received: %s\n", StrAddr (&readaddr));
+-					SCR_UpdateScreen ();
+-#endif
+-					ret = 0;
+-					continue;
+-				}
+-
+-				if (ret < sizeof(int))
+-				{
+-					ret = 0;
+-					continue;
+-				}
+-
+-				net_message.cursize = ret;
+-				MSG_BeginReading ();
+-
+-				control = BigLong(*((int *)net_message.data));
+-				MSG_ReadLong();
+-				if (control == -1)
+-				{
+-					ret = 0;
+-					continue;
+-				}
+-				if ((control & (~NETFLAG_LENGTH_MASK)) !=  NETFLAG_CTL)
+-				{
+-					ret = 0;
+-					continue;
+-				}
+-				if ((control & NETFLAG_LENGTH_MASK) != ret)
+-				{
+-					ret = 0;
+-					continue;
+-				}
++				reason = "No Response";
++				break;
+ 			}
++			Con_Printf("still trying...\n");
++			SendConnectRequest (sock);
++			return 0;
+ 		}
+-		while (ret == 0 && (SetNetTime() - start_time) < 2.5);
+-		if (ret)
++		if (ret == -1)
++		{
++			reason = "Network Error";
+ 			break;
+-		Con_Printf("still trying...\n"); SCR_UpdateScreen ();
+-		start_time = SetNetTime();
+-	}
+-
+-	if (ret == 0)
+-	{
+-		reason = "No Response";
+-		Con_Printf("%s\n", reason);
+-		Q_strcpy(m_return_reason, reason);
+-		goto ErrorReturn;
+-	}
+-
+-	if (ret == -1)
+-	{
+-		reason = "Network Error";
+-		Con_Printf("%s\n", reason);
+-		Q_strcpy(m_return_reason, reason);
+-		goto ErrorReturn;
+-	}
+-
+-	ret = MSG_ReadByte();
+-	if (ret == CCREP_REJECT)
+-	{
+-		reason = MSG_ReadString();
+-		Con_Printf(reason);
+-		Q_strncpy(m_return_reason, reason, 31);
+-		goto ErrorReturn;
+-	}
+-
+-	if (ret == CCREP_ACCEPT)
+-	{
+-		Q_memcpy(&sock->addr, &sendaddr, sizeof(struct qsockaddr));
+-		dfunc.SetSocketPort (&sock->addr, MSG_ReadLong());
+-	}
+-	else
+-	{
+-		reason = "Bad Response";
+-		Con_Printf("%s\n", reason);
+-		Q_strcpy(m_return_reason, reason);
+-		goto ErrorReturn;
+-	}
+-
+-	dfunc.GetNameFromAddr (&sendaddr, sock->address);
++		}
++		// is it from the right place, and an answer?
++		if (sfunc.AddrCompare(&readaddr, &sock->addr) != 0 || ret < sizeof(int))
++			continue;
++		net_message.cursize = ret;
++		MSG_BeginReading ();
++		control = BigLong(*((int *)net_message.data));
++		MSG_ReadLong();
++		if (control == -1 || (control & (~NETFLAG_LENGTH_MASK)) != NETFLAG_CTL || (control & NETFLAG_LENGTH_MASK) != ret)
++			continue;
+ 
+-	Con_Printf ("Connection accepted\n");
+-	sock->lastMessageTime = SetNetTime();
++		ret = MSG_ReadByte();
++		if (ret == CCREP_REJECT)
++		{
++			reason = MSG_ReadString();
++			break;
++		}
++		if (ret != CCREP_ACCEPT)
++		{
++			reason = "Bad Response";
++			break;
++		}
+ 
+-	// switch the connection to the specified address
+-	if (dfunc.Connect (newsock, &sock->addr) == -1)
+-	{
+-		reason = "Connect to Game failed";
+-		Con_Printf("%s\n", reason);
+-		Q_strcpy(m_return_reason, reason);
+-		goto ErrorReturn;
++		// switch the connection to the port the server opened for it
++		sfunc.SetSocketPort (&sock->addr, MSG_ReadLong());
++		Con_Printf ("Connection accepted\n");
++		connecting = NULL;
++		sock->canSend = true;
++		sock->lastMessageTime = SetNetTime();
++		if (sfunc.Connect (sock->socket, &sock->addr) == -1)
++		{
++			reason = "Connect to Game failed";
++			break;
++		}
++		return Datagram_GetMessage (sock);
+ 	}
+ 
+-	m_return_onerror = false;
+-	return sock;
+-
+-ErrorReturn:
+-	NET_FreeQSocket(sock);
+-ErrorReturn2:
+-	dfunc.CloseSocket(newsock);
+-	if (m_return_onerror)
+-	{
+-		key_dest = key_menu;
+-		m_state = m_return_state;
+-		m_return_onerror = false;
+-	}
+-	return NULL;
++	connecting = NULL;
++	Con_Printf("%s\n", reason);
++	Q_strncpy(m_return_reason, reason, 31);
++	return -1;
+ }
+ 
+ qsocket_t *Datagram_Connect (char *host)

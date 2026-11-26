@@ -2,7 +2,7 @@ import { type Command, isStreamWriter, shq, type StreamWriter } from '@ein/clien
 import type { EngineName, ServerInfo, ServerPlayer } from './api.ts';
 import { openReader, readWhole } from './catalog.ts';
 import { GAMES, PAK_FILE, SERVERS } from './games.ts';
-import { addressNumber, addressText, playerAddress } from './net.ts';
+import { addressNumber, addressText, Deframer, playerAddress, Ring } from './net.ts';
 import { packPak, PAK_HEADER_SIZE, pakDirectory, pakEntries } from './paks.ts';
 import type { FromWorker, StartServer, ToWorker } from './server-worker.ts';
 import { messageOf, readServer, seatIn, seatOut, seatsPath, serverPath, SHARED_FOLDER_MODE, writeServer } from './servers.ts';
@@ -30,10 +30,10 @@ const CHUNK = 64 * 1024;
 
 /**
  * What each engine's dedicated server takes: its game folder, its build in `assets/`, the files of
- * a pak it never reads (sounds, pictures, skins, demos), which are left out of the paks it is given,
- * and its command line for a game.
+ * a pak it never reads (sounds, pictures, skins), which are left out of the paks it is given when
+ * it says, and its command line for a game.
  */
-type ServerSpec = { folder: string; build: string; unread: RegExp; args(info: ServerInfo): string[] };
+type ServerSpec = { folder: string; build: string; unread?: RegExp; args(info: ServerInfo): string[] };
 
 const SPECS: Record<EngineName, ServerSpec> = {
   quake2: {
@@ -46,8 +46,8 @@ const SPECS: Record<EngineName, ServerSpec> = {
   quake: {
     folder: '/id1',
     build: 'quake-server',
-    // Quake's server loads the models it precaches and gfx.wad; sounds and demos it never reads.
-    unread: /\.(wav|dem|ogg|mp3)$/,
+    // Quake's paks are given whole: one with fewer files than id's is a modified game, which the
+    // shareware episode refuses to run.
     // -dedicated sets deathmatch when it has room for more than one; a cooperative game says otherwise.
     args: (info) => ['quake', '-dedicated', String(info.maxPlayers), ...(info.mode === 'coop' ? ['+deathmatch', '0', '+coop', '1'] : []), '+map', info.map],
   },
@@ -61,6 +61,8 @@ type Running = {
   id: string;
   info: ServerInfo;
   worker: Worker;
+  /** What the players send, on its way to the worker. */
+  ring: Ring;
   started: boolean;
   seats: Map<string, Seat>;
   byIp: Map<number, Seat>;
@@ -166,7 +168,8 @@ export class QuakeService {
         blob(`${MODULE}/lib/server-worker.ts`, 'application/typescript'),
       ]);
       worker = new Worker(code, { type: 'module' });
-      const running: Running = { id, info, worker, started: false, seats: new Map(), byIp: new Map(), nextSeat: 1, playedAt: Date.now() };
+      const ring = new Ring();
+      const running: Running = { id, info, worker, ring, started: false, seats: new Map(), byIp: new Map(), nextSeat: 1, playedAt: Date.now() };
       this.#games.set(id, running);
       const started = Promise.withResolvers<void>();
       worker.onmessage = ({ data }: MessageEvent<FromWorker>) => this.#heard(running, data, started);
@@ -175,7 +178,7 @@ export class QuakeService {
         started.reject(new Error(event.message));
         void this.#failed(running, event.message);
       };
-      const start: StartServer = { type: 'start', glue, net, wasm, folder: spec.folder, paks, args: spec.args(info) };
+      const start: StartServer = { type: 'start', glue, net, wasm, folder: spec.folder, paks, args: spec.args(info), ring: ring.buffer };
       worker.postMessage(start satisfies ToWorker, [wasm.buffer as ArrayBuffer, ...paks.map((pak) => pak.buffer as ArrayBuffer)]);
       const timeout = setTimeout(() => started.reject(new Error(`the server did not start within ${START_MS / 1000} s`)), START_MS);
       await started.promise.finally(() => clearTimeout(timeout));
@@ -194,8 +197,8 @@ export class QuakeService {
     }
   }
 
-  /** The paks of the game in folder `game`, each without its files `unread` matches. */
-  async #paks(game: string, unread: RegExp): Promise<Uint8Array[]> {
+  /** The paks of the game in folder `game`, each without its files `unread` matches, or whole without it. */
+  async #paks(game: string, unread?: RegExp): Promise<Uint8Array[]> {
     const vfs = this.cmd.sys.vfs;
     const found = new Map<number, string>();
     for (const child of await vfs.children(this.cmd.access, `${GAMES}/${game}`)) {
@@ -204,6 +207,10 @@ export class QuakeService {
     }
     const paks: Uint8Array[] = [];
     for (let i = 0; found.has(i); i++) {
+      if (!unread) {
+        paks.push(await readWhole(this.cmd, `${GAMES}/${game}/${found.get(i)}`));
+        continue;
+      }
       const reader = await openReader(this.cmd, `${GAMES}/${game}/${found.get(i)}`);
       try {
         const directory = pakDirectory(await reader.read(0, PAK_HEADER_SIZE));
@@ -301,18 +308,20 @@ export class QuakeService {
     while (!seat.stop.signal.aborted) {
       const input = await vfs.open(this.cmd.access, seatIn(running.id, seat.name), { mode: 'r' }).catch(() => undefined);
       if (!input) break;
+      // Each writer's stream frames from its start, so each opening starts a frame of its own.
+      const deframer = new Deframer();
       try {
         for (;;) {
           const bytes = await input.read(CHUNK, seat.stop.signal);
           if (bytes.length === 0) break;
-          running.worker.postMessage({ type: 'chunk', ip: seat.ip, bytes } satisfies ToWorker);
+          // A server too far behind to take more drops what does not fit, as the network would.
+          for (const datagram of deframer.push(bytes)) running.ring.write(seat.ip, datagram);
         }
       } catch {
         // Taken away while waiting.
       } finally {
         await input.close().catch(() => undefined);
       }
-      running.worker.postMessage({ type: 'gone', ip: seat.ip } satisfies ToWorker);
     }
   }
 

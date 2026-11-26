@@ -1,1 +1,1 @@
-quakegeneric 13052102577c629650cf07a46151a4b6e1b19c3c with resolution.patch, files.patch and long-strings.patch, id Software's Quake bf4ac424ce754894ac8f1dae6a3981954bc9852d's WinQuake sound, 640x480, emsdk 6.0.13
+quakegeneric 13052102577c629650cf07a46151a4b6e1b19c3c with resolution.patch, files.patch, long-strings.patch and connect.patch, id Software's Quake bf4ac424ce754894ac8f1dae6a3981954bc9852d's WinQuake sound and datagram driver, 640x480: the game and its dedicated server; emsdk 6.0.13

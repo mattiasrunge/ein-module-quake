@@ -96,7 +96,12 @@ export class Network {
   readonly #sockets = new Map<number, Received[]>();
   #nextPort = 50000;
 
-  constructor(private readonly route: (ip: number) => ((framed: Uint8Array) => void) | undefined) {}
+  /**
+   * `pump`, when given, is called before every read, to deliver what came since: the server's worker
+   * takes its players' datagrams from a `Ring` there, so they reach a game that reads in a loop
+   * without returning, as Quake's server waits for its players' answers in one.
+   */
+  constructor(private readonly route: (ip: number) => ((framed: Uint8Array) => void) | undefined, private readonly pump?: () => void) {}
 
   /** Open the socket at `port`, or at a free port when it is 0; answers its port. */
   open(port: number): number {
@@ -119,7 +124,14 @@ export class Network {
 
   /** The next datagram for the socket at `port`, if one waits. */
   recv(port: number): Received | undefined {
+    this.pump?.();
     return this.#sockets.get(port)?.shift();
+  }
+
+  /** How many datagrams wait for the socket at `port`. */
+  waiting(port: number): number {
+    this.pump?.();
+    return this.#sockets.get(port)?.length ?? 0;
   }
 
   /** A datagram came up the link from `ip`: kept for its socket when that is open, else dropped. */
@@ -128,5 +140,81 @@ export class Network {
     if (!queue) return;
     if (queue.length >= SOCKET_QUEUE) queue.shift();
     queue.push({ ip, port: datagram.from, data: datagram.data });
+  }
+}
+
+/** What a `Ring` holds before its writer drops what does not fit: a few seconds of every player's datagrams. */
+export const RING_BYTES = 1 << 22;
+
+/**
+ * The players' datagrams on their way to the server's worker, in memory both share: the service
+ * writes each datagram a player's `in` gives with the player's address, and the worker reads them
+ * whenever its game reads, even while it runs without returning, when no message could reach it. One
+ * writer, one reader. A record is the address, the length of what follows, the ports and the bytes;
+ * one that does not fit is dropped, as the network drops a datagram.
+ */
+export class Ring {
+  readonly #positions: Int32Array;
+  readonly #bytes: Uint8Array;
+
+  constructor(readonly buffer: SharedArrayBuffer = new SharedArrayBuffer(8 + RING_BYTES)) {
+    this.#positions = new Int32Array(buffer, 0, 2);
+    this.#bytes = new Uint8Array(buffer, 8);
+  }
+
+  /** Write the datagram from the player at `ip`; answers whether there was room. */
+  write(ip: number, datagram: Datagram): boolean {
+    const bytes = new Uint8Array(4 + datagram.data.length);
+    bytes.set([datagram.from >> 8, datagram.from & 255, datagram.to >> 8, datagram.to & 255]);
+    bytes.set(datagram.data, 4);
+    return this.#put(ip, bytes);
+  }
+
+  /** Each datagram written since the last read, in order, with the address of the player it is from. */
+  read(each: (ip: number, datagram: Datagram) => void): void {
+    const end = Atomics.load(this.#positions, 0) >>> 0;
+    let at = Atomics.load(this.#positions, 1) >>> 0;
+    while (at !== end) {
+      const header = this.#take(at, 8);
+      const view = new DataView(header.buffer);
+      const ip = view.getUint32(0);
+      const length = view.getUint32(4);
+      at = (at + 8) >>> 0;
+      const bytes = this.#take(at, length);
+      each(ip, { from: (bytes[0] << 8) | bytes[1], to: (bytes[2] << 8) | bytes[3], data: bytes.subarray(4) });
+      at = (at + length) >>> 0;
+    }
+    Atomics.store(this.#positions, 1, at | 0);
+  }
+
+  #put(ip: number, bytes: Uint8Array): boolean {
+    const at = Atomics.load(this.#positions, 0) >>> 0;
+    const read = Atomics.load(this.#positions, 1) >>> 0;
+    const size = 8 + bytes.length;
+    if (((at - read) >>> 0) + size > this.#bytes.length) return false;
+    const header = new Uint8Array(8);
+    const view = new DataView(header.buffer);
+    view.setUint32(0, ip);
+    view.setUint32(4, bytes.length);
+    this.#copyIn(at, header);
+    this.#copyIn((at + 8) >>> 0, bytes);
+    Atomics.store(this.#positions, 0, (at + size) | 0);
+    return true;
+  }
+
+  #copyIn(at: number, bytes: Uint8Array): void {
+    const start = at % this.#bytes.length;
+    const first = Math.min(bytes.length, this.#bytes.length - start);
+    this.#bytes.set(bytes.subarray(0, first), start);
+    this.#bytes.set(bytes.subarray(first), 0);
+  }
+
+  #take(at: number, length: number): Uint8Array {
+    const start = at % this.#bytes.length;
+    const first = Math.min(length, this.#bytes.length - start);
+    const out = new Uint8Array(length);
+    out.set(this.#bytes.subarray(start, start + first));
+    out.set(this.#bytes.subarray(0, length - first), first);
+    return out;
   }
 }

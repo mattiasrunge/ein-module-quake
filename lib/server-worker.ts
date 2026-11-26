@@ -2,17 +2,20 @@
  * A hosted game's dedicated server, in a worker of EiN's process of its own, so a slow frame never
  * holds up EiN. The quake-server service (`lib/server.ts`) makes the worker from this file's text and
  * starts it with the engine's glue and the network (`lib/net.ts`) as URLs it imports, the server's
- * wasm, and the game's paks. Then it passes each chunk a player's `in` stream gives it, and writes
- * each framed datagram the worker sends it to that player's `out`: the framing is the worker's, the
- * streams the service's. It imports nothing itself, so it runs as it is.
+ * wasm, the game's paks, and the memory it shares with it (a `Ring`). Then it writes each chunk a
+ * player's `in` stream gives it, put back together into datagrams, into that memory, which the game
+ * reads whenever it reads; and writes each framed datagram the worker sends it to that player's
+ * `out`. It imports nothing itself, so it runs as it is.
  */
-import type { Deframer, Network } from './net.ts';
 
-/** Start the server: the engine's glue and `lib/net.ts` as URLs, its wasm, the paks for its game folder, and its command line. */
-export type StartServer = { type: 'start'; glue: string; net: string; wasm: Uint8Array; folder: string; paks: Uint8Array[]; args: string[] };
+/**
+ * Start the server: the engine's glue and `lib/net.ts` as URLs, its wasm, the paks for its game
+ * folder, its command line, and the `Ring` the players' bytes come through.
+ */
+export type StartServer = { type: 'start'; glue: string; net: string; wasm: Uint8Array; folder: string; paks: Uint8Array[]; args: string[]; ring: SharedArrayBuffer };
 
-/** What the service tells the worker: start, a chunk from the player at `ip`, or that player gone, whose half-read frame is dropped. */
-export type ToWorker = StartServer | { type: 'chunk'; ip: number; bytes: Uint8Array } | { type: 'gone'; ip: number };
+/** What the service tells the worker: only to start; the rest comes through the ring. */
+export type ToWorker = StartServer;
 
 /**
  * What the worker tells the service: a framed datagram for the player at `ip`, a line the server
@@ -48,10 +51,6 @@ type Scope = { onmessage: ((event: MessageEvent<ToWorker>) => void) | null; post
 const scope = globalThis as unknown as Scope;
 const tell = (message: FromWorker, transfer: Transferable[] = []) => scope.postMessage(message, transfer);
 
-let network: Network | undefined;
-const deframers = new Map<number, Deframer>();
-let makeDeframer: (() => Deframer) | undefined;
-
 /** The game ended: it quit, or `error` stopped it. The service ends the worker. */
 function end(error?: unknown) {
   const exit = error as { name?: string; status?: number } | undefined;
@@ -59,15 +58,16 @@ function end(error?: unknown) {
   tell({ type: 'ended', ...(failed ? { error: exit?.name === 'ExitStatus' ? `the server exited with status ${exit.status}` : String(error) } : {}) });
 }
 
-async function start({ glue, net, wasm, folder, paks, args }: StartServer) {
-  const [{ default: create }, { Deframer, Network, addressNumber, SERVER_ADDRESS }] = await Promise.all([
+async function start({ glue, net, wasm, folder, paks, args, ring: shared }: StartServer) {
+  const [{ default: create }, { Network, Ring, addressNumber, SERVER_ADDRESS }] = await Promise.all([
     import(glue) as Promise<{ default: (options: object) => Promise<ServerModule> }>,
     import(net) as Promise<typeof import('./net.ts')>,
   ]);
-  makeDeframer = () => new Deframer();
   const own = addressNumber(SERVER_ADDRESS);
+  const ring = new Ring(shared);
+  const pump = () => ring.read((ip, datagram) => network.deliver(ip, datagram));
   // Every player's datagrams go back to them; none goes to the server's own address.
-  network = new Network((ip) => ip === own ? undefined : (framed) => tell({ type: 'send', ip, framed }, [framed.buffer as ArrayBuffer]));
+  const network = new Network((ip) => ip === own ? undefined : (framed) => tell({ type: 'send', ip, framed }, [framed.buffer as ArrayBuffer]), pump);
   const log = (line: string) => tell({ type: 'log', line });
   // The wasm is handed over, so the glue never looks for it: its own URL, a blob's, has nothing beside it.
   const instantiateWasm = (imports: WebAssembly.Imports, receive: (instance: WebAssembly.Instance) => void) => {
@@ -100,13 +100,5 @@ async function start({ glue, net, wasm, folder, paks, args }: StartServer) {
 }
 
 scope.onmessage = ({ data: message }) => {
-  if (message.type === 'start') {
-    start(message).catch(end);
-  } else if (message.type === 'chunk' && network && makeDeframer) {
-    let deframer = deframers.get(message.ip);
-    if (!deframer) deframers.set(message.ip, deframer = makeDeframer());
-    for (const datagram of deframer.push(message.bytes)) network.deliver(message.ip, datagram);
-  } else if (message.type === 'gone') {
-    deframers.delete(message.ip);
-  }
+  if (message.type === 'start') start(message).catch(end);
 };

@@ -168,6 +168,15 @@ void ein_mouse(int dx, int dy)
 	mouse_dy += dy;
 }
 
+// Leave the server the game is connected to, telling it so: the page
+// does before it stops a game played on a server, so the server need not
+// wait for the player to time out.
+EMSCRIPTEN_KEEPALIVE
+void ein_disconnect(void)
+{
+	CL_Disconnect();
+}
+
 // Write config.cfg now, as Quit does, so the player's settings are kept
 // when the page stops the game without it.
 EMSCRIPTEN_KEEPALIVE
