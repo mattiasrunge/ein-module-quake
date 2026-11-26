@@ -6,7 +6,6 @@ import {
   Group,
   Loader,
   Menu,
-  Modal,
   NumberInput,
   Paper,
   ScrollArea,
@@ -18,10 +17,10 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
-import { EntityDetailHeader, TablerIcon } from '@ein/ui/components';
+import { Dialog, DialogActions, EntityDetailHeader, TablerIcon, UploadDropzone } from '@ein/ui/components';
 import { usePhone, usePolledCommand } from '@ein/ui/hooks';
-import { formatBytes, formatDateTime, shq } from '@ein/ui/lib';
-import { addToQueue, currentUser, execCommand, notify, uploadBatchDone } from '@ein/ui/signals';
+import { formatBytes, formatDateTime } from '@ein/ui/lib';
+import { currentUser, notify, uploadBatchDone } from '@ein/ui/signals';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { titlePicture } from '../quake/conback.ts';
 import { type Engine, quitted, startEngine } from '../quake/engine.ts';
@@ -31,9 +30,11 @@ import { DEFAULT_PLAYERS, defaultMap, MAX_PLAYERS } from '../../lib/games.ts';
 import { useGameLoop } from '../quake/loop.ts';
 import {
   acceptInvitation,
+  checkInvitation,
   type GameMode,
   hostServer,
   type Invite,
+  type InvitedGame,
   invitedGame,
   inviteToServer,
   type Joined,
@@ -59,6 +60,12 @@ type State =
   | { kind: 'loading'; game: Game; online?: boolean }
   | { kind: 'running'; game: Game; seat?: Seat }
   | { kind: 'error'; game: Game; message: string };
+
+/**
+ * A game on another EiN, which an invitation's link opens: played with the game here that the link
+ * names, from its host, once Play is clicked.
+ */
+type Remote = { link: string; invited: InvitedGame; game: Game; host: string };
 
 /** How often the list of hosted games is asked for again. */
 const SERVERS_POLL_MS = 3000;
@@ -96,8 +103,11 @@ const BAR_BUTTON = { size: 36, icon: 22 };
  * game. A click on the running game hands it the mouse (the browser's pointer lock), which looks
  * around and fires; while the game has the mouse or the focus it takes every key it knows before the
  * shell does. A game saved from the game's menu, and the player's settings, are kept in their home
- * (`savesFolder`), and Load lists the saves next time. Add music uploads the files picked into the
- * chosen game's own music folder, where it plays them for the CD's tracks.
+ * (`savesFolder`), and Load lists the saves next time.
+ *
+ * Playing together is in the header's corner, for a game that has maps to host: Start server has EiN
+ * run a server of the game shown, Invite gives a link to it for someone on another EiN, and Connect
+ * takes such a link from another EiN. Play then enters the game on that server, else alone.
  */
 export default function Quake() {
   const phone = usePhone();
@@ -141,7 +151,7 @@ export default function Quake() {
     }).catch((error) => setListError(error instanceof Error ? error.message : String(error)));
   }, []);
   useEffect(refresh, [refresh]);
-  // Uploads land in the games folder: a game dropped on the page, or music added to one.
+  // A game dropped on the page lands in the games folder.
   useEffect(() =>
     uploadBatchDone.subscribe((batch) => {
       if (batch?.dirs.some((dir) => dir === GAMES || dir.startsWith(`${GAMES}/`))) refresh();
@@ -160,18 +170,6 @@ export default function Quake() {
       refresh();
     }
   }, [refresh]);
-
-  const musicInput = useRef<HTMLInputElement>(null);
-  const addMusic = (files: File[]) => {
-    if (!selected || files.length === 0) return;
-    const folder = `${GAMES}/${selected.name}/music`;
-    // The folder is made when the files go, so a game gets one only when it has music.
-    const target = async () => {
-      await execCommand(`mkdir -p ${shq(folder)}`);
-      return folder;
-    };
-    addToQueue(files, target, { label: `${selected.title}'s music` });
-  };
 
   const stop = useCallback(() => {
     // The player's settings are kept as Quit keeps them, when the game is still there to write them;
@@ -204,8 +202,11 @@ export default function Quake() {
     return () => globalThis.removeEventListener('pagehide', onHide);
   }, []);
 
-  /** Play `game`: on its own, or on a server someone hosts, in the seat `sit` takes there. */
-  const play = useCallback(async (game: Game, sit?: () => Promise<Joined>) => {
+  /**
+   * Play `game`: on its own, or on a server, in the seat `sit` takes there; `onEnded` hears that
+   * server's game end under the player.
+   */
+  const play = useCallback(async (game: Game, sit?: () => Promise<Joined>, onEnded?: () => void) => {
     stop();
     setChosen(game.name);
     remember(CHOSEN_KEY, game.name);
@@ -252,6 +253,7 @@ export default function Quake() {
       void online?.ended.then((reason) => {
         if (link.current !== online) return;
         stop();
+        onEnded?.();
         setState({ kind: 'error', game, message: `The game on the server ${seat?.server} ended: ${reason}` });
       });
     } catch (error) {
@@ -277,45 +279,72 @@ export default function Quake() {
 
   // The games people host, asked for again every few seconds.
   const servers = usePolledCommand<ServerInfo[]>(SERVERS_COMMAND, true, SERVERS_POLL_MS);
+  const [remote, setRemote] = useState<Remote | null>(null);
+  // The server hosted here for the game shown, which Play joins; a game played on another EiN has none here.
+  const hosted = shown && !remote ? servers.data?.find((server) => server.game === shown.name && (server.state === 'running' || server.state === 'starting')) : undefined;
   const [hosting, setHosting] = useState(false);
-  const failed = (what: string) => (error: unknown) => notify({ message: `${what}: ${error instanceof Error ? error.message : String(error)}`, color: 'red' });
-  const join = useCallback((server: ServerInfo) => {
-    const game = games?.find((found) => found.name === server.game);
-    if (game) void play(game, async () => ({ seat: await joinServer(server.id) }));
-  }, [games, play]);
-  // A game on another EiN, which its invitation's link opens, played with the game here that the link names.
-  const joinInvited = useCallback((link: string) => {
-    const invited = invitedGame(link);
-    const game = invited && (games?.find((found) => found.name === invited.game && found.engine === invited.engine) ??
-      games?.find((found) => found.engine === invited.engine && found.maps.includes(invited.map)));
-    if (!invited) return failed('The invitation was not taken')(new Error('the link does not say which game it is for: it ends in #<engine>:<game>:<map>'));
-    if (!game) {
-      return failed('The invitation was not taken')(new Error(`there is no ${invited.engine === 'quake2' ? 'Quake II' : 'Quake'} game here with the map ${invited.map}`));
-    }
-    void play(game, () => acceptInvitation(link, invited));
-  }, [games, play]);
+  const [starting, setStarting] = useState(false);
+  const [connecting, setConnecting] = useState(false);
   const [invite, setInvite] = useState<Invite>();
-  const inviteGuest = useCallback((server: ServerInfo) => {
-    inviteToServer(server.id).then(setInvite, failed('Nobody was invited'));
-  }, []);
-  // The one who hosts a game plays in it, from the click that hosted it.
-  const host = useCallback((game: Game, map: string, maxPlayers: number, mode: GameMode) => {
+  const failed = (what: string) => (error: unknown) => notify({ message: `${what}: ${error instanceof Error ? error.message : String(error)}`, color: 'red' });
+
+  /** Enter `game`: on the other EiN it is connected to, on the server hosted here for it, else alone. */
+  const enter = useCallback((game: Game) => {
+    if (remote?.game.name === game.name) {
+      const { link, invited } = remote;
+      return void play(game, () => acceptInvitation(link, invited), () => setRemote(null));
+    }
+    // Another game chosen leaves the other EiN's.
+    if (remote) setRemote(null);
+    const server = servers.data?.find((found) => found.game === game.name && found.state === 'running');
+    if (server) return void play(game, async () => ({ seat: await joinServer(server.id) }));
+    void play(game);
+  }, [remote, servers.data, play]);
+
+  // A server of the game shown, which runs until it is stopped or nobody has played on it for five minutes.
+  const startServer = useCallback((map: string, maxPlayers: number, mode: GameMode) => {
+    if (!shown) return;
     setHosting(false);
-    void play(game, async () => {
-      const server = await hostServer(game.name, map, maxPlayers, mode);
-      void servers.refetch();
-      return { seat: await joinServer(server.id) };
-    });
-  }, [play, servers.refetch]);
+    setStarting(true);
+    hostServer(shown.name, map, maxPlayers, mode).then(() => servers.refetch(), failed('The server did not start')).finally(() => setStarting(false));
+  }, [shown?.name, servers.refetch]);
   const stopHosted = useCallback((server: ServerInfo) => {
-    if (!globalThis.confirm(`Stop ${server.startedBy}'s game of ${server.title} on ${server.map}? Everyone in it is dropped.`)) return;
+    if (!globalThis.confirm(`Stop ${server.startedBy}'s server of ${server.title} on ${server.map}? Everyone in it is dropped.`)) return;
     // Whoever stops the game they play in leaves it first, rather than be told it stopped.
     if (state.kind === 'running' && state.seat?.server === server.id) {
       stop();
       setState({ kind: 'idle' });
     }
-    stopServer(server.id).catch(failed('The game was not stopped')).finally(() => void servers.refetch());
+    stopServer(server.id).catch(failed('The server was not stopped')).finally(() => void servers.refetch());
   }, [state, stop, servers.refetch]);
+  const inviteGuest = useCallback((server: ServerInfo) => {
+    inviteToServer(server.id).then(setInvite, failed('Nobody was invited'));
+  }, []);
+
+  /** Connect to the game an invitation's `link` opens on another EiN, played with the game here that it names; throws why not. */
+  const connect = useCallback(async (link: string) => {
+    const invited = invitedGame(link);
+    if (!invited) throw new Error('The link does not say which game it is for: it ends in #<engine>:<game>:<map>.');
+    const game = games?.find((found) => found.name === invited.game && found.engine === invited.engine) ??
+      games?.find((found) => found.engine === invited.engine && found.maps.includes(invited.map));
+    if (!game) throw new Error(`There is no ${ENGINE_TITLES[invited.engine]} game here with the map ${invited.map}.`);
+    const host = await checkInvitation(link);
+    if (state.kind !== 'idle') {
+      stop();
+      setState({ kind: 'idle' });
+    }
+    setChosen(game.name);
+    remember(CHOSEN_KEY, game.name);
+    setRemote({ link: link.trim(), invited, game, host });
+    setConnecting(false);
+  }, [games, state, stop]);
+  const disconnect = useCallback(() => {
+    if (state.kind !== 'idle' && remote && state.game.name === remote.game.name) {
+      stop();
+      setState({ kind: 'idle' });
+    }
+    setRemote(null);
+  }, [state, remote, stop]);
 
   useGameLoop(state.kind === 'running' ? engine.current : null, canvas, (error) => {
     // The game has ended: it wrote its settings itself on Quit, and can write nothing after an error.
@@ -444,16 +473,9 @@ export default function Quake() {
 
   const list = {
     games,
-    servers: servers.data ?? [],
-    playingOn: state.kind === 'running' ? state.seat?.server : undefined,
-    onJoin: join,
-    onJoinInvited: joinInvited,
-    onInvite: inviteGuest,
-    onHost: () => setHosting(true),
-    onStop: stopHosted,
     error: listError,
     active: state.kind === 'loading' || state.kind === 'running' ? state.game.name : selected?.name,
-    onPlay: play,
+    onPlay: enter,
     // Fetching takes curl, which EiN lets only the administrator run.
     canFetch: currentUser.value?.admin === true,
     fetching,
@@ -480,30 +502,39 @@ export default function Quake() {
         flowContent
         // The game's own title art, its console background, read out of its paks.
         coverArt={cover ? <img src={cover} alt='' style={{ width: '100%', height: '100%', objectFit: 'cover', imageRendering: 'pixelated' }} /> : undefined}
-        controls={phone ? <GameMenu {...list} /> : undefined}
-        actions={{
-          upload: { path: GAMES, name: 'Quake', keepFolders: true },
-          items: [
-            { label: muted ? 'Sound on' : 'Sound off', icon: muted ? 'volume-off' : 'volume', onClick: toggleMuted, button: true, iconOnly: true, stays: true },
-            { label: 'Fullscreen', icon: 'maximize', onClick: toggleFullscreen, disabled: state.kind !== 'running', button: true, iconOnly: true, stays: true },
-            { label: selected ? `Add music to ${selected.title}` : 'Add music', icon: 'music', onClick: () => musicInput.current?.click(), disabled: !selected },
-          ],
-        }}
+        controls={
+          <Group gap='xs' wrap='wrap' justify='flex-end' data-quake-controls>
+            {shown && shown.maps.length > 0 && (
+              <Multiplayer
+                hosted={hosted}
+                remote={remote}
+                starting={starting}
+                onStart={() => setHosting(true)}
+                onStop={stopHosted}
+                onInvite={inviteGuest}
+                onConnect={() => setConnecting(true)}
+                onDisconnect={disconnect}
+              />
+            )}
+            <Tooltip label={muted ? 'Sound on' : 'Sound off'}>
+              <ActionIcon variant='light' size='input-xs' onClick={toggleMuted} aria-label={muted ? 'Sound on' : 'Sound off'} data-quake-mute>
+                <TablerIcon name={muted ? 'volume-off' : 'volume'} size={18} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label='Fullscreen'>
+              <ActionIcon variant='light' size='input-xs' onClick={toggleFullscreen} disabled={state.kind !== 'running'} aria-label='Fullscreen' data-quake-fullscreen>
+                <TablerIcon name='maximize' size={18} />
+              </ActionIcon>
+            </Tooltip>
+            {phone && <GameMenu {...list} />}
+          </Group>
+        }
       />
-      {/* The music's files: picked here, uploaded into the chosen game's music folder. */}
-      <input
-        ref={musicInput}
-        type='file'
-        accept='audio/*'
-        multiple
-        hidden
-        onChange={(event) => {
-          addMusic([...(event.currentTarget.files ?? [])]);
-          event.currentTarget.value = '';
-        }}
-      />
+      {/* A folder of paks dropped anywhere on the page is a game. */}
+      <UploadDropzone path={GAMES} name='Quake' keepFolders />
       <InviteDialog invite={invite} onClose={() => setInvite(undefined)} />
-      <HostDialog opened={hosting} games={games ?? []} chosen={selected} onClose={() => setHosting(false)} onHost={host} />
+      <ConnectDialog opened={connecting} onClose={() => setConnecting(false)} onConnect={connect} />
+      <StartDialog opened={hosting} game={shown} onClose={() => setHosting(false)} onStart={startServer} />
       <Box style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <GamePane {...list} onDelete={remove} />
         <Box
@@ -569,10 +600,18 @@ export default function Quake() {
                   )
                   : selected
                   ? (
-                    <UnstyledButton onClick={() => void play(selected)} data-quake-play style={{ textAlign: 'center' }}>
+                    <UnstyledButton onClick={() => enter(selected)} data-quake-play style={{ textAlign: 'center' }}>
                       <Stack align='center' gap={6}>
                         <TablerIcon name='player-play' size={56} color='var(--mantine-color-orange-6)' />
                         <Text c='gray.3' fw={600}>{state.kind === 'error' ? 'Play again' : 'Play'} {selected.title}</Text>
+                        {remote?.game.name === selected.name && <Text c='gray.4' size='sm'>On the server at {remote.host}</Text>}
+                        {hosted?.state === 'running' && (
+                          <Text c='gray.4' size='sm'>
+                            On {hosted.startedBy}'s server, {hosted.map}, {hosted.mode === 'coop' ? 'cooperative' : 'deathmatch'}, {hosted.players.length}/{hosted.maxPlayers}
+                            {' '}
+                            playing
+                          </Text>
+                        )}
                       </Stack>
                     </UnstyledButton>
                   )
@@ -603,15 +642,6 @@ export default function Quake() {
 
 type ListProps = {
   games: Game[] | null;
-  /** The games people host here, and the one played on now, by id. */
-  servers: ServerInfo[];
-  playingOn?: string;
-  onJoin: (server: ServerInfo) => void;
-  /** Join a game on another EiN with its invitation's link. */
-  onJoinInvited: (link: string) => void;
-  onInvite: (server: ServerInfo) => void;
-  onHost: () => void;
-  onStop: (server: ServerInfo) => void;
   error?: string;
   /** The game playing, loading, or chosen to play next. */
   active?: string;
@@ -630,7 +660,7 @@ type ListProps = {
  * title alone. `onPick` hears a game chosen.
  */
 function GameList(
-  { games, servers, playingOn, onJoin, onJoinInvited, onInvite, onHost, onStop, error, active, onPlay, onDelete, onPick, fetching, onFetch, canFetch }: ListProps & {
+  { games, error, active, onPlay, onDelete, onPick, fetching, onFetch, canFetch }: ListProps & {
     onDelete?: (game: Game) => void;
     onPick?: () => void;
   },
@@ -647,28 +677,6 @@ function GameList(
           </Text>
         )
         : <Games games={games} active={active} onPlay={onPlay} onDelete={onDelete} onPick={onPick} />}
-      {games.length > 0 && (
-        <Servers
-          games={games}
-          servers={servers}
-          playingOn={playingOn}
-          onJoin={(server) => {
-            onPick?.();
-            onJoin(server);
-          }}
-          onJoinInvited={(link) => {
-            onPick?.();
-            onJoinInvited(link);
-          }}
-          onInvite={onInvite}
-          onHost={() => {
-            onPick?.();
-            onHost();
-          }}
-          onStop={onStop}
-          inset={!onDelete}
-        />
-      )}
       {offers.length > 0 && (
         <Stack gap='xs' px={onDelete ? 0 : 'xs'} pb='xs'>
           <Text size='xs' c='dimmed' fw={600} tt='uppercase'>Free to fetch</Text>
@@ -700,80 +708,91 @@ function GameList(
 }
 
 /**
- * The games people host here, each with who plays in it and a button that joins it, or stops it
- * for the one who hosted it and an administrator; and a button that hosts one. A game whose folder is
- * not here cannot be joined from here.
+ * The header's buttons for playing together. Start server, or Stop server for the one who started it
+ * and an administrator, while the game is not connected to another EiN; Invite while a server of it
+ * runs here; and Connect, or Disconnect once connected, while none runs here.
  */
-function Servers({ games, servers, playingOn, onJoin, onJoinInvited, onInvite, onHost, onStop, inset }:
-  & Pick<ListProps, 'servers' | 'playingOn' | 'onJoin' | 'onJoinInvited' | 'onInvite' | 'onHost' | 'onStop'>
-  & { games: Game[]; inset: boolean }) {
+function Multiplayer({ hosted, remote, starting, onStart, onStop, onInvite, onConnect, onDisconnect }: {
+  hosted?: ServerInfo;
+  remote: Remote | null;
+  starting: boolean;
+  onStart: () => void;
+  onStop: (server: ServerInfo) => void;
+  onInvite: (server: ServerInfo) => void;
+  onConnect: () => void;
+  onDisconnect: () => void;
+}) {
   const user = currentUser.value;
-  const [link, setLink] = useState('');
+  const mine = !!hosted && (hosted.startedBy === user?.username || user?.admin === true);
   return (
-    <Stack gap='xs' px={inset ? 'xs' : 0} pb='xs' data-quake-servers>
-      <Group justify='space-between' gap='xs' wrap='nowrap'>
-        <Text size='xs' c='dimmed' fw={600} tt='uppercase'>Multiplayer</Text>
-        <Button size='compact-xs' variant='light' color='orange' leftSection={<TablerIcon name='server' size={14} />} onClick={onHost} disabled={!user} data-quake-host>
-          Host
-        </Button>
-      </Group>
-      {servers.length === 0 && <Text size='xs' c='dimmed'>Nobody hosts a game now. Host one, and everyone here can join it.</Text>}
-      {servers.map((server) => {
-        const here = games.some((game) => game.name === server.game);
-        const mine = server.startedBy === user?.username || user?.admin === true;
-        return (
-          <Stack key={server.id} gap={2} data-quake-server={server.id}>
-            <Text size='sm' truncate fw={server.id === playingOn ? 600 : 400}>{server.title} · {server.map}</Text>
-            <Text size='xs' c='dimmed' truncate>
-              {server.startedBy}'s · {server.mode === 'coop' ? 'cooperative' : 'deathmatch'} · {server.players.length}/{server.maxPlayers} playing
-            </Text>
-            {server.players.length > 0 && <Text size='xs' c='dimmed' lineClamp={2}>{server.players.map((player) => `${player.name} ${player.frags}`).join(', ')}</Text>}
-            {server.state === 'failed' && <Text size='xs' c='red'>{server.error}</Text>}
-            <Group gap='xs'>
-              {server.state === 'running' && server.id !== playingOn && (
-                <Button
-                  size='compact-xs'
-                  variant='light'
-                  disabled={!here || !user}
-                  onClick={() => onJoin(server)}
-                  data-quake-join={server.id}
-                >
-                  Join
-                </Button>
-              )}
-              {server.state === 'starting' && <Text size='xs' c='dimmed'>Starting…</Text>}
-              {server.state === 'running' && user && <Button size='compact-xs' variant='subtle' onClick={() => onInvite(server)} data-quake-invite={server.id}>Invite</Button>}
-              {mine && server.state !== 'failed' && (
-                <Button size='compact-xs' variant='subtle' color='red' onClick={() => onStop(server)} data-quake-stop={server.id}>Stop</Button>
-              )}
-              {!here && <Text size='xs' c='dimmed'>{server.game} is not here to play</Text>}
-            </Group>
-          </Stack>
-        );
-      })}
-      <Group gap='xs' wrap='nowrap'>
-        <TextInput
+    <>
+      {!remote && (!hosted || hosted.state === 'starting') && (
+        <Button
           size='xs'
-          style={{ flex: 1 }}
-          placeholder='Invitation link from another EiN'
-          value={link}
-          onChange={(event) => setLink(event.currentTarget.value)}
-          data-quake-invitation
-        />
-        <Button size='compact-xs' variant='light' disabled={!link.trim()} onClick={() => onJoinInvited(link)} data-quake-join-invited>Join</Button>
-      </Group>
-    </Stack>
+          variant='light'
+          leftSection={<TablerIcon name='server' size={16} />}
+          loading={starting || hosted?.state === 'starting'}
+          disabled={!user}
+          onClick={onStart}
+          data-quake-start
+        >
+          Start server
+        </Button>
+      )}
+      {!remote && hosted?.state === 'running' && mine && (
+        <Button
+          size='xs'
+          variant='light'
+          color='red'
+          leftSection={<TablerIcon name='server-off' size={16} />}
+          onClick={() => onStop(hosted)}
+          data-quake-stop
+        >
+          Stop server
+        </Button>
+      )}
+      {hosted?.state === 'running' && user && (
+        <Button
+          size='xs'
+          variant='light'
+          leftSection={<TablerIcon name='user-plus' size={16} />}
+          onClick={() => onInvite(hosted)}
+          data-quake-invite
+        >
+          Invite
+        </Button>
+      )}
+      {!hosted && (remote
+        ? (
+          <Button size='xs' variant='light' leftSection={<TablerIcon name='plug-connected-x' size={16} />} onClick={onDisconnect} data-quake-disconnect>
+            Disconnect
+          </Button>
+        )
+        : (
+          <Button size='xs' variant='light' leftSection={<TablerIcon name='plug-connected' size={16} />} onClick={onConnect} data-quake-connect>
+            Connect
+          </Button>
+        ))}
+    </>
   );
 }
 
 /** A guest's invitation, to pass on: the link opens their seat in the game, played with their own EiN's copy of it. */
 function InviteDialog({ invite, onClose }: { invite?: Invite; onClose: () => void }) {
   return (
-    <Modal opened={!!invite} onClose={onClose} title='Invite someone from another EiN' centered>
+    <Dialog
+      opened={!!invite}
+      onClose={onClose}
+      title='Invite someone from another EiN'
+      icon='user-plus'
+      subtitle={invite && `${invite.title} on ${invite.map}`}
+      size='md'
+      floating
+    >
       {invite && (
-        <Stack gap='sm'>
+        <>
           <Text size='sm'>
-            Send this link to someone on another EiN. On their Quake page they paste it under Multiplayer and join {invite.title} on {invite.map}{' '}
+            Send this link to someone on another EiN. On their Quake page they choose Connect, paste it, and play {invite.title}{' '}
             with their own copy of the game. It lets one guest in, until {formatDateTime(invite.expires)}.
           </Text>
           <Group gap='xs' wrap='nowrap'>
@@ -782,49 +801,96 @@ function InviteDialog({ invite, onClose }: { invite?: Invite; onClose: () => voi
               {({ copied, copy }) => <Button variant='light' onClick={copy}>{copied ? 'Copied' : 'Copy'}</Button>}
             </CopyButton>
           </Group>
-        </Stack>
+          <DialogActions>
+            <Button onClick={onClose}>Done</Button>
+          </DialogActions>
+        </>
       )}
-    </Modal>
+    </Dialog>
   );
 }
 
-/** Host a game: which, on which map, how, and for how many; the game chosen in the list is the first offered. */
-function HostDialog({ opened, games, chosen, onClose, onHost }: {
+/** Connect to a game on another EiN with the link its invitation gave; `onConnect` throws why it could not. */
+function ConnectDialog({ opened, onClose, onConnect }: { opened: boolean; onClose: () => void; onConnect: (link: string) => Promise<void> }) {
+  const [link, setLink] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  useEffect(() => {
+    if (!opened) return;
+    setLink('');
+    setError(undefined);
+  }, [opened]);
+  const submit = () => {
+    if (!link.trim() || busy) return;
+    setBusy(true);
+    setError(undefined);
+    onConnect(link).catch((reason) => {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setError(message.charAt(0).toUpperCase() + message.slice(1));
+    }).finally(() => setBusy(false));
+  };
+  return (
+    <Dialog opened={opened} onClose={onClose} title='Connect to another EiN' icon='plug-connected' size='md' floating onSubmit={submit}>
+      <Text size='sm'>
+        Paste the link someone on another EiN invited you with. Play then enters their game, played with the copy of the game here.
+      </Text>
+      <TextInput
+        label='Invitation link'
+        placeholder='https://…/__invite/…#quake2:…'
+        value={link}
+        onChange={(event) => setLink(event.currentTarget.value)}
+        error={error}
+        data-autofocus
+        data-quake-invitation
+      />
+      <DialogActions>
+        <Button variant='default' onClick={onClose}>Cancel</Button>
+        <Button type='submit' loading={busy} disabled={!link.trim()} data-quake-connect-submit>Connect</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+/** Start a server of `game`: on which map, how, and for how many. */
+function StartDialog({ opened, game, onClose, onStart }: {
   opened: boolean;
-  games: Game[];
-  chosen?: Game;
+  game?: Game;
   onClose: () => void;
-  onHost: (game: Game, map: string, maxPlayers: number, mode: GameMode) => void;
+  onStart: (map: string, maxPlayers: number, mode: GameMode) => void;
 }) {
-  const [name, setName] = useState<string | null>(null);
   const [map, setMap] = useState<string | null>(null);
   const [mode, setMode] = useState<GameMode>('deathmatch');
   const [maxPlayers, setMaxPlayers] = useState<number>(DEFAULT_PLAYERS);
-  const game = games.find((found) => found.name === name) ?? chosen ?? games[0];
   useEffect(() => {
-    if (opened) setName(chosen?.name ?? games[0]?.name ?? null);
-  }, [opened]);
-  useEffect(() => setMap(game ? defaultMap(game.maps) ?? null : null), [game?.name]);
+    if (opened) setMap(game ? defaultMap(game.maps) ?? null : null);
+  }, [opened, game?.name]);
   return (
-    <Modal opened={opened} onClose={onClose} title='Host a game' centered>
-      <Stack gap='sm'>
-        <Select label='Game' data={games.map((found) => ({ value: found.name, label: found.title }))} value={game?.name ?? null} onChange={setName} allowDeselect={false} />
-        <Select label='Map' data={game?.maps ?? []} value={map} onChange={setMap} searchable allowDeselect={false} />
-        <SegmentedControl
-          value={mode}
-          onChange={(value) => setMode(value as GameMode)}
-          data={[{ value: 'deathmatch', label: 'Deathmatch' }, { value: 'coop', label: 'Cooperative' }]}
-        />
-        <NumberInput label='Players' min={2} max={MAX_PLAYERS} value={maxPlayers} onChange={(value) => setMaxPlayers(Number(value) || DEFAULT_PLAYERS)} />
-        <Text size='xs' c='dimmed'>
-          EiN runs the game until you stop it or nobody has played for five minutes. Everyone here who has the game can join it from this list.
-        </Text>
-        <Group justify='flex-end'>
-          <Button variant='default' onClick={onClose}>Cancel</Button>
-          <Button color='orange' disabled={!game || !map} onClick={() => game && map && onHost(game, map, maxPlayers, mode)} data-quake-host-start>Host and play</Button>
-        </Group>
-      </Stack>
-    </Modal>
+    <Dialog
+      opened={opened}
+      onClose={onClose}
+      title='Start a server'
+      icon='server'
+      subtitle={game?.title}
+      size='md'
+      floating
+      onSubmit={() => map && onStart(map, maxPlayers, mode)}
+    >
+      <Select label='Map' data={game?.maps ?? []} value={map} onChange={setMap} searchable allowDeselect={false} />
+      <SegmentedControl
+        value={mode}
+        onChange={(value) => setMode(value as GameMode)}
+        data={[{ value: 'deathmatch', label: 'Deathmatch' }, { value: 'coop', label: 'Cooperative' }]}
+      />
+      <NumberInput label='Players' min={2} max={MAX_PLAYERS} value={maxPlayers} onChange={(value) => setMaxPlayers(Number(value) || DEFAULT_PLAYERS)} />
+      <Text size='xs' c='dimmed'>
+        EiN runs the server until you stop it or nobody has played on it for five minutes. Play enters it, here and for everyone else here who has the game, and Invite lets
+        someone from another EiN in.
+      </Text>
+      <DialogActions>
+        <Button variant='default' onClick={onClose}>Cancel</Button>
+        <Button type='submit' disabled={!map} data-quake-start-submit>Start server</Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 

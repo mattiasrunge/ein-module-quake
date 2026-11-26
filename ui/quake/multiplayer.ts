@@ -33,6 +33,15 @@ export function invitedGame(link: string): InvitedGame | undefined {
   return match ? { engine: match[1] as EngineName, game: decodeURIComponent(match[2]), map: decodeURIComponent(match[3]) } : undefined;
 }
 
+/** Whether an invitation's `link` still opens a seat in a game; the EiN it is from, by its host. Throws why not. */
+export async function checkInvitation(link: string): Promise<string> {
+  const invitation = await fetchInvitation(link);
+  if (!invitation.nodes.some((node) => node.mode === 'w') || !invitation.nodes.some((node) => node.mode === 'r')) {
+    throw new Error('The invitation does not open a seat in a game.');
+  }
+  return new URL(invitation.origin).host;
+}
+
 /**
  * The seat an invitation's `link` opens on the EiN it is from, and how its streams are opened there:
  * with the invitation's token, from this page.
