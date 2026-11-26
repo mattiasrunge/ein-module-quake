@@ -83,9 +83,6 @@ who has the game, and says whose server it is and who plays; the one who started
 it, or an administrator, has **Stop server**, which drops everyone in it. A
 server nobody has played on for five minutes stops by itself.
 
-The games' own menus have no network games: **Multiplayer** in them opens the
-player's setup (name, colours or skin), and the servers are the page's.
-
 The game's own **Multiplayer** menu sets who you are in a game: your name, and
 your colours in Quake or your model and skin in Quake II. Joining and starting a
 game are the page's, so that menu no longer offers them.
