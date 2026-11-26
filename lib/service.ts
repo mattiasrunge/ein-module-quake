@@ -1,11 +1,12 @@
-import { type Command, isStreamWriter, type NodeAttrs, shq, type StreamWriter } from '@ein/client';
+import { type Command, isSocketListener, shq, type SocketConnection, type SocketListener, type SocketPeer, type UserAttrs } from '@ein/client';
+import { USERS_PATH } from '@ein/paths';
 import type { EngineName, ServerInfo, ServerPlayer } from './api.ts';
 import { openReader, readWhole } from './catalog.ts';
 import { GAMES, PAK_FILE, SERVERS } from './games.ts';
 import { addressNumber, addressText, Deframer, playerAddress, Ring } from './net.ts';
 import { packPak, PAK_HEADER_SIZE, pakDirectory, pakEntries } from './paks.ts';
 import type { FromWorker, StartServer, ToWorker } from './server-worker.ts';
-import { messageOf, readServer, seatIn, seatOut, seatsPath, serverPath, SHARED_FOLDER_MODE, writeServer } from './servers.ts';
+import { messageOf, readServer, serverPath, serverSocket, SHARED_FOLDER_MODE, writeServer } from './servers.ts';
 
 /** Where the module is in EiN's tree: the servers' engines in `assets/`, the worker and the network in `lib/`. */
 const MODULE = '/usr/modules/quake';
@@ -13,23 +14,20 @@ const MODULE = '/usr/modules/quake';
 /** A game nobody has played in this long stops. */
 const EMPTY_MS = 5 * 60_000;
 
-/**
- * A seat nobody has had open in this long, and whose player the server does not list, is taken away;
- * a guest's (`invitedUntil`, `quake-invite`) not before its invitation runs out.
- */
-const SEAT_IDLE_MS = 60_000;
-
 /** A game that failed stays listed this long, with why, before its folder goes. */
 const FAILED_MS = 60_000;
 
 /** How long a server may take to load its game and start. */
 const START_MS = 120_000;
 
-/** How often the service looks over the servers even when nothing in their folders changed: for games and seats left empty. */
+/** How often the service looks over the servers even when nothing in their folders changed: for games left empty. */
 const SCAN_MS = 2_000;
 
-/** How much of a player's stream is passed on at once. */
+/** How much of a player's connection is passed on at once. */
 const CHUNK = 64 * 1024;
+
+/** Who may connect to a game's socket: every account, which the service, its owner, listens for. */
+const SOCKET_MODE = 0o666;
 
 /**
  * What each engine's dedicated server takes: its game folder, its build in `assets/`, the files of
@@ -56,10 +54,13 @@ const SPECS: Record<EngineName, ServerSpec> = {
   },
 };
 
-/** A seat being played from: its address in the game, the writer of its `out`, and since when nobody has had its `in` open. */
-type Seat = { name: string; ip: number; out: StreamWriter; stop: AbortController; idleSince?: number };
+/** A seat being played from: its name, its address in the game, and the connection its player plays over. */
+type Seat = { name: string; ip: number; connection: SocketConnection };
 
-/** A game the service runs: its worker, its seats by name and by address, and when someone last played. */
+/**
+ * A game the service runs: its worker, the listener on its socket, the seats played from now by
+ * address, the address each seat's name has had, and when someone last played.
+ */
 type Running = {
   id: string;
   info: ServerInfo;
@@ -67,21 +68,25 @@ type Running = {
   /** What the players send, on its way to the worker. */
   ring: Ring;
   started: boolean;
-  seats: Map<string, Seat>;
-  byIp: Map<number, Seat>;
+  listener?: SocketListener;
+  seats: Map<number, Seat>;
+  /** A seat's name keeps its address, so a player who comes back (a page reloaded) is the same player to the game. */
+  addresses: Map<string, number>;
   nextSeat: number;
   playedAt: number;
 };
 
 /**
  * The quake-server service: runs the games people host, each a dedicated server in a worker of its
- * own, and carries each seat's datagrams between its stream nodes and the worker. It watches the
- * servers folder: a `server.json` saying `starting` is started, one saying `stopping` is stopped,
- * a seat's folder made in `players/` is attached, and a game or a seat left empty is taken away.
- * It runs as the administrator, so it reads every seat's `in` and writes every `out`.
+ * own, and listens on each game's socket node, carrying each player's datagrams between their
+ * connection and the worker. It watches the servers folder: a `server.json` saying `starting` is
+ * started, one saying `stopping` is stopped, and a game left empty is taken away. It runs as the
+ * administrator, who owns each socket and so listens on it.
  */
 export class QuakeService {
   readonly #games = new Map<string, Running>();
+  /** Account names by uid, for naming the seats their connections play from. */
+  readonly #names = new Map<number, string>();
   /** The games being started: loading their paks takes a while, and a scan meanwhile must not start them again. */
   readonly #starting = new Set<string>();
   #scanning?: Promise<void>;
@@ -145,7 +150,7 @@ export class QuakeService {
         else if (running.started && Date.now() - running.playedAt > EMPTY_MS) {
           await this.#log(`${id}: nobody has played for ${EMPTY_MS / 60_000} minutes`);
           await this.#stop(id);
-        } else if (running.started) await this.#seats(running);
+        }
       } else if (this.#starting.has(id)) {
         continue;
       } else if (info?.state === 'starting') {
@@ -178,7 +183,7 @@ export class QuakeService {
       ]);
       worker = new Worker(code, { type: 'module' });
       const ring = new Ring();
-      const running: Running = { id, info, worker, ring, started: false, seats: new Map(), byIp: new Map(), nextSeat: 1, playedAt: Date.now() };
+      const running: Running = { id, info, worker, ring, started: false, seats: new Map(), addresses: new Map(), nextSeat: 1, playedAt: Date.now() };
       this.#games.set(id, running);
       const started = Promise.withResolvers<void>();
       worker.onmessage = ({ data }: MessageEvent<FromWorker>) => this.#heard(running, data, started);
@@ -191,6 +196,7 @@ export class QuakeService {
       worker.postMessage(start satisfies ToWorker, [wasm.buffer as ArrayBuffer, ...paks.map((pak) => pak.buffer as ArrayBuffer)]);
       const timeout = setTimeout(() => started.reject(new Error(`the server did not start within ${START_MS / 1000} s`)), START_MS);
       await started.promise.finally(() => clearTimeout(timeout));
+      await this.#listen(running);
       running.started = true;
       running.info = { ...info, state: 'running' };
       await writeServer(this.cmd, running.info);
@@ -241,7 +247,7 @@ export class QuakeService {
   #heard(running: Running, message: FromWorker, started: PromiseWithResolvers<void>): void {
     switch (message.type) {
       case 'send':
-        running.byIp.get(message.ip)?.out.write(message.framed).catch(() => undefined);
+        running.seats.get(message.ip)?.connection.write(message.framed).catch(() => undefined);
         break;
       case 'log':
         if (message.line.trim()) void this.#log(`${running.id}: ${message.line}`);
@@ -263,8 +269,9 @@ export class QuakeService {
   async #status(running: Running, status: string): Promise<void> {
     if (!this.#games.has(running.id)) return;
     const { map, players: found } = JSON.parse(status) as { map: string; players: (Omit<ServerPlayer, 'seat'> & { address: string })[] };
+    const names = new Map([...running.addresses].map(([name, ip]) => [ip, name]));
     const players = found.map(({ address, ...player }) => {
-      const seat = running.byIp.get(addressNumber(address))?.name;
+      const seat = names.get(addressNumber(address));
       return { ...player, ...(seat ? { seat } : {}) };
     });
     if (players.length > 0) running.playedAt = Date.now();
@@ -273,74 +280,62 @@ export class QuakeService {
     await writeServer(this.cmd, running.info).catch((error) => this.#log(`${running.id}: server.json not written: ${messageOf(error)}`));
   }
 
-  /** Attach the seats made in a game's `players/` since the last look, and take away those gone or left empty. */
-  async #seats(running: Running): Promise<void> {
+  /** Make the game's socket and listen on it, seating each player who connects until the listener closes. */
+  async #listen(running: Running): Promise<void> {
     const vfs = this.cmd.sys.vfs;
-    const folders = (await vfs.children<NodeAttrs & { invitedUntil?: number }>(this.cmd.access, seatsPath(running.id)).catch(() => [])).filter((child) =>
-      child.node.type === 'directory'
-    );
-    const invited = new Map(folders.map((child) => [child.name, child.node.attrs.invitedUntil ?? 0]));
-    for (const [name, seat] of running.seats) if (!invited.has(name)) await this.#detach(running, seat);
-    for (const [name, until] of invited) {
-      const seat = running.seats.get(name) ?? await this.#attach(running, name);
-      if (!seat) continue;
-      const open = await vfs.stat(this.cmd.access, seatIn(running.id, name)).then((stat) => (stat as { writer?: boolean }).writer === true, () => false);
-      const playing = running.info.players.some((player) => player.seat === name);
-      if (open || playing || until > Date.now()) seat.idleSince = undefined;
-      else if ((seat.idleSince ??= Date.now()) < Date.now() - SEAT_IDLE_MS) {
-        await this.#detach(running, seat);
-        await this.#remove(`${seatsPath(running.id)}/${name}`);
+    await vfs.create(this.cmd.access, 'socket', serverPath(running.id), 'socket', { props: { mode: SOCKET_MODE } });
+    const listener = await vfs.open(this.cmd.access, serverSocket(running.id), { mode: 'r' });
+    if (!isSocketListener(listener)) {
+      await listener.close();
+      throw new Error(`${serverSocket(running.id)} is not a socket`);
+    }
+    running.listener = listener;
+    void (async () => {
+      for (let connection = await listener.accept(); connection; connection = await listener.accept()) void this.#seat(running, connection);
+    })();
+  }
+
+  /**
+   * Seat the player of `connection`: under their account's name, or `guest` for an invitation's, the
+   * first of it, `-2`, `-3` and on that nobody plays from now, at the address that name had. Pass
+   * what they send to the worker until the connection ends.
+   */
+  async #seat(running: Running, connection: SocketConnection): Promise<void> {
+    const base = await this.#nameOf(connection.peer);
+    const playing = new Set([...running.seats.values()].map((seat) => seat.name));
+    let name = base;
+    for (let n = 2; playing.has(name); n++) name = `${base}-${n}`;
+    const ip = running.addresses.get(name) ?? addressNumber(playerAddress(running.nextSeat++));
+    running.addresses.set(name, ip);
+    const seat: Seat = { name, ip, connection };
+    running.seats.set(ip, seat);
+    await this.#log(`${running.id}: ${name} sits at ${addressText(ip)}`);
+    const deframer = new Deframer();
+    try {
+      for (;;) {
+        const bytes = await connection.read(CHUNK);
+        if (bytes.length === 0) break;
+        // A server too far behind to take more drops what does not fit, as the network would.
+        for (const datagram of deframer.push(bytes)) running.ring.write(ip, datagram);
+      }
+    } catch {
+      // Closed under the read.
+    } finally {
+      if (running.seats.get(ip) === seat) running.seats.delete(ip);
+      await connection.close().catch(() => undefined);
+      await this.#log(`${running.id}: ${name} left`);
+    }
+  }
+
+  /** The name a connection's seat goes by: `guest` for an invitation's, else the name of the account that connected. */
+  async #nameOf(peer: SocketPeer): Promise<string> {
+    if (peer.invitation) return 'guest';
+    if (!this.#names.has(peer.uid)) {
+      for (const child of await this.cmd.sys.vfs.children<UserAttrs>(this.cmd.access, USERS_PATH).catch(() => [])) {
+        if (typeof child.node.attrs.uid === 'number') this.#names.set(child.node.attrs.uid, child.name);
       }
     }
-  }
-
-  /** Take the seat `name`: an address in the game, its `out` to write and its `in` to read, once both streams are there. */
-  async #attach(running: Running, name: string): Promise<Seat | undefined> {
-    const vfs = this.cmd.sys.vfs;
-    const [input, output] = await Promise.all([seatIn(running.id, name), seatOut(running.id, name)].map((path) => vfs.get(this.cmd.access, path).catch(() => undefined)));
-    if (input?.type !== 'stream' || output?.type !== 'stream') return undefined;
-    const out = await vfs.open(this.cmd.access, seatOut(running.id, name), { mode: 'w' }).catch(() => undefined);
-    if (!out || !isStreamWriter(out)) {
-      await out?.close();
-      return undefined;
-    }
-    const seat: Seat = { name, ip: addressNumber(playerAddress(running.nextSeat++)), out, stop: new AbortController() };
-    running.seats.set(name, seat);
-    running.byIp.set(seat.ip, seat);
-    void this.#read(running, seat);
-    await this.#log(`${running.id}: ${name} sits at ${addressText(seat.ip)}`);
-    return seat;
-  }
-
-  /** Pass what the seat's player writes to the worker, opening `in` again each time a writer of it is gone, until the seat is taken away. */
-  async #read(running: Running, seat: Seat): Promise<void> {
-    const vfs = this.cmd.sys.vfs;
-    while (!seat.stop.signal.aborted) {
-      const input = await vfs.open(this.cmd.access, seatIn(running.id, seat.name), { mode: 'r' }).catch(() => undefined);
-      if (!input) break;
-      // Each writer's stream frames from its start, so each opening starts a frame of its own.
-      const deframer = new Deframer();
-      try {
-        for (;;) {
-          const bytes = await input.read(CHUNK, seat.stop.signal);
-          if (bytes.length === 0) break;
-          // A server too far behind to take more drops what does not fit, as the network would.
-          for (const datagram of deframer.push(bytes)) running.ring.write(seat.ip, datagram);
-        }
-      } catch {
-        // Taken away while waiting.
-      } finally {
-        await input.close().catch(() => undefined);
-      }
-    }
-  }
-
-  async #detach(running: Running, seat: Seat): Promise<void> {
-    seat.stop.abort();
-    running.seats.delete(seat.name);
-    running.byIp.delete(seat.ip);
-    await seat.out.close().catch(() => undefined);
-    await this.#log(`${running.id}: ${seat.name} left`);
+    return this.#names.get(peer.uid) ?? `player${peer.uid}`;
   }
 
   /** The game's server failed: it stays listed a while with why, then goes. */
@@ -360,10 +355,11 @@ export class QuakeService {
     await this.#remove(serverPath(id));
   }
 
+  /** The game ends: its worker, and its listener, which ends every player's connection. */
   async #end(running: Running): Promise<void> {
     this.#games.delete(running.id);
     running.worker.terminate();
-    for (const seat of [...running.seats.values()]) await this.#detach(running, seat);
+    await running.listener?.close();
   }
 
   async #remove(path: string): Promise<void> {

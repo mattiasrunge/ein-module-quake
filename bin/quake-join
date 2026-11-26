@@ -1,9 +1,8 @@
 #!ts
-/** quake-join — take a seat in a hosted game: the two stream nodes a player's page plays through. */
+/** quake-join — the way into a hosted game: the socket a player's page connects to. */
 import type { CmdReturn, Command } from '@ein/client';
 import type { Seat } from '@quake/api';
-import { SERVER_ADDRESS } from '@quake/net';
-import { messageOf, readServer, takeSeat } from '@quake/servers';
+import { readServer, seatOf } from '@quake/servers';
 
 const quakeJoin = async (cmd: Command): CmdReturn => {
   const [id] = cmd.args.filter((arg) => !arg.startsWith('-'));
@@ -12,32 +11,26 @@ const quakeJoin = async (cmd: Command): CmdReturn => {
     return 1;
   };
   if (!id) return await fail('which server? quake-servers lists them');
-  const user = cmd.env.USER;
-  if (!user) return await fail('sign in to join a game');
+  if (!cmd.env.USER) return await fail('sign in to join a game');
   const info = await readServer(cmd, id);
   if (!info) return await fail(`there is no server ${id}; quake-servers lists them`);
   if (info.state !== 'running') return await fail(`${id} is ${info.state}${info.error ? `: ${info.error}` : ''}`);
 
-  let seat: Seat;
-  try {
-    seat = await takeSeat(cmd, info, user);
-  } catch (error) {
-    return await fail(messageOf(error));
-  }
+  const seat = seatOf(info);
   if (cmd.json) await cmd.writeJSON(seat satisfies Seat);
-  else await cmd.writeLn(`${seat.seat}: write ${seat.in}, read ${seat.out}, connect to ${SERVER_ADDRESS}`);
+  else await cmd.writeLn(`connect to ${seat.socket} (mode=rw), and the game to ${seat.address}`);
   return 0;
 };
 
 quakeJoin.spec = {
   name: 'quake-join',
-  effect: 'write' as const,
+  effect: 'read' as const,
   description:
-    "Take a seat in a hosted Quake or Quake II game: a folder of yours in the server's players/ with two stream nodes, in, which you write the game's datagrams to, and out, which you read the server's from",
+    "The way into a hosted Quake or Quake II game: the server's socket node, which a player's page connects to and carries the game's datagrams both ways over, and the address the game connects to",
   args: [{ name: 'server', type: 'string' as const, description: 'the server\'s id, as quake-servers lists it' }],
   flags: [],
   examples: ['quake-join k3x9'],
-  returns: "The seat: the server's id, its game's folder, title and engine, its map, the seat's name, the paths of in and out, and the address the game connects to.",
+  returns: "The server's id, its game's folder, title and engine, its map, the path of its socket, and the address the game connects to.",
 };
 
 export default quakeJoin;

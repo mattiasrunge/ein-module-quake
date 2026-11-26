@@ -53,7 +53,7 @@ export const handle = { fullBleed: true, title: 'Quake', pattern: 'mixed' };
 
 /**
  * Where the game is: waiting for the click that starts it, loading, playing, or stopped by an error.
- * A game played on a server someone hosts has its seat.
+ * A game played on a server someone hosts has its way in.
  */
 type State =
   | { kind: 'idle' }
@@ -118,7 +118,7 @@ export default function Quake() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const engine = useRef<Engine | null>(null);
   const sound = useRef<Sound | null>(null);
-  // The seat's streams, while a game is played on a server.
+  // The connection to the server, while a game is played on one.
   const link = useRef<Link | null>(null);
   const log = useRef<string[]>([]);
   const [games, setGames] = useState<Game[] | null>(null);
@@ -176,7 +176,7 @@ export default function Quake() {
 
   const stop = useCallback(() => {
     // The player's settings are kept as Quit keeps them, when the game is still there to write them;
-    // and a server is told the player has gone, before the streams to it close.
+    // and a server is told the player has gone, before the connection to it closes.
     try {
       engine.current?.writeConfig();
       if (link.current) engine.current?.disconnect();
@@ -243,7 +243,7 @@ export default function Quake() {
         ...(folder
           ? { onKeep: keeper(folder, (error) => notify({ message: `The game was not saved: ${error instanceof Error ? error.message : String(error)}`, color: 'red' })) }
           : {}),
-        ...(online && seat ? { online: { network: online.network, address: seat.address, name: username ?? seat.seat } } : {}),
+        ...(online && seat ? { online: { network: online.network, address: seat.address, name: username ?? 'player' } } : {}),
         log: (line) => {
           log.current = [...log.current.slice(-(LOG_TAIL - 1)), line];
           console.info(`[${game.engine}] ${line}`);
@@ -254,7 +254,7 @@ export default function Quake() {
       engine.current = started;
       setState({ kind: 'running', game, seat });
       frame.current?.focus();
-      // The server stopped, or the streams to it broke: the game has nobody to play with.
+      // The server stopped, or the connection to it broke: the game has nobody to play with.
       void online?.ended.then((reason) => {
         if (link.current !== online) return;
         stop();

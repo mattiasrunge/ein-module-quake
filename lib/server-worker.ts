@@ -1,11 +1,11 @@
 /**
  * A hosted game's dedicated server, in a worker of EiN's process of its own, so a slow frame never
- * holds up EiN. The quake-server service (`lib/server.ts`) makes the worker from this file's text and
+ * holds up EiN. The quake-server service (`lib/service.ts`) makes the worker from this file's text and
  * starts it with the engine's glue and the network (`lib/net.ts`) as URLs it imports, the server's
- * wasm, the game's paks, and the memory it shares with it (a `Ring`). Then it writes each chunk a
- * player's `in` stream gives it, put back together into datagrams, into that memory, which the game
- * reads whenever it reads; and writes each framed datagram the worker sends it to that player's
- * `out`. It imports nothing itself, so it runs as it is.
+ * wasm, the game's paks, and the memory it shares with it (a `Ring`). Then it writes each datagram a
+ * player's connection gives it into that memory, which the game reads whenever it reads; and writes
+ * each framed datagram the worker sends it to that player's connection. It imports nothing itself,
+ * so it runs as it is.
  */
 
 /**

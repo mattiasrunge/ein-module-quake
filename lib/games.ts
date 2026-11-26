@@ -10,9 +10,9 @@ import type { EngineName, GameMode } from './api.ts';
 export const GAMES = '/groups/users/quake';
 
 /**
- * Where hosted games are: a folder each, by its id, with its `server.json` (`ServerInfo`) and in
- * `players/` a folder for each seat, holding the seat's two stream nodes, `in` and `out`. The
- * quake-server service makes it and empties it when it starts; it is not a game, having no paks.
+ * Where hosted games are: a folder each, by its id, with its `server.json` (`ServerInfo`) and the
+ * socket node its players connect to (`socket`). The quake-server service makes it and empties it
+ * when it starts; it is not a game, having no paks.
  */
 export const SERVERS = `${GAMES}/servers`;
 

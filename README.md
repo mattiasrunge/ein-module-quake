@@ -91,20 +91,20 @@ The game's server runs on EiN, not in anyone's browser: the module's
 `quake-server` service runs each hosted game as Quake's or Quake II's dedicated
 server, built for it beside the game (`assets/quake-server.wasm`,
 `assets/quake2-server.wasm`), in a worker of EiN's own, so a slow frame never
-holds up EiN. Joining takes a seat in the game: a folder of yours in the game's
-`players/`, with two stream nodes, `in`, which your page writes the game's
-datagrams to, and `out`, which it reads the server's from. The page holds both
-open over WebSockets. Over them every datagram goes framed: the length of what
-follows (two bytes, big-endian), the port it is from, the port it is for, and
-its bytes. Each player is a fake address to the server (10.66.0.2 and on), and
-the server is 10.66.0.1 to each player; the game connects to it as to any
-other server. A page in a hidden tab stops the game, as it always has: the
+holds up EiN. The service listens on each game's socket node, and joining
+connects your page to it over a WebSocket, which carries the game's datagrams
+both ways. Over it every datagram goes framed: the length of what follows (two
+bytes, big-endian), the port it is from, the port it is for, and its bytes. The
+service seats each connection under its account's name (`guest` for an
+invitation's) and gives each seat a fake address (10.66.0.2 and on), which a
+page reloaded gets again. The server is 10.66.0.1 to each player; the game
+connects to it as to any other server. A page in a hidden tab stops the game, as it always has: the
 player stands still in the game, and the server drops them after a while
 (Quake II's after two minutes, Quake's after five).
 
 The hosted games are in `/groups/users/quake/servers`, a folder each with its
-`server.json`; the service empties it when it starts, since no game outlives
-it.
+`server.json` and its `socket`; the service empties it when it starts, since no
+game outlives it.
 
 ### Someone from another EiN
 
@@ -114,8 +114,8 @@ enters the game on your server; **Disconnect** leaves it. They play with their
 own EiN's copy of the game, so it has to be there (the same game, or one of the
 same engine with the map). **Connect** is there while no server of the game runs
 on their own EiN, and **Start server** while they are not connected to another. The link is one of EiN's
-invitations: it opens one guest's seat, without an account here, for twelve
-hours, and `invitation list` and `invitation remove` show and end it.
+invitations: it connects to the game's socket, without an account here, for
+twelve hours, and `invitation list` and `invitation remove` show and end it.
 
 ### In the terminal
 
@@ -123,8 +123,8 @@ hours, and `invitation list` and `invitation remove` show and end it.
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `quake-host <game> [map] [--max N] [--mode M]` | Hosts a game (`--mode deathmatch` or `coop`) and prints its id once its server runs                 |
 | `quake-servers`                                | Lists the hosted games, with who plays in each                                                      |
-| `quake-join <id>`                              | Takes a seat in a game: prints the paths of its `in` and `out` and the address to connect to        |
-| `quake-invite <id> [--hours N]`                | Takes a guest's seat and makes the invitation that opens it; prints its link, on this EiN's address |
+| `quake-join <id>`                              | The way into a game: prints the path of its socket and the address to connect to                    |
+| `quake-invite <id> [--hours N]`                | Makes the invitation that connects a guest to a game; prints its link, on this EiN's address        |
 | `quake-stop <id>`                              | Stops a game, which drops everyone in it                                                            |
 
 The game's own console works as well: `status`, `say`, `kill`.
@@ -235,10 +235,10 @@ music** turns the music on and off.
 | `lib/paks.ts`                                                                                 | Reads a pak's header and directory, for `quake-games` and the title art.                                                                                                       |
 | `bin/quake-fetch`                                                                             | Fetches one of the free games the page offers into the games folder, checked against its release's SHA-256.                                                                    |
 | `bin/quake-host`, `bin/quake-servers`, `bin/quake-join`, `bin/quake-invite`, `bin/quake-stop` | Host, list, join, invite to and stop games played together.                                                                                                                    |
-| `bin/quake-server`, `services/quake-server/`                                                  | The service that runs the hosted games: `lib/service.ts` runs each server in a worker (`lib/server-worker.ts`) and carries its seats' streams.                                 |
-| `lib/net.ts`                                                                                  | The network both engines play on: framing datagrams on a stream, the fake addresses, the engines' sockets, and the memory a server's worker reads its players' datagrams from. |
-| `lib/catalog.ts`, `lib/servers.ts`                                                            | The games and their paks as the commands read them, and the hosted games' folders, `server.json` and seats.                                                                    |
-| `ui/quake/multiplayer.ts`                                                                     | The page's side of playing together: the commands, and a seat's streams held open as the engine's network.                                                                     |
+| `bin/quake-server`, `services/quake-server/`                                                  | The service that runs the hosted games: `lib/service.ts` runs each server in a worker (`lib/server-worker.ts`) and carries its players' connections.                           |
+| `lib/net.ts`                                                                                  | The network both engines play on: framing datagrams on a link, the fake addresses, the engines' sockets, and the memory a server's worker reads its players' datagrams from.   |
+| `lib/catalog.ts`, `lib/servers.ts`                                                            | The games and their paks as the commands read them, and the hosted games' folders and `server.json`.                                                                           |
+| `ui/quake/multiplayer.ts`                                                                     | The page's side of playing together: the commands, and the connection to a game's socket as the engine's network.                                                              |
 | `engine/quakegeneric_ein.c`                                                                   | quakegeneric's platform layer for the page: the frame, keys, mouse and start-up.                                                                                               |
 | `engine/sys_ein.c`                                                                            | The system driver: files, the clock, and Quit and errors that end the game.                                                                                                    |
 | `engine/snd_ein.c`                                                                            | The sound card: the ring Quake's mixer paints, handed to the page.                                                                                                             |

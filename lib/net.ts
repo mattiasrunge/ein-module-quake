@@ -1,14 +1,12 @@
 /**
- * The network both engines play on, over EiN's stream nodes in place of UDP. An engine's sockets
+ * The network both engines play on, over EiN's socket nodes in place of UDP. An engine's sockets
  * (`net_ein.c` in each engine) hand their datagrams to a `Network`, which sends each down the link
  * to the address it is for, and keeps those that come up a link for the socket they are for until
  * the engine reads them.
  *
- * A link is one player's pair of stream nodes: `in`, which the player writes and the server reads,
- * and `out`, which the server writes and the player reads. A stream carries bytes, not messages,
- * and may split or join what was written, so each datagram goes framed: the length of what follows
- * (two bytes, big-endian), the port it is from, the port it is for, then its bytes. `Deframer` puts
- * them back together on the other side.
+ * A link is one player's connection to the server's socket node, which carries messages both ways.
+ * Each datagram goes framed: the length of what follows (two bytes, big-endian), the port it is
+ * from, the port it is for, then its bytes. `Deframer` puts them back together on the other side.
  *
  * Addresses are fake: the server gives each player one of its own (`playerAddress`), which tells it
  * which link a datagram goes down, and a player sees the server at `SERVER_ADDRESS`, whatever
@@ -43,7 +41,7 @@ export const addressText = (number: number): string => [24, 16, 8, 0].map((shift
  */
 export const playerAddress = (index: number): string => addressText(addressNumber(SERVER_ADDRESS) + index);
 
-/** The datagram `data` from port `from` to port `to`, framed for a stream. */
+/** The datagram `data` from port `from` to port `to`, framed for a link. */
 export function frame(from: number, to: number, data: Uint8Array): Uint8Array {
   if (data.length > MAX_DATAGRAM) throw new Error(`a datagram of ${data.length} bytes is longer than a frame carries`);
   const framed = new Uint8Array(FRAME_HEADER + data.length);
@@ -55,7 +53,7 @@ export function frame(from: number, to: number, data: Uint8Array): Uint8Array {
   return framed;
 }
 
-/** Puts a stream's frames back together, whichever way it split or joined them. */
+/** Puts a link's frames back together, whichever way it split or joined them. */
 export class Deframer {
   #held = new Uint8Array(0);
 
@@ -148,7 +146,7 @@ export const RING_BYTES = 1 << 22;
 
 /**
  * The players' datagrams on their way to the server's worker, in memory both share: the service
- * writes each datagram a player's `in` gives with the player's address, and the worker reads them
+ * writes each datagram a player's connection gives with the player's address, and the worker reads them
  * whenever its game reads, even while it runs without returning, when no message could reach it. One
  * writer, one reader. A record is the address, the length of what follows, the ports and the bytes;
  * one that does not fit is dropped, as the network drops a datagram.

@@ -5,7 +5,7 @@ import { collectUnknownFlags, parseArgs, reportUnknownFlags } from '@ein/client'
 import type { GameMode, ServerInfo } from '@quake/api';
 import { findGames } from '@quake/catalog';
 import { DEFAULT_PLAYERS, defaultMap, MAX_PLAYERS, MODES, SERVERS } from '@quake/games';
-import { messageOf, readServer, serverPath, SHARED_FOLDER_MODE, waitFor, writeServer } from '@quake/servers';
+import { messageOf, readServer, serverPath, waitFor, writeServer } from '@quake/servers';
 
 /** How long the service may take to load the game and start its server. */
 const START_MS = 150_000;
@@ -57,8 +57,6 @@ const quakeHost = async (cmd: Command): CmdReturn => {
   };
   try {
     await cmd.sys.vfs.create(cmd.access, 'directory', SERVERS, id, { props: { mode: 0o755 } });
-    // Everyone who joins makes their seat in it, and only they (or the service) take it away.
-    await cmd.sys.vfs.create(cmd.access, 'directory', serverPath(id), 'players', { props: { mode: SHARED_FOLDER_MODE } });
     await writeServer(cmd, info);
   } catch (error) {
     return await fail(`could not make the server's folder: ${messageOf(error)}`);

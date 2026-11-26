@@ -10,13 +10,8 @@ export const serverPath = (id: string): string => `${SERVERS}/${id}`;
 /** A server's `server.json`. */
 export const serverFile = (id: string): string => `${serverPath(id)}/server.json`;
 
-/** A server's seats: a folder each, made by whoever takes it. */
-export const seatsPath = (id: string): string => `${serverPath(id)}/players`;
-
-/** A seat's folder, and its two streams: `in`, which the player writes and the server reads, and `out`, which the server writes and the player reads. */
-export const seatPath = (id: string, seat: string): string => `${seatsPath(id)}/${seat}`;
-export const seatIn = (id: string, seat: string): string => `${seatPath(id, seat)}/in`;
-export const seatOut = (id: string, seat: string): string => `${seatPath(id, seat)}/out`;
+/** A server's socket node, which the quake-server service listens on and each player connects to. */
+export const serverSocket = (id: string): string => `${serverPath(id)}/socket`;
 
 /** Sticky and open to every account, as `/tmp` is: anyone makes a folder in it, and only its owner (or the administrator) removes it. */
 export const SHARED_FOLDER_MODE = 0o1777;
@@ -61,50 +56,16 @@ export async function listServers(cmd: Command): Promise<ServerInfo[]> {
   return servers.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
 }
 
-/** How long a new seat waits for the quake-server service to read it. */
-const SEAT_READY_MS = 15_000;
-
-/**
- * Take a seat in the running game `info` for `name`: the caller's own seat of that name again when
- * nobody has it open (a page reloaded), else the first free of `name-2`, `name-3` and on; with
- * `invitedUntil`, a new seat always, kept until then for a guest to take (`quake-invite`). The seat is
- * the caller's: a folder in the server's `players/` with `in`, which only they write (and read), and
- * `out`, which only they read; the service, the administrator, reads the one and writes the other.
- * Answers once the service reads `in`, so nothing the player sends before is lost.
- */
-export async function takeSeat(cmd: Command, info: ServerInfo, name: string, invitedUntil?: number): Promise<Seat> {
-  const vfs = cmd.sys.vfs;
-  let seat = name;
-  for (let n = 2;; n++) {
-    const path = seatPath(info.id, seat);
-    if (!(await vfs.exists(cmd.access, path))) {
-      await vfs.create(cmd.access, 'directory', seatsPath(info.id), seat, { props: { mode: 0o755 }, ...(invitedUntil ? { attrs: { invitedUntil } } : {}) });
-      await vfs.create(cmd.access, 'stream', path, 'in', { props: { mode: 0o600 } });
-      await vfs.create(cmd.access, 'stream', path, 'out', { props: { mode: 0o400 } });
-      break;
-    }
-    const mine = (await vfs.get(cmd.access, path)).props.uid === cmd.access.uid;
-    const open = await vfs.stat(cmd.access, seatIn(info.id, seat)).then((stat) => (stat as { writer?: boolean }).writer === true, () => true);
-    if (mine && !open && !invitedUntil) break;
-    seat = `${name}-${n}`;
-  }
-  const read = await waitFor(async () => {
-    const stat = await vfs.stat(cmd.access, seatIn(info.id, seat)).catch(() => undefined);
-    return ((stat as { readers?: number } | undefined)?.readers ?? 0) > 0;
-  }, SEAT_READY_MS);
-  if (!read) throw new Error(`the quake-server service has not taken seat ${seat} in ${info.id}; is it running?`);
-  return {
-    server: info.id,
-    game: info.game,
-    title: info.title,
-    engine: info.engine,
-    map: info.map,
-    seat,
-    in: seatIn(info.id, seat),
-    out: seatOut(info.id, seat),
-    address: SERVER_ADDRESS,
-  };
-}
+/** The way into the running game `info`: its socket, and the address a player's engine connects to. */
+export const seatOf = (info: ServerInfo): Seat => ({
+  server: info.id,
+  game: info.game,
+  title: info.title,
+  engine: info.engine,
+  map: info.map,
+  socket: serverSocket(info.id),
+  address: SERVER_ADDRESS,
+});
 
 /** Wait until `done` says yes, asking every `everyMs`, for at most `forMs`; answers whether it did. */
 export async function waitFor(done: () => Promise<boolean>, forMs: number, everyMs = 250): Promise<boolean> {

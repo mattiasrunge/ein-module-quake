@@ -34,7 +34,7 @@ export type ServerPlayer = {
   frags: number;
   /** Milliseconds a datagram takes there and back, as the server measures it. */
   ping: number;
-  /** Their seat's folder in the server's `players/`: the account's name, or a guest's. */
+  /** The seat they play from: the name of the account that connected, or `guest` for an invitation's, with `-2`, `-3` and on for another of the same. */
   seat?: string;
 };
 
@@ -62,8 +62,8 @@ export type ServerInfo = {
 };
 
 /**
- * A seat in a hosted game, as `quake-join` and `quake-invite` answer: the two stream nodes that
- * carry the player's datagrams, `in` written by the player and `out` read by them, and the address
+ * A way into a hosted game, as `quake-join` and `quake-invite` answer: the server's socket node,
+ * which a player's page connects to and carries their datagrams both ways over, and the address
  * their engine connects to.
  */
 export type Seat = {
@@ -72,16 +72,13 @@ export type Seat = {
   title: string;
   engine: EngineName;
   map: string;
-  /** The seat's folder's name in the server's `players/`. */
-  seat: string;
-  in: string;
-  out: string;
+  socket: string;
   address: string;
 };
 
 /**
- * A guest's seat, as `quake-invite` answers: the seat, and the invitation that opens its two streams
- * to someone on another EiN, until `expires` (ISO 8601). `link` is the invitation's path on this
+ * A guest's way in, as `quake-invite` answers: the seat, and the invitation that connects to its
+ * socket from another EiN, until `expires` (ISO 8601). `link` is the invitation's path on this
  * EiN's own address, `/__invite/<token>`, followed by `#<engine>:<game>:<map>`, which tells the
  * guest's page which of its own games to play.
  */
