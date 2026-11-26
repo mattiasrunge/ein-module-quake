@@ -1,4 +1,4 @@
-import type { EngineName } from './api.ts';
+import type { EngineName, GameMode } from './api.ts';
 
 /**
  * Where the game data is: a folder in the household's shared home, so everyone signed in plays the
@@ -8,6 +8,28 @@ import type { EngineName } from './api.ts';
  * uploaded here.
  */
 export const GAMES = '/groups/users/quake';
+
+/**
+ * Where hosted games are: a folder each, by its id, with its `server.json` (`ServerInfo`) and in
+ * `players/` a folder for each seat, holding the seat's two stream nodes, `in` and `out`. The
+ * quake-server service makes it and empties it when it starts; it is not a game, having no paks.
+ */
+export const SERVERS = `${GAMES}/servers`;
+
+/** How many may play in one game, and how many a game takes when the host says nothing. */
+export const MAX_PLAYERS = 16;
+export const DEFAULT_PLAYERS = 8;
+
+/** The modes a game is hosted in. */
+export const MODES: GameMode[] = ['deathmatch', 'coop'];
+
+/** The map a game is hosted on when the host names none: a deathmatch map when the game has one, else its first. */
+export function defaultMap(maps: string[]): string | undefined {
+  return ['q2dm1', 'dm3', 'dm1', 'e1m1', 'base1', 'demo1'].find((map) => maps.includes(map)) ?? maps[0];
+}
+
+/** The folders of a game's own beside its paks that hold what the engines read, as they would in a pak. */
+export const DATA_FOLDERS = ['players', 'maps', 'models', 'sound', 'pics', 'textures', 'sprites', 'env', 'progs', 'gfx'];
 
 /** A pak file, `pak<N>.pak` in any case: a DOS install's are `PAK0.PAK`. */
 export const PAK_FILE = /^pak(\d+)\.pak$/i;
@@ -45,6 +67,19 @@ export function engineOf(files: Iterable<string>): EngineName {
     if (file.startsWith('pics/') || file.startsWith('players/') || file.endsWith('.wal') || file.endsWith('.md2')) return 'quake2';
   }
   return 'quake';
+}
+
+/**
+ * The maps among a game's `files`, lower-case paths in its paks, by name: each `maps/<name>.bsp`,
+ * but Quake's ammunition boxes and health packs, which are maps of their own (`maps/b_*.bsp`).
+ */
+export function mapsOf(files: Iterable<string>): string[] {
+  const maps: string[] = [];
+  for (const file of files) {
+    const match = /^maps\/([^/]+)\.bsp$/.exec(file);
+    if (match && !match[1].startsWith('b_')) maps.push(match[1]);
+  }
+  return maps.sort();
 }
 
 /** A game the page offers to fetch with `quake-fetch`, by the folder it is fetched into. */

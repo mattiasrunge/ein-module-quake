@@ -16,8 +16,12 @@
     "@mantine/hooks": "npm:@mantine/hooks@9.8.2",
     "@preact/signals-react": "npm:@preact/signals-react@^3.12.0",
     "@quake/api": "./lib/api.ts",
+    "@quake/catalog": "./lib/catalog.ts",
     "@quake/games": "./lib/games.ts",
+    "@quake/net": "./lib/net.ts",
     "@quake/paks": "./lib/paks.ts",
+    "@quake/servers": "./lib/servers.ts",
+    "@quake/service": "./lib/service.ts",
     "react": "npm:react@^19.3.1",
     "react-dom": "npm:react-dom@^19.3.1",
     "react-router-dom": "npm:react-router-dom@^7.18.6"

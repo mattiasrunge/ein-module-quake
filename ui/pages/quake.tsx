@@ -1,6 +1,23 @@
-import { ActionIcon, Box, Button, Loader, Menu, Paper, ScrollArea, Stack, Text, Tooltip, UnstyledButton } from '@mantine/core';
+import {
+  ActionIcon,
+  Box,
+  Button,
+  Group,
+  Loader,
+  Menu,
+  Modal,
+  NumberInput,
+  Paper,
+  ScrollArea,
+  SegmentedControl,
+  Select,
+  Stack,
+  Text,
+  Tooltip,
+  UnstyledButton,
+} from '@mantine/core';
 import { EntityDetailHeader, TablerIcon } from '@ein/ui/components';
-import { usePhone } from '@ein/ui/hooks';
+import { usePhone, usePolledCommand } from '@ein/ui/hooks';
 import { formatBytes, shq } from '@ein/ui/lib';
 import { addToQueue, currentUser, execCommand, notify, uploadBatchDone } from '@ein/ui/signals';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -8,18 +25,26 @@ import { titlePicture } from '../quake/conback.ts';
 import { type Engine, quitted, startEngine } from '../quake/engine.ts';
 import { deleteGame, ENGINE_TITLES, fetchGame, type Game, GAMES, listGames, type Offer, OFFERS } from '../quake/games.ts';
 import { K_MWHEELDOWN, K_MWHEELUP, mouseKey, quakeKey } from '../quake/keys.ts';
+import { DEFAULT_PLAYERS, defaultMap, MAX_PLAYERS } from '../../lib/games.ts';
 import { useGameLoop } from '../quake/loop.ts';
+import { type GameMode, hostServer, joinServer, type Link, openLink, type Seat, type ServerInfo, SERVERS_COMMAND, stopServer } from '../quake/multiplayer.ts';
 import { keeper, loadKept, savesFolder } from '../quake/saves.ts';
 import { openSound, type Sound } from '../quake/sound.ts';
 
 export const handle = { fullBleed: true, title: 'Quake', pattern: 'mixed' };
 
-/** Where the game is: waiting for the click that starts it, loading, playing, or stopped by an error. */
+/**
+ * Where the game is: waiting for the click that starts it, loading, playing, or stopped by an error.
+ * A game played on a server someone hosts has its seat.
+ */
 type State =
   | { kind: 'idle' }
-  | { kind: 'loading'; game: Game }
-  | { kind: 'running'; game: Game }
+  | { kind: 'loading'; game: Game; online?: boolean }
+  | { kind: 'running'; game: Game; seat?: Seat }
   | { kind: 'error'; game: Game; message: string };
+
+/** How often the list of hosted games is asked for again. */
+const SERVERS_POLL_MS = 3000;
 
 /** How many of the game's last printed lines an error shows, since `Sys_Error` prints its reason before it exits. */
 const LOG_TAIL = 6;
@@ -63,6 +88,8 @@ export default function Quake() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const engine = useRef<Engine | null>(null);
   const sound = useRef<Sound | null>(null);
+  // The seat's streams, while a game is played on a server.
+  const link = useRef<Link | null>(null);
   const log = useRef<string[]>([]);
   const [games, setGames] = useState<Game[] | null>(null);
   const [listError, setListError] = useState<string>();
@@ -130,12 +157,16 @@ export default function Quake() {
   };
 
   const stop = useCallback(() => {
-    // The player's settings are kept as Quit keeps them, when the game is still there to write them.
+    // The player's settings are kept as Quit keeps them, when the game is still there to write them;
+    // and a server is told the player has gone, before the streams to it close.
     try {
       engine.current?.writeConfig();
+      if (link.current) engine.current?.disconnect();
     } catch {
       // A game that already ended wrote them when it did.
     }
+    link.current?.close();
+    link.current = null;
     engine.current = null;
     sound.current?.close();
     sound.current = null;
@@ -156,12 +187,13 @@ export default function Quake() {
     return () => globalThis.removeEventListener('pagehide', onHide);
   }, []);
 
-  const play = useCallback(async (game: Game) => {
+  /** Play `game`: on its own, or on a server someone hosts, in the seat `sit` takes there. */
+  const play = useCallback(async (game: Game, sit?: () => Promise<Seat>) => {
     stop();
     setChosen(game.name);
     remember(CHOSEN_KEY, game.name);
     log.current = [];
-    setState({ kind: 'loading', game });
+    setState({ kind: 'loading', game, online: !!sit });
     frame.current?.focus();
     // Opened in the click, before anything is awaited: a browser lets a page make sound only then.
     const audio = openSound();
@@ -173,6 +205,13 @@ export default function Quake() {
       const username = currentUser.value?.username;
       const folder = username ? savesFolder(username, game.name) : undefined;
       const kept = folder ? await loadKept(folder, game.engine) : [];
+      const seat = sit ? await sit() : undefined;
+      const online = seat ? await openLink(seat) : undefined;
+      if (sound.current !== audio) {
+        online?.close();
+        return;
+      }
+      link.current = online ?? null;
       const started = await startEngine({
         game,
         sound: audio,
@@ -180,6 +219,7 @@ export default function Quake() {
         ...(folder
           ? { onKeep: keeper(folder, (error) => notify({ message: `The game was not saved: ${error instanceof Error ? error.message : String(error)}`, color: 'red' })) }
           : {}),
+        ...(online && seat ? { online: { network: online.network, address: seat.address, name: username ?? seat.seat } } : {}),
         log: (line) => {
           log.current = [...log.current.slice(-(LOG_TAIL - 1)), line];
           console.info(`[${game.engine}] ${line}`);
@@ -188,8 +228,14 @@ export default function Quake() {
       // Another game was chosen while this one loaded.
       if (sound.current !== audio) return;
       engine.current = started;
-      setState({ kind: 'running', game });
+      setState({ kind: 'running', game, seat });
       frame.current?.focus();
+      // The server stopped, or the streams to it broke: the game has nobody to play with.
+      void online?.ended.then((reason) => {
+        if (link.current !== online) return;
+        stop();
+        setState({ kind: 'error', game, message: `The game on the server ${seat?.server} ended: ${reason}` });
+      });
     } catch (error) {
       if (sound.current !== audio) return;
       stop();
@@ -210,6 +256,28 @@ export default function Quake() {
     }
     refresh();
   }, [state, stop, refresh]);
+
+  // The games people host, asked for again every few seconds.
+  const servers = usePolledCommand<ServerInfo[]>(SERVERS_COMMAND, true, SERVERS_POLL_MS);
+  const [hosting, setHosting] = useState(false);
+  const failed = (what: string) => (error: unknown) => notify({ message: `${what}: ${error instanceof Error ? error.message : String(error)}`, color: 'red' });
+  const join = useCallback((server: ServerInfo) => {
+    const game = games?.find((found) => found.name === server.game);
+    if (game) void play(game, () => joinServer(server.id));
+  }, [games, play]);
+  // The one who hosts a game plays in it, from the click that hosted it.
+  const host = useCallback((game: Game, map: string, maxPlayers: number, mode: GameMode) => {
+    setHosting(false);
+    void play(game, async () => {
+      const server = await hostServer(game.name, map, maxPlayers, mode);
+      void servers.refetch();
+      return await joinServer(server.id);
+    });
+  }, [play, servers.refetch]);
+  const stopHosted = useCallback((server: ServerInfo) => {
+    if (!globalThis.confirm(`Stop ${server.startedBy}'s game of ${server.title} on ${server.map}? Everyone in it is dropped.`)) return;
+    stopServer(server.id).catch(failed('The game was not stopped')).finally(() => void servers.refetch());
+  }, [servers.refetch]);
 
   useGameLoop(state.kind === 'running' ? engine.current : null, canvas, (error) => {
     // The game has ended: it wrote its settings itself on Quit, and can write nothing after an error.
@@ -338,6 +406,11 @@ export default function Quake() {
 
   const list = {
     games,
+    servers: servers.data ?? [],
+    playingOn: state.kind === 'running' ? state.seat?.server : undefined,
+    onJoin: join,
+    onHost: () => setHosting(true),
+    onStop: stopHosted,
     error: listError,
     active: state.kind === 'loading' || state.kind === 'running' ? state.game.name : selected?.name,
     onPlay: play,
@@ -389,6 +462,7 @@ export default function Quake() {
           event.currentTarget.value = '';
         }}
       />
+      <HostDialog opened={hosting} games={games ?? []} chosen={selected} onClose={() => setHosting(false)} onHost={host} />
       <Box style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <GamePane {...list} onDelete={remove} />
         <Box
@@ -446,7 +520,12 @@ export default function Quake() {
                   </Stack>
                 )}
                 {state.kind === 'loading'
-                  ? <Loader color='orange' />
+                  ? (
+                    <Stack align='center' gap={6}>
+                      <Loader color='orange' />
+                      {state.online && <Text c='gray.4' size='sm'>Joining the game…</Text>}
+                    </Stack>
+                  )
                   : selected
                   ? (
                     <UnstyledButton onClick={() => void play(selected)} data-quake-play style={{ textAlign: 'center' }}>
@@ -466,6 +545,7 @@ export default function Quake() {
           </Box>
           {!fullscreen && (
             <Text c='dimmed' size='xs' ta='center' lineClamp={2} maw={960}>
+              {state.kind === 'running' && state.seat ? `On ${state.seat.server}, ${state.seat.title} on ${state.seat.map}. ` : ''}
               {state.kind === 'running' && !locked
                 ? 'Click the game to give it the mouse and the keyboard. '
                 : state.kind === 'running'
@@ -482,6 +562,12 @@ export default function Quake() {
 
 type ListProps = {
   games: Game[] | null;
+  /** The games people host here, and the one played on now, by id. */
+  servers: ServerInfo[];
+  playingOn?: string;
+  onJoin: (server: ServerInfo) => void;
+  onHost: () => void;
+  onStop: (server: ServerInfo) => void;
   error?: string;
   /** The game playing, loading, or chosen to play next. */
   active?: string;
@@ -499,7 +585,12 @@ type ListProps = {
  * that deletes it) a game's row is its title art with its title under it; in the phone's menu, its
  * title alone. `onPick` hears a game chosen.
  */
-function GameList({ games, error, active, onPlay, onDelete, onPick, fetching, onFetch, canFetch }: ListProps & { onDelete?: (game: Game) => void; onPick?: () => void }) {
+function GameList(
+  { games, servers, playingOn, onJoin, onHost, onStop, error, active, onPlay, onDelete, onPick, fetching, onFetch, canFetch }: ListProps & {
+    onDelete?: (game: Game) => void;
+    onPick?: () => void;
+  },
+) {
   if (error) return <Text size='sm' c='red' p='sm'>{error}</Text>;
   if (!games) return <Loader size='sm' m='sm' />;
   const offers = OFFERS.filter((offer) => !games.some((game) => game.name === offer.name));
@@ -512,6 +603,23 @@ function GameList({ games, error, active, onPlay, onDelete, onPick, fetching, on
           </Text>
         )
         : <Games games={games} active={active} onPlay={onPlay} onDelete={onDelete} onPick={onPick} />}
+      {games.length > 0 && (
+        <Servers
+          games={games}
+          servers={servers}
+          playingOn={playingOn}
+          onJoin={(server) => {
+            onPick?.();
+            onJoin(server);
+          }}
+          onHost={() => {
+            onPick?.();
+            onHost();
+          }}
+          onStop={onStop}
+          inset={!onDelete}
+        />
+      )}
       {offers.length > 0 && (
         <Stack gap='xs' px={onDelete ? 0 : 'xs'} pb='xs'>
           <Text size='xs' c='dimmed' fw={600} tt='uppercase'>Free to fetch</Text>
@@ -539,6 +647,101 @@ function GameList({ games, error, active, onPlay, onDelete, onPick, fetching, on
         </Stack>
       )}
     </Stack>
+  );
+}
+
+/**
+ * The games people host here, each with who plays in it and a button that joins it, or stops it
+ * for the one who hosted it and an administrator; and a button that hosts one. A game whose folder is
+ * not here cannot be joined from here.
+ */
+function Servers({ games, servers, playingOn, onJoin, onHost, onStop, inset }: Pick<ListProps, 'servers' | 'playingOn' | 'onJoin' | 'onHost' | 'onStop'> & {
+  games: Game[];
+  inset: boolean;
+}) {
+  const user = currentUser.value;
+  return (
+    <Stack gap='xs' px={inset ? 'xs' : 0} pb='xs' data-quake-servers>
+      <Group justify='space-between' gap='xs' wrap='nowrap'>
+        <Text size='xs' c='dimmed' fw={600} tt='uppercase'>Multiplayer</Text>
+        <Button size='compact-xs' variant='light' color='orange' leftSection={<TablerIcon name='server' size={14} />} onClick={onHost} disabled={!user} data-quake-host>
+          Host
+        </Button>
+      </Group>
+      {servers.length === 0 && <Text size='xs' c='dimmed'>Nobody hosts a game now. Host one, and everyone here can join it.</Text>}
+      {servers.map((server) => {
+        const here = games.some((game) => game.name === server.game);
+        const mine = server.startedBy === user?.username || user?.admin === true;
+        return (
+          <Stack key={server.id} gap={2} data-quake-server={server.id}>
+            <Text size='sm' truncate fw={server.id === playingOn ? 600 : 400}>{server.title} · {server.map}</Text>
+            <Text size='xs' c='dimmed' truncate>
+              {server.startedBy}'s · {server.mode === 'coop' ? 'cooperative' : 'deathmatch'} · {server.players.length}/{server.maxPlayers} playing
+            </Text>
+            {server.players.length > 0 && <Text size='xs' c='dimmed' lineClamp={2}>{server.players.map((player) => `${player.name} ${player.frags}`).join(', ')}</Text>}
+            {server.state === 'failed' && <Text size='xs' c='red'>{server.error}</Text>}
+            <Group gap='xs'>
+              {server.state === 'running' && server.id !== playingOn && (
+                <Button
+                  size='compact-xs'
+                  variant='light'
+                  disabled={!here || !user}
+                  onClick={() => onJoin(server)}
+                  data-quake-join={server.id}
+                >
+                  Join
+                </Button>
+              )}
+              {server.state === 'starting' && <Text size='xs' c='dimmed'>Starting…</Text>}
+              {mine && server.state !== 'failed' && (
+                <Button size='compact-xs' variant='subtle' color='red' onClick={() => onStop(server)} data-quake-stop={server.id}>Stop</Button>
+              )}
+              {!here && <Text size='xs' c='dimmed'>{server.game} is not here to play</Text>}
+            </Group>
+          </Stack>
+        );
+      })}
+    </Stack>
+  );
+}
+
+/** Host a game: which, on which map, how, and for how many; the game chosen in the list is the first offered. */
+function HostDialog({ opened, games, chosen, onClose, onHost }: {
+  opened: boolean;
+  games: Game[];
+  chosen?: Game;
+  onClose: () => void;
+  onHost: (game: Game, map: string, maxPlayers: number, mode: GameMode) => void;
+}) {
+  const [name, setName] = useState<string | null>(null);
+  const [map, setMap] = useState<string | null>(null);
+  const [mode, setMode] = useState<GameMode>('deathmatch');
+  const [maxPlayers, setMaxPlayers] = useState<number>(DEFAULT_PLAYERS);
+  const game = games.find((found) => found.name === name) ?? chosen ?? games[0];
+  useEffect(() => {
+    if (opened) setName(chosen?.name ?? games[0]?.name ?? null);
+  }, [opened]);
+  useEffect(() => setMap(game ? defaultMap(game.maps) ?? null : null), [game?.name]);
+  return (
+    <Modal opened={opened} onClose={onClose} title='Host a game' centered>
+      <Stack gap='sm'>
+        <Select label='Game' data={games.map((found) => ({ value: found.name, label: found.title }))} value={game?.name ?? null} onChange={setName} allowDeselect={false} />
+        <Select label='Map' data={game?.maps ?? []} value={map} onChange={setMap} searchable allowDeselect={false} />
+        <SegmentedControl
+          value={mode}
+          onChange={(value) => setMode(value as GameMode)}
+          data={[{ value: 'deathmatch', label: 'Deathmatch' }, { value: 'coop', label: 'Cooperative' }]}
+        />
+        <NumberInput label='Players' min={2} max={MAX_PLAYERS} value={maxPlayers} onChange={(value) => setMaxPlayers(Number(value) || DEFAULT_PLAYERS)} />
+        <Text size='xs' c='dimmed'>
+          EiN runs the game until you stop it or nobody has played for five minutes. Everyone here who has the game can join it from this list.
+        </Text>
+        <Group justify='flex-end'>
+          <Button variant='default' onClick={onClose}>Cancel</Button>
+          <Button color='orange' disabled={!game || !map} onClick={() => game && map && onHost(game, map, maxPlayers, mode)} data-quake-host-start>Host and play</Button>
+        </Group>
+      </Stack>
+    </Modal>
   );
 }
 

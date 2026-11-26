@@ -1,0 +1,92 @@
+#!ts
+/** quake-host — host a game for others to join: the quake-server service runs its server. */
+import type { CmdReturn, Command } from '@ein/client';
+import { collectUnknownFlags, parseArgs, reportUnknownFlags } from '@ein/client';
+import type { GameMode, ServerInfo } from '@quake/api';
+import { findGames } from '@quake/catalog';
+import { DEFAULT_PLAYERS, defaultMap, MAX_PLAYERS, MODES, SERVERS } from '@quake/games';
+import { messageOf, readServer, serverPath, SHARED_FOLDER_MODE, waitFor, writeServer } from '@quake/servers';
+
+/** How long the service may take to load the game and start its server. */
+const START_MS = 150_000;
+
+/** A new server's id: four letters and digits, not one taken. */
+async function newId(cmd: Command): Promise<string> {
+  for (;;) {
+    const id = Array.from(crypto.getRandomValues(new Uint8Array(4)), (byte) => 'abcdefghijkmnpqrstuvwxyz23456789'[byte % 32]).join('');
+    if (!(await cmd.sys.vfs.exists(cmd.access, serverPath(id)))) return id;
+  }
+}
+
+const quakeHost = async (cmd: Command): CmdReturn => {
+  const unknown: string[] = [];
+  const flags = parseArgs(cmd.args, { string: ['max', 'mode'], unknown: collectUnknownFlags(unknown) });
+  if (await reportUnknownFlags(cmd, unknown)) return 1;
+  const [name, wanted] = flags._.map(String);
+  const fail = async (message: string) => {
+    await cmd.writeError(`quake-host: ${message}\n`);
+    return 1;
+  };
+  if (!name) return await fail('which game? quake-games lists them');
+  const maxPlayers = flags.max === undefined ? DEFAULT_PLAYERS : Number(flags.max);
+  if (!Number.isInteger(maxPlayers) || maxPlayers < 2 || maxPlayers > MAX_PLAYERS) return await fail(`--max takes 2 to ${MAX_PLAYERS} players`);
+  const mode = (flags.mode ?? 'deathmatch') as GameMode;
+  if (!MODES.includes(mode)) return await fail(`--mode is ${MODES.join(' or ')}`);
+  const user = cmd.env.USER;
+  if (!user) return await fail('sign in to host a game');
+
+  const game = (await findGames(cmd)).find((found) => found.name === name);
+  if (!game) return await fail(`${name} is not a game here; quake-games lists them`);
+  const map = wanted ?? defaultMap(game.maps);
+  if (!map || !game.maps.includes(map)) return await fail(`${game.title} has no map ${map ?? ''}; it has ${game.maps.join(', ')}`);
+  if (!(await cmd.sys.vfs.exists(cmd.access, SERVERS))) return await fail('the quake-server service is not running, so nobody runs games here: an administrator starts it with service start quake-server');
+
+  const id = await newId(cmd);
+  const info: ServerInfo = {
+    id,
+    game: game.name,
+    title: game.title,
+    engine: game.engine,
+    map,
+    mode,
+    maxPlayers,
+    startedBy: user,
+    startedAt: new Date().toISOString(),
+    state: 'starting',
+    players: [],
+  };
+  try {
+    await cmd.sys.vfs.create(cmd.access, 'directory', SERVERS, id, { props: { mode: 0o755 } });
+    // Everyone who joins makes their seat in it, and only they (or the service) take it away.
+    await cmd.sys.vfs.create(cmd.access, 'directory', serverPath(id), 'players', { props: { mode: SHARED_FOLDER_MODE } });
+    await writeServer(cmd, info);
+  } catch (error) {
+    return await fail(`could not make the server's folder: ${messageOf(error)}`);
+  }
+
+  let now: ServerInfo | undefined;
+  const settled = await waitFor(async () => (now = await readServer(cmd, id))?.state !== 'starting', START_MS, 500);
+  if (!settled) return await fail(`the quake-server service did not start ${id} within ${START_MS / 1000} s; quake-stop ${id} gives up on it`);
+  if (now?.state !== 'running') return await fail(`${id} did not start: ${now?.error ?? 'it was stopped'}`);
+  if (cmd.json) await cmd.writeJSON(now satisfies ServerInfo);
+  else await cmd.writeLn(id);
+  return 0;
+};
+
+quakeHost.spec = {
+  name: 'quake-host',
+  effect: 'write' as const,
+  description: 'Host a Quake or Quake II game that others here join, run by the quake-server service until you stop it or nobody has played for five minutes',
+  args: [
+    { name: 'game', type: 'string' as const, description: 'the game, by its folder, as quake-games lists it' },
+    { name: 'map', type: 'string' as const, description: 'the map to start on, one of the game\'s; a deathmatch map when it has one, else its first' },
+  ],
+  flags: [
+    { name: 'max', type: 'number' as const, description: `how many may play, 2 to ${MAX_PLAYERS}; ${DEFAULT_PLAYERS} when not given` },
+    { name: 'mode', type: 'string' as const, description: 'deathmatch, everyone against everyone (the default), or coop, together against the monsters' },
+  ],
+  examples: ['quake-host quake2-demo demo1', 'quake-host shareware e1m1 --mode coop --max 4'],
+  returns: 'The new server as server.json has it: id, game, title, engine, map, mode, maxPlayers, startedBy, startedAt, state and players.',
+};
+
+export default quakeHost;

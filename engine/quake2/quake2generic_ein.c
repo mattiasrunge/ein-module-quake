@@ -40,6 +40,7 @@ See the GNU General Public License for more details.
 // cl_main.c's, which no header declares.
 void CL_WriteConfiguration(void);
 void Cbuf_AddText(char *text);
+void CL_Disconnect(void);
 
 // The frame: the renderer's palette indexes, and the same as 0xAABBGGRR
 // words, R first in memory, as a canvas's ImageData has its bytes.
@@ -190,6 +191,15 @@ void ein_mouse(int dx, int dy)
 {
 	mouse_dx += dx;
 	mouse_dy += dy;
+}
+
+// Leave the server the game is connected to, telling it so: the page
+// does before it stops a game played on a server, so the server need not
+// wait for the player to time out.
+EMSCRIPTEN_KEEPALIVE
+void ein_disconnect(void)
+{
+	CL_Disconnect();
 }
 
 // Write config.cfg now, as Quit does, so the player's settings are kept

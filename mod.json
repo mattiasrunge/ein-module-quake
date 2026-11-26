@@ -3,14 +3,18 @@
   "version": "0.7.1",
   "description": "Quake and Quake 2 in EiN: quakegeneric and quake2generic built to WebAssembly, played on a page of their own",
   "license": "GPL-2.0-or-later",
-  "coreApi": "^0.15.66",
+  "coreApi": "^0.15.71",
   "exports": {
     "./api": "./lib/api.ts"
   },
   "imports": {
     "@quake/api": "./lib/api.ts",
+    "@quake/catalog": "./lib/catalog.ts",
     "@quake/games": "./lib/games.ts",
-    "@quake/paks": "./lib/paks.ts"
+    "@quake/net": "./lib/net.ts",
+    "@quake/paks": "./lib/paks.ts",
+    "@quake/servers": "./lib/servers.ts",
+    "@quake/service": "./lib/service.ts"
   },
   "ui": {
     "routes": {

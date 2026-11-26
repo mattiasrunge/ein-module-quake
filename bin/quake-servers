@@ -1,0 +1,34 @@
+#!ts
+/** quake-servers — the games people host, with who plays in each. */
+import type { CmdReturn, Command } from '@ein/client';
+import type { ServerInfo } from '@quake/api';
+import { listServers } from '@quake/servers';
+
+const quakeServers = async (cmd: Command): CmdReturn => {
+  const servers = await listServers(cmd);
+  const running = servers.filter((server) => server.state === 'running');
+  if (cmd.args.includes('--count')) {
+    await cmd.writeLn(`${running.length} ${running.length === 1 ? 'game' : 'games'}, ${running.reduce((sum, server) => sum + server.players.length, 0)} playing`);
+  } else if (cmd.json) {
+    await cmd.writeJSON(servers satisfies ServerInfo[]);
+  } else {
+    for (const server of servers) {
+      const players = server.players.map((player) => `${player.name} ${player.frags}`).join(', ');
+      await cmd.writeLn(`${server.id}  ${server.title}  ${server.map}  ${server.mode}  ${server.players.length}/${server.maxPlayers}  ${server.state}  by ${server.startedBy}${players ? `  ${players}` : ''}${server.error ? `  ${server.error}` : ''}`);
+    }
+  }
+  return 0;
+};
+
+quakeServers.spec = {
+  name: 'quake-servers',
+  effect: 'read' as const,
+  description: 'List the Quake and Quake II games people host, with who plays in each',
+  args: [],
+  flags: [{ name: 'count', type: 'bool' as const, description: 'Say only how many games run and how many play, in one line' }],
+  examples: ['quake-servers'],
+  returns:
+    "One entry per game: its id, the game's folder, title and engine, the map, the mode (deathmatch or coop), how many may play, who hosted it and when, its state (starting, running, stopping or failed, with the error), and its players with their frags, pings and seats.",
+};
+
+export default quakeServers;

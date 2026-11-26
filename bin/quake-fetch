@@ -71,6 +71,8 @@ case "$GAME" in
   quake2-demo)
     [ -e "$game/pak0.pak" ] || mv "$work/Install/Data/baseq2/pak0.pak" "$game/pak0.pak"
     mv "$work/Install/Data/DOCS/license.txt" "$game/license.txt"
+    # The players' models and skins are beside the demo's pak, not in it: other players are drawn with them.
+    [ -e "$game/players" ] || mv "$work/Install/Data/baseq2/players" "$game/players"
     ;;
   librequake)
     for pak in pak0.pak pak1.pak; do
