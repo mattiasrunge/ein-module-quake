@@ -67,6 +67,9 @@ type State =
  */
 type Remote = { link: string; invited: InvitedGame; game: Game; host: string };
 
+/** Something that cannot be taken back, asked for first: what the confirmation says, and what doing it runs. */
+type Confirmation = { title: string; icon: string; text: string; action: string; run: () => Promise<void> };
+
 /** How often the list of hosted games is asked for again. */
 const SERVERS_POLL_MS = 3000;
 
@@ -263,18 +266,26 @@ export default function Quake() {
     }
   }, [muted, stop]);
 
-  const remove = useCallback(async (game: Game) => {
-    if (!globalThis.confirm(`Delete ${game.title} (${game.name})? Everyone who plays here loses it.`)) return;
-    if (state.kind !== 'idle' && state.game.name === game.name) {
-      stop();
-      setState({ kind: 'idle' });
-    }
-    try {
-      await deleteGame(game.name);
-    } catch (error) {
-      setListError(error instanceof Error ? error.message : String(error));
-    }
-    refresh();
+  const [confirming, setConfirming] = useState<Confirmation | null>(null);
+  const remove = useCallback((game: Game) => {
+    setConfirming({
+      title: `Delete ${game.title}?`,
+      icon: 'trash',
+      text: `The game's folder, ${game.name}, with its paks and music, is deleted for everyone who plays here. Their saves stay in their homes.`,
+      action: 'Delete game',
+      run: async () => {
+        if (state.kind !== 'idle' && state.game.name === game.name) {
+          stop();
+          setState({ kind: 'idle' });
+        }
+        try {
+          await deleteGame(game.name);
+        } catch (error) {
+          setListError(error instanceof Error ? error.message : String(error));
+        }
+        refresh();
+      },
+    });
   }, [state, stop, refresh]);
 
   // The games people host, asked for again every few seconds.
@@ -309,13 +320,24 @@ export default function Quake() {
     hostServer(shown.name, map, maxPlayers, mode).then(() => servers.refetch(), failed('The server did not start')).finally(() => setStarting(false));
   }, [shown?.name, servers.refetch]);
   const stopHosted = useCallback((server: ServerInfo) => {
-    if (!globalThis.confirm(`Stop ${server.startedBy}'s server of ${server.title} on ${server.map}? Everyone in it is dropped.`)) return;
-    // Whoever stops the game they play in leaves it first, rather than be told it stopped.
-    if (state.kind === 'running' && state.seat?.server === server.id) {
-      stop();
-      setState({ kind: 'idle' });
-    }
-    stopServer(server.id).catch(failed('The server was not stopped')).finally(() => void servers.refetch());
+    const playing = server.players.length;
+    setConfirming({
+      title: 'Stop the server?',
+      icon: 'server-off',
+      text: `${server.startedBy}'s server of ${server.title} on ${server.map} stops${
+        playing ? `, and the ${playing === 1 ? 'one who plays' : `${playing} who play`} on it ${playing === 1 ? 'is' : 'are'} dropped` : ''
+      }.`,
+      action: 'Stop server',
+      run: async () => {
+        // Whoever stops the game they play in leaves it first, rather than be told it stopped.
+        if (state.kind === 'running' && state.seat?.server === server.id) {
+          stop();
+          setState({ kind: 'idle' });
+        }
+        await stopServer(server.id).catch(failed('The server was not stopped'));
+        void servers.refetch();
+      },
+    });
   }, [state, stop, servers.refetch]);
   const inviteGuest = useCallback((server: ServerInfo) => {
     inviteToServer(server.id).then(setInvite, failed('Nobody was invited'));
@@ -532,6 +554,7 @@ export default function Quake() {
       />
       {/* A folder of paks dropped anywhere on the page is a game. */}
       <UploadDropzone path={GAMES} name='Quake' keepFolders />
+      <ConfirmDialog confirmation={confirming} onClose={() => setConfirming(null)} />
       <InviteDialog invite={invite} onClose={() => setInvite(undefined)} />
       <ConnectDialog opened={connecting} onClose={() => setConnecting(false)} onConnect={connect} />
       <StartDialog opened={hosting} game={shown} onClose={() => setHosting(false)} onStart={startServer} />
@@ -774,6 +797,33 @@ function Multiplayer({ hosted, remote, starting, onStart, onStop, onInvite, onCo
           </Button>
         ))}
     </>
+  );
+}
+
+/** Ask before `confirmation` is done, as EiN's other pages ask before deleting: Cancel, or its action in red. */
+function ConfirmDialog({ confirmation, onClose }: { confirmation: Confirmation | null; onClose: () => void }) {
+  const [busy, setBusy] = useState(false);
+  // The last one asked stays drawn while the dialog closes.
+  const [shown, setShown] = useState<Confirmation | null>(null);
+  useEffect(() => {
+    if (confirmation) setShown(confirmation);
+  }, [confirmation]);
+  const confirm = () => {
+    if (!confirmation || busy) return;
+    setBusy(true);
+    confirmation.run().finally(() => {
+      setBusy(false);
+      onClose();
+    });
+  };
+  return (
+    <Dialog opened={!!confirmation} onClose={onClose} title={shown?.title ?? ''} icon={shown?.icon} pattern='danger' size='sm' floating>
+      <Text size='sm'>{shown?.text}</Text>
+      <DialogActions>
+        <Button variant='default' onClick={onClose}>Cancel</Button>
+        <Button color='red' loading={busy} onClick={confirm} data-quake-confirm>{shown?.action}</Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 
