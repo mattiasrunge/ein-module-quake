@@ -192,11 +192,13 @@ export default function Quake() {
   }, []);
   useEffect(() => stop, [stop]);
   // Closing or reloading the tab unmounts nothing, so the player's settings are written as the page
-  // goes; the game runs on in a page brought back from the browser's cache.
+  // goes, and a server is told the player has gone, rather than keep them until it gives up on them;
+  // the game runs on in a page the browser keeps in its cache to bring back.
   useEffect(() => {
-    const onHide = () => {
+    const onHide = (event: PageTransitionEvent) => {
       try {
         engine.current?.writeConfig();
+        if (link.current && !event.persisted) engine.current?.disconnect();
       } catch {
         // A game that already ended wrote them when it did.
       }
