@@ -1,7 +1,9 @@
 # quake
 
 A module for [EiN](https://einhq.eu) that plays Quake and Quake II in the
-browser, with sound and music, on a page of its own at `/quake`.
+browser, with sound and music, on a page of its own at `/quake`, alone or
+together: a game someone hosts runs on EiN, and others here, or on another EiN
+they are invited from, join it.
 
 Each game has its engine, built to WebAssembly with Emscripten,
 single-threaded, with a platform layer of its own and no SDL:
@@ -38,7 +40,10 @@ it against the release's SHA-256 and puts it in a folder of its own:
 - **Quake II (demo)**: the demo of id Software's Quake II 3.14, the first three
   levels of its first unit, which id let anyone play and pass on free of charge
   with its licence. The licence is beside it, `license.txt` in its folder: it is
-  for playing at home, not for showing in public.
+  for playing at home, not for showing in public. Its players' models and skins
+  are beside its pak, in `players/`, which the page loads as if they were in it;
+  without them other players are not drawn. A demo fetched before this module
+  brought them gets them with `quake-fetch quake2-demo` again.
 - **LibreQuake**: [LibreQuake](https://github.com/lavenderdotpet/LibreQuake)'s
   free game data for Quake's engine, its lite release, the one made for the
   original engine. With it comes its music.
@@ -66,6 +71,56 @@ A player who has played before starts with their own settings: the game's
 WASD keys and free look are only the first settings of a player who has none
 yet. In Quake II, **Video** sets the frame's size; the page shows any of them at
 4:3.
+
+## Play together
+
+Under **Multiplayer** in the list of games, **Host** starts a game that everyone
+here can join: choose the game, the map, deathmatch (everyone against everyone)
+or cooperative (together against the monsters), and how many may play, from 2 to
+16. You play in it at once. The list shows the games people host, who plays in
+each and their frags, and **Join** beside each; the one who hosted a game, or an
+administrator, has **Stop**. A game nobody has played in for five minutes stops
+by itself.
+
+The game's server runs on EiN, not in anyone's browser: the module's
+`quake-server` service runs each hosted game as Quake's or Quake II's dedicated
+server, built for it beside the game (`assets/quake-server.wasm`,
+`assets/quake2-server.wasm`), in a worker of EiN's own, so a slow frame never
+holds up EiN. Joining takes a seat in the game: a folder of yours in the game's
+`players/`, with two stream nodes, `in`, which your page writes the game's
+datagrams to, and `out`, which it reads the server's from. The page holds both
+open over WebSockets. Over them every datagram goes framed: the length of what
+follows (two bytes, big-endian), the port it is from, the port it is for, and
+its bytes. Each player is a fake address to the server (10.66.0.2 and on), and
+the server is 10.66.0.1 to each player; the game connects to it as to any
+other server. A page in a hidden tab stops the game, as it always has: the
+player stands still in the game, and the server drops them after a while
+(Quake II's after two minutes, Quake's after five).
+
+The hosted games are in `/groups/users/quake/servers`, a folder each with its
+`server.json`; the service empties it when it starts, since no game outlives
+it.
+
+### Someone from another EiN
+
+**Invite** beside a game gives a link to send to someone on another EiN. On
+their Quake page they paste it under **Multiplayer** and choose **Join**; they
+play with their own EiN's copy of the game, so it has to be there (the same
+game, or one of the same engine with the map). The link is one of EiN's
+invitations: it opens one guest's seat, without an account here, for twelve
+hours, and `invitation list` and `invitation remove` show and end it.
+
+### In the terminal
+
+| Command                                        | What it does                                                                                        |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `quake-host <game> [map] [--max N] [--mode M]` | Hosts a game (`--mode deathmatch` or `coop`) and prints its id once its server runs                 |
+| `quake-servers`                                | Lists the hosted games, with who plays in each                                                      |
+| `quake-join <id>`                              | Takes a seat in a game: prints the paths of its `in` and `out` and the address to connect to        |
+| `quake-invite <id> [--hours N]`                | Takes a guest's seat and makes the invitation that opens it; prints its link, on this EiN's address |
+| `quake-stop <id>`                              | Stops a game, which drops everyone in it                                                            |
+
+The game's own console works as well: `status`, `say`, `kill`.
 
 ## Saved games and settings
 
@@ -157,41 +212,50 @@ music** turns the music on and off.
 
 ## Layout
 
-| Path                                                                             | What it is for                                                                                                                                                  |
-| -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mod.json`, `ui/nav.json`                                                        | The manifest, and the sidebar entry with its Games section.                                                                                                     |
-| `ui/pages/quake.tsx`                                                             | The page: the list of games, uploads, the game loop, keyboard, mouse, sound and fullscreen.                                                                     |
-| `ui/cards/demo.tsx`                                                              | The dashboard card, offered in `etc/dashboard.d/cards.json`: a game running its demos.                                                                          |
-| `ui/quake/games.ts`                                                              | Lists and deletes games.                                                                                                                                        |
-| `ui/quake/conback.ts`                                                            | Draws a game's title art out of its console background, Quake's with its palette, Quake II's a PCX, fetching only those.                                        |
-| `ui/quake/engine.ts`                                                             | Loads the game's engine, its glue and wasm, and the paks, and wraps the engine's exports; what differs between the engines.                                     |
-| `ui/quake/saves.ts`                                                              | Reads and keeps the player's saves and settings in their home.                                                                                                  |
-| `ui/quake/loop.ts`                                                               | Runs the game on animation frames and draws its frames, at the frame's size.                                                                                    |
-| `ui/quake/sound.ts`                                                              | The effects and the music on Web Audio.                                                                                                                         |
-| `ui/quake/keys.ts`                                                               | Browser key codes and mouse buttons to Quake's, which are Quake II's too.                                                                                       |
-| `bin/quake-games`                                                                | Lists the games with their titles, engines, paks and music, for the page and the card's choice of game.                                                         |
-| `lib/games.ts`, `lib/api.ts`                                                     | Where the games are, which engine plays a game, the games known by name, the free games the page offers, and the shape `quake-games` answers in.                |
-| `lib/paks.ts`                                                                    | Reads a pak's header and directory, for `quake-games` and the title art.                                                                                        |
-| `bin/quake-fetch`                                                                | Fetches one of the free games the page offers into the games folder, checked against its release's SHA-256.                                                     |
-| `engine/quakegeneric_ein.c`                                                      | quakegeneric's platform layer for the page: the frame, keys, mouse and start-up.                                                                                |
-| `engine/sys_ein.c`                                                               | The system driver: files, the clock, and Quit and errors that end the game.                                                                                     |
-| `engine/snd_ein.c`                                                               | The sound card: the ring Quake's mixer paints, handed to the page.                                                                                              |
-| `engine/cd_ein.c`                                                                | The CD player: tracks and their volume, handed to the page.                                                                                                     |
-| `engine/Containerfile`                                                           | Quake's build: pinned emsdk image, quakegeneric commit and id's Quake source, for the sound.                                                                    |
-| `engine/resolution.patch`                                                        | Makes the frame's size the build's, not quakegeneric's fixed 320 by 240.                                                                                        |
-| `engine/files.patch`                                                             | Tells the page when Quake has saved a game or written its settings, so it can keep them.                                                                        |
-| `engine/long-strings.patch`                                                      | Saves strings longer than 256 bytes, as LibreQuake's are, instead of overrunning the buffer they were written into.                                             |
-| `engine/quake2/quake2generic_ein.c`                                              | quake2generic's platform layer for the page: the frame at the video mode's size, keys, mouse and start-up.                                                      |
-| `engine/quake2/snd_ein.c`, `engine/quake2/cd_ein.c`                              | Quake II's sound card and CD player, as Quake's.                                                                                                                |
-| `engine/quake2/Containerfile`                                                    | Quake II's build: pinned emsdk image and quake2generic commit.                                                                                                  |
-| `engine/quake2/signatures.patch`                                                 | Gives two of the game code's functions the parameters they are called with, which WebAssembly holds them to.                                                    |
-| `engine/quake2/volume.patch`                                                     | The mixer's volume of an 8-bit sound, which quake2generic had made silent.                                                                                      |
-| `engine/quake2/files.patch`                                                      | Lists a folder's files, which saving a game needs, and tells the page when Quake II has saved a game or written its settings.                                   |
-| `assets/icon.svg`                                                                | The Q of Quake, drawn for the module: the sidebar's and the dashboard card's icon, filled with the text colour.                                                 |
-| `assets/quake.js`, `assets/quake.wasm`, `assets/quake2.js`, `assets/quake2.wasm` | The built engines, committed, since a module is installed as its repository stands. `assets/quake-build.txt` and `assets/quake2-build.txt` say what built them. |
-| `scripts/build-engine.sh`                                                        | Rebuilds both engines into `assets/`.                                                                                                                           |
-| `test/smoke.mjs`                                                                 | Signs in with headless Chrome, plays a little, saves screenshots.                                                                                               |
-| `deno.jsonc`                                                                     | Generated from `mod.json` by core's `deno task sync:modules`, for type-checking in a core checkout.                                                             |
+| Path                                                                                          | What it is for                                                                                                                                                                 |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `mod.json`, `ui/nav.json`                                                                     | The manifest, and the sidebar entry with its Games section.                                                                                                                    |
+| `ui/pages/quake.tsx`                                                                          | The page: the list of games, uploads, the game loop, keyboard, mouse, sound and fullscreen.                                                                                    |
+| `ui/cards/demo.tsx`                                                                           | The dashboard card, offered in `etc/dashboard.d/cards.json`: a game running its demos.                                                                                         |
+| `ui/quake/games.ts`                                                                           | Lists and deletes games.                                                                                                                                                       |
+| `ui/quake/conback.ts`                                                                         | Draws a game's title art out of its console background, Quake's with its palette, Quake II's a PCX, fetching only those.                                                       |
+| `ui/quake/engine.ts`                                                                          | Loads the game's engine, its glue and wasm, and the paks, and wraps the engine's exports; what differs between the engines.                                                    |
+| `ui/quake/saves.ts`                                                                           | Reads and keeps the player's saves and settings in their home.                                                                                                                 |
+| `ui/quake/loop.ts`                                                                            | Runs the game on animation frames and draws its frames, at the frame's size.                                                                                                   |
+| `ui/quake/sound.ts`                                                                           | The effects and the music on Web Audio.                                                                                                                                        |
+| `ui/quake/keys.ts`                                                                            | Browser key codes and mouse buttons to Quake's, which are Quake II's too.                                                                                                      |
+| `bin/quake-games`                                                                             | Lists the games with their titles, engines, paks and music, for the page and the card's choice of game.                                                                        |
+| `lib/games.ts`, `lib/api.ts`                                                                  | Where the games are, which engine plays a game, the games known by name, the free games the page offers, and the shape `quake-games` answers in.                               |
+| `lib/paks.ts`                                                                                 | Reads a pak's header and directory, for `quake-games` and the title art.                                                                                                       |
+| `bin/quake-fetch`                                                                             | Fetches one of the free games the page offers into the games folder, checked against its release's SHA-256.                                                                    |
+| `bin/quake-host`, `bin/quake-servers`, `bin/quake-join`, `bin/quake-invite`, `bin/quake-stop` | Host, list, join, invite to and stop games played together.                                                                                                                    |
+| `bin/quake-server`, `services/quake-server/`                                                  | The service that runs the hosted games: `lib/service.ts` runs each server in a worker (`lib/server-worker.ts`) and carries its seats' streams.                                 |
+| `lib/net.ts`                                                                                  | The network both engines play on: framing datagrams on a stream, the fake addresses, the engines' sockets, and the memory a server's worker reads its players' datagrams from. |
+| `lib/catalog.ts`, `lib/servers.ts`                                                            | The games and their paks as the commands read them, and the hosted games' folders, `server.json` and seats.                                                                    |
+| `ui/quake/multiplayer.ts`                                                                     | The page's side of playing together: the commands, and a seat's streams held open as the engine's network.                                                                     |
+| `engine/quakegeneric_ein.c`                                                                   | quakegeneric's platform layer for the page: the frame, keys, mouse and start-up.                                                                                               |
+| `engine/sys_ein.c`                                                                            | The system driver: files, the clock, and Quit and errors that end the game.                                                                                                    |
+| `engine/snd_ein.c`                                                                            | The sound card: the ring Quake's mixer paints, handed to the page.                                                                                                             |
+| `engine/cd_ein.c`                                                                             | The CD player: tracks and their volume, handed to the page.                                                                                                                    |
+| `engine/Containerfile`                                                                        | Quake's build: pinned emsdk image, quakegeneric commit and id's Quake source, for the sound.                                                                                   |
+| `engine/resolution.patch`                                                                     | Makes the frame's size the build's, not quakegeneric's fixed 320 by 240.                                                                                                       |
+| `engine/files.patch`                                                                          | Tells the page when Quake has saved a game or written its settings, so it can keep them.                                                                                       |
+| `engine/long-strings.patch`                                                                   | Saves strings longer than 256 bytes, as LibreQuake's are, instead of overrunning the buffer they were written into.                                                            |
+| `engine/net_ein.c`, `engine/connect.patch`                                                    | Quake's network: the loopback, and id's datagram driver over the page's or the worker's; connecting without waiting in a loop for answers.                                     |
+| `engine/server_ein.c`, `engine/build.sh`                                                      | Quake's dedicated server's platform layer, and the build of the game and the server.                                                                                           |
+| `engine/quake2/quake2generic_ein.c`                                                           | quake2generic's platform layer for the page: the frame at the video mode's size, keys, mouse and start-up.                                                                     |
+| `engine/quake2/snd_ein.c`, `engine/quake2/cd_ein.c`                                           | Quake II's sound card and CD player, as Quake's.                                                                                                                               |
+| `engine/quake2/Containerfile`                                                                 | Quake II's build: pinned emsdk image and quake2generic commit.                                                                                                                 |
+| `engine/quake2/signatures.patch`                                                              | Gives two of the game code's functions the parameters they are called with, which WebAssembly holds them to.                                                                   |
+| `engine/quake2/volume.patch`                                                                  | The mixer's volume of an 8-bit sound, which quake2generic had made silent.                                                                                                     |
+| `engine/quake2/files.patch`                                                                   | Lists a folder's files, which saving a game needs, and tells the page when Quake II has saved a game or written its settings.                                                  |
+| `engine/quake2/net_ein.c`, `engine/quake2/server_ein.c`, `engine/quake2/build.sh`             | Quake II's network, its dedicated server's platform layer, and the build of the game and the server.                                                                           |
+| `assets/icon.svg`                                                                             | The Q of Quake, drawn for the module: the sidebar's and the dashboard card's icon, filled with the text colour.                                                                |
+| `assets/quake.js`, `assets/quake.wasm`, `assets/quake2.js`, `assets/quake2.wasm`              | The built engines, committed, since a module is installed as its repository stands. `assets/quake-build.txt` and `assets/quake2-build.txt` say what built them.                |
+| `assets/quake-server.*`, `assets/quake2-server.*`                                             | The built dedicated servers, which the quake-server service runs.                                                                                                              |
+| `scripts/build-engine.sh`                                                                     | Rebuilds both engines into `assets/`.                                                                                                                                          |
+| `test/smoke.mjs`                                                                              | Signs in with headless Chrome, plays a little, saves screenshots.                                                                                                              |
+| `deno.jsonc`                                                                                  | Generated from `mod.json` by core's `deno task sync:modules`, for type-checking in a core checkout.                                                                            |
 
 ## Building the engine
 
@@ -200,11 +264,13 @@ Needs only docker with buildx, or podman; nothing is installed on the host.
     scripts/build-engine.sh
 
 It builds `engine/Containerfile` and `engine/quake2/Containerfile` and exports
-the results into `assets/` with the local exporter. The source of the committed
+the results into `assets/` with the local exporter: each engine twice, the game
+and its dedicated server (`engine/build.sh`, `engine/quake2/build.sh`). The source of the committed
 `assets/quake.wasm` is quakegeneric at the commit `engine/Containerfile` pins,
 with `engine/resolution.patch`, `engine/files.patch` and
-`engine/long-strings.patch` applied, id Software's `snd_dma.c`, `snd_mem.c` and
-`snd_mix.c` from WinQuake at the commit it pins, and the `engine/` files added.
+`engine/long-strings.patch` applied, id Software's `snd_dma.c`, `snd_mem.c`,
+`snd_mix.c` and `net_dgrm.c` from WinQuake at the commit it pins, with
+`engine/connect.patch` applied, and the `engine/` files added.
 The source of `assets/quake2.wasm` is quake2generic at the commit
 `engine/quake2/Containerfile` pins, with `engine/quake2/signatures.patch`,
 `engine/quake2/volume.patch` and `engine/quake2/files.patch` applied and the
@@ -229,7 +295,7 @@ and Node 22 or later:
 GPL-2.0-or-later, as quakegeneric, quake2generic and id's source are: see
 `LICENSE`. Quake's and Quake II's source is © id Software and the quakegeneric
 and quake2generic authors; their notices are in the source the builds fetch.
-`assets/quake.js` and `assets/quake2.js` are Emscripten's runtime, under the MIT
+`assets/quake.js`, `assets/quake2.js` and the servers' `.js` are Emscripten's runtime, under the MIT
 licence. `assets/icon.svg` is the module's own drawing of Quake's Q, which is id
 Software's trademark. The module fetches, when asked, and does not ship the games: Quake's
 shareware episode is id Software's, under its own shareware licence; Quake II's
