@@ -52,8 +52,8 @@ type EngineModule = {
 type EngineSpec = {
   name: string;
   folder: string;
-  /** The command line, without or with sound. */
-  args(sound: boolean): string[];
+  /** The command line, without or with sound; `first` when the player has no config.cfg of their own. */
+  args(sound: boolean, first: boolean): string[];
   /** The commands after the game's configuration: `first` when the player has no config.cfg of their own. */
   commands(first: boolean): string[];
   start(engine: EngineModule, argc: number, argv: number, commands: number): void;
@@ -69,23 +69,32 @@ const ENGINES: Record<EngineName, EngineSpec> = {
     name: 'quake',
     folder: '/id1',
     args: (sound) => ['quake', ...(sound ? [] : ['-nosound'])],
-    // Mouse look, as players have played since, which Quake does not keep in config.cfg.
-    commands: (first) => ['+mlook', ...(first ? WASD : [])],
+    // Mouse look, as players have played since, which Quake does not keep in config.cfg. Always Run is
+    // the speeds Quake's Options set.
+    commands: (first) => ['+mlook', ...(first ? [...WASD, 'cl_forwardspeed 400', 'cl_backspeed 400', 'crosshair 1'] : [])],
     start: (engine, argc, argv, commands) => engine._ein_start(argc, argv, HEAP, commands),
     // Quake keeps the name as _cl_name; "player" is what everyone starts with.
-    playerName: (config) => /^_cl_name "(.*)"/m.exec(config)?.[1].replace(/^player$/, '') || undefined,
+    playerName: (config) => /^_cl_name "(.*)"/m.exec(config)?.[1].replace(/^player$/i, '') || undefined,
   },
   quake2: {
     name: 'quake2',
     folder: '/baseq2',
-    // 640 by 480 (sw_mode 3), as Quake's frame, unless the player's config.cfg has another mode; and
-    // without the frame rate quake2generic draws in the corner (cg_drawfps, which no config.cfg keeps).
-    args: (sound) => ['quake2', '+set', 'sw_mode', '3', '+set', 'cg_drawfps', '0', ...(sound ? [] : ['+set', 's_initsound', '0'])],
+    // 640 by 480 (sw_mode 3), as Quake's frame, for a player without a config.cfg, which keeps the mode
+    // the Video menu sets; a mode on the command line would be set again after config.cfg. And without
+    // the frame rate quake2generic draws in the corner (cg_drawfps, which no config.cfg keeps).
+    args: (sound, first) => [
+      'quake2',
+      ...(first ? ['+set', 'sw_mode', '3'] : []),
+      '+set',
+      'cg_drawfps',
+      '0',
+      ...(sound ? [] : ['+set', 's_initsound', '0']),
+    ],
     // Free look is Quake 2's mouse look, and config.cfg keeps it.
-    commands: (first) => first ? [...WASD, 'set freelook 1'] : [],
+    commands: (first) => first ? [...WASD, 'set freelook 1', 'set cl_run 1', 'set crosshair 1'] : [],
     start: (engine, argc, argv, commands) => engine._ein_start(argc, argv, commands),
-    // "unnamed" is what everyone starts with.
-    playerName: (config) => /^set name "(.*)"/m.exec(config)?.[1].replace(/^unnamed$/, '') || undefined,
+    // "unnamed" is what everyone starts with, or "Player", which the game's default.cfg sets.
+    playerName: (config) => /^set name "(.*)"/m.exec(config)?.[1].replace(/^(unnamed|player)$/i, '') || undefined,
   },
 };
 
@@ -112,8 +121,8 @@ export type Engine = {
   disconnect(): void;
 };
 
-/** A server to play on: the network to it, the address to connect to, and the name to play under when the player has none of their own. */
-export type Online = { network: Network; address: string; name: string };
+/** A server to play on: the network to it and the address to connect to. */
+export type Online = { network: Network; address: string };
 
 /** Whether `error`, thrown by `tick`, is the game ending on Quit: Emscripten's `ExitStatus` for exit(0). */
 export function quitted(error: unknown): boolean {
@@ -134,18 +143,20 @@ async function fetchFile(path: string): Promise<Uint8Array> {
  * player's saves and config.cfg of `game`, which the game's Load menu lists and its start-up reads,
  * and `onKeep` hears each save or config.cfg the game writes.
  *
- * With `online` the game connects to a server once it has started, through `online.network`.
+ * A player whose config.cfg has no name of their own plays under `name`, their account's. With
+ * `online` the game connects to a server once it has started, through `online.network`.
  *
  * The glue is imported from a URL held in a variable, so core's bundler leaves it alone and the
  * browser loads it at runtime. The wasm is fetched here and instantiated from its bytes, so how
  * `/file/` labels a `.wasm` does not matter.
  */
-export async function startEngine({ game, sound, log, kept = [], onKeep, online }: {
+export async function startEngine({ game, sound, log, kept = [], onKeep, name, online }: {
   game: Game;
   sound?: Sound;
   log: (line: string) => void;
   kept?: Kept[];
   onKeep?: (written: Written) => void;
+  name?: string;
   online?: Online;
 }): Promise<Engine> {
   const spec = ENGINES[game.engine];
@@ -192,18 +203,15 @@ export async function startEngine({ game, sound, log, kept = [], onKeep, online 
     engine.FS.writeFile(at, file.data);
   }
 
-  const args = spec.args(!!sound);
+  const config = kept.find((file) => file.name === 'config.cfg');
+  const args = spec.args(!!sound, !config);
   const argv = engine._malloc(args.length * 4);
   args.forEach((arg, i) => {
     engine.HEAPU32[(argv >> 2) + i] = engine.stringToNewUTF8(arg);
   });
-  const config = kept.find((file) => file.name === 'config.cfg');
   const commands = spec.commands(!config);
-  if (online) {
-    // Someone without a name of their own plays under their account's.
-    if (!spec.playerName(config ? new TextDecoder().decode(config.data) : '')) commands.push(`name "${online.name.replace(/"/g, '')}"`);
-    commands.push(`connect ${online.address}`);
-  }
+  if (name && !spec.playerName(config ? new TextDecoder().decode(config.data) : '')) commands.push(`name "${name.replace(/"/g, '')}"`);
+  if (online) commands.push(`connect ${online.address}`);
   if (sound) engine._ein_audio_rate(sound.context.sampleRate);
   spec.start(engine, args.length, argv, engine.stringToNewUTF8(commands.join('\n') + '\n'));
 

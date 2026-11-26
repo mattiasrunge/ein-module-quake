@@ -25,7 +25,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { titlePicture } from '../quake/conback.ts';
 import { type Engine, quitted, startEngine } from '../quake/engine.ts';
 import { deleteGame, ENGINE_TITLES, fetchGame, type Game, GAMES, listGames, type Offer, OFFERS } from '../quake/games.ts';
-import { K_MWHEELDOWN, K_MWHEELUP, mouseKey, quakeKey } from '../quake/keys.ts';
+import { mouseKey, quakeKey, WHEEL } from '../quake/keys.ts';
 import { DEFAULT_PLAYERS, defaultMap, MAX_PLAYERS } from '../../lib/games.ts';
 import { useGameLoop } from '../quake/loop.ts';
 import {
@@ -243,7 +243,9 @@ export default function Quake() {
         ...(folder
           ? { onKeep: keeper(folder, (error) => notify({ message: `The game was not saved: ${error instanceof Error ? error.message : String(error)}`, color: 'red' })) }
           : {}),
-        ...(online && seat ? { online: { network: online.network, address: seat.address, name: username ?? 'player' } } : {}),
+        // Someone without a name of their own in the game plays under their account's.
+        ...(username ? { name: username } : {}),
+        ...(online && seat ? { online: { network: online.network, address: seat.address } } : {}),
         log: (line) => {
           log.current = [...log.current.slice(-(LOG_TAIL - 1)), line];
           console.info(`[${game.engine}] ${line}`);
@@ -391,6 +393,7 @@ export default function Quake() {
   useEffect(() => {
     if (state.kind !== 'running') return;
     const node = frame.current;
+    const wheel = WHEEL[state.game.engine];
     const held = new Set<number>();
     const captured = () => !!node && document.pointerLockElement === node;
     const focused = () => captured() || (!!node && node.contains(document.activeElement));
@@ -432,7 +435,7 @@ export default function Quake() {
     const onWheel = (event: WheelEvent) => {
       if (!captured() || event.deltaY === 0) return;
       event.preventDefault();
-      const key = event.deltaY < 0 ? K_MWHEELUP : K_MWHEELDOWN;
+      const key = event.deltaY < 0 ? wheel.up : wheel.down;
       engine.current?.key(true, key);
       engine.current?.key(false, key);
     };

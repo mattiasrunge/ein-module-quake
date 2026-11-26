@@ -4,6 +4,8 @@
  * makes of it.
  */
 
+import type { EngineName } from '../../lib/api.ts';
+
 const K_TAB = 9;
 const K_ENTER = 13;
 const K_ESCAPE = 27;
@@ -27,8 +29,12 @@ const K_PAUSE = 255;
 export const K_MOUSE1 = 200;
 export const K_MOUSE2 = 201;
 export const K_MOUSE3 = 202;
-export const K_MWHEELUP = 239;
-export const K_MWHEELDOWN = 240;
+
+/** The mouse wheel turned up and down, which Quake II numbers the other way round from Quake (`keys.h`). */
+export const WHEEL: Record<EngineName, { up: number; down: number }> = {
+  quake: { up: 239, down: 240 },
+  quake2: { up: 240, down: 239 },
+};
 
 /** Keys that are not a character. */
 const SPECIAL: Record<string, number> = {

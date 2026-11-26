@@ -68,9 +68,12 @@ Quit in the game's menu goes back to the list.
 
 A player who has played before starts with their own settings: the game's
 **Options** and the keys bound in its controls menu are kept (below), and the
-WASD keys and free look are only the first settings of a player who has none
-yet. In Quake II, **Video** sets the frame's size; the page shows any of them at
-4:3.
+WASD keys, free look, always run and the crosshair are only the first settings
+of a player who has none yet. Until you choose a name in the game's
+**Multiplayer** menu, you play under your account's. Quake's frame is always 640
+by 480. In Quake II, **Video** sets the frame's size, from 320 by 240 to 1600 by
+1200, once you choose **apply**, and the game keeps it; the page shows any of
+them at 4:3.
 
 ## Play together
 
