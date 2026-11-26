@@ -1,0 +1,37 @@
+diff --git a/source/menu.c b/source/menu.c
+index 137a28a..6b7e295 100644
+--- a/source/menu.c
++++ b/source/menu.c
+@@ -604,11 +604,11 @@ int	m_multiplayer_cursor;
+ #define	MULTIPLAYER_ITEMS	3
+ 
+ 
++// Games are joined and started from EiN's page, so Multiplayer is the player's setup alone: the
++// menu of joining, starting and setting up is one picture, mp_menu.lmp, and is not shown.
+ void M_Menu_MultiPlayer_f (void)
+ {
+-	key_dest = key_menu;
+-	m_state = m_multiplayer;
+-	m_entersound = true;
++	M_Menu_Setup_f ();
+ }
+ 
+ 
+@@ -745,7 +745,7 @@ void M_Setup_Key (int k)
+ 	switch (k)
+ 	{
+ 	case K_ESCAPE:
+-		M_Menu_MultiPlayer_f ();
++		M_Menu_Main_f ();
+ 		break;
+ 
+ 	case K_UPARROW:
+@@ -797,7 +797,7 @@ forward:
+ 		if (setup_top != setup_oldtop || setup_bottom != setup_oldbottom)
+ 			Cbuf_AddText( va ("color %i %i\n", setup_top, setup_bottom) );
+ 		m_entersound = true;
+-		M_Menu_MultiPlayer_f ();
++		M_Menu_Main_f ();
+ 		break;
+ 
+ 	case K_BACKSPACE:

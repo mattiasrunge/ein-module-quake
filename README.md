@@ -82,6 +82,10 @@ each and their frags, and **Join** beside each; the one who hosted a game, or an
 administrator, has **Stop**. A game nobody has played in for five minutes stops
 by itself.
 
+The game's own **Multiplayer** menu sets who you are in a game: your name, and
+your colours in Quake or your model and skin in Quake II. Joining and starting a
+game are the page's, so that menu no longer offers them.
+
 The game's server runs on EiN, not in anyone's browser: the module's
 `quake-server` service runs each hosted game as Quake's or Quake II's dedicated
 server, built for it beside the game (`assets/quake-server.wasm`,
@@ -242,6 +246,7 @@ music** turns the music on and off.
 | `engine/files.patch`                                                                          | Tells the page when Quake has saved a game or written its settings, so it can keep them.                                                                                       |
 | `engine/long-strings.patch`                                                                   | Saves strings longer than 256 bytes, as LibreQuake's are, instead of overrunning the buffer they were written into.                                                            |
 | `engine/net_ein.c`, `engine/connect.patch`                                                    | Quake's network: the loopback, and id's datagram driver over the page's or the worker's; connecting without waiting in a loop for answers.                                     |
+| `engine/menu.patch`                                                                           | Makes the main menu's Multiplayer the player's setup, without the menu of joining and starting a game, which the page does.                                                    |
 | `engine/server_ein.c`, `engine/build.sh`                                                      | Quake's dedicated server's platform layer, and the build of the game and the server.                                                                                           |
 | `engine/quake2/quake2generic_ein.c`                                                           | quake2generic's platform layer for the page: the frame at the video mode's size, keys, mouse and start-up.                                                                     |
 | `engine/quake2/snd_ein.c`, `engine/quake2/cd_ein.c`                                           | Quake II's sound card and CD player, as Quake's.                                                                                                                               |
@@ -249,6 +254,7 @@ music** turns the music on and off.
 | `engine/quake2/signatures.patch`                                                              | Gives two of the game code's functions the parameters they are called with, which WebAssembly holds them to.                                                                   |
 | `engine/quake2/volume.patch`                                                                  | The mixer's volume of an 8-bit sound, which quake2generic had made silent.                                                                                                     |
 | `engine/quake2/files.patch`                                                                   | Lists a folder's files, which saving a game needs, and tells the page when Quake II has saved a game or written its settings.                                                  |
+| `engine/quake2/menu.patch`                                                                    | Makes the main menu's Multiplayer the player setup, without the menus of joining and starting a server, which the page does.                                                   |
 | `engine/quake2/net_ein.c`, `engine/quake2/server_ein.c`, `engine/quake2/build.sh`             | Quake II's network, its dedicated server's platform layer, and the build of the game and the server.                                                                           |
 | `assets/icon.svg`                                                                             | The Q of Quake, drawn for the module: the sidebar's and the dashboard card's icon, filled with the text colour.                                                                |
 | `assets/quake.js`, `assets/quake.wasm`, `assets/quake2.js`, `assets/quake2.wasm`              | The built engines, committed, since a module is installed as its repository stands. `assets/quake-build.txt` and `assets/quake2-build.txt` say what built them.                |
@@ -270,11 +276,12 @@ and its dedicated server (`engine/build.sh`, `engine/quake2/build.sh`). The sour
 with `engine/resolution.patch`, `engine/files.patch` and
 `engine/long-strings.patch` applied, id Software's `snd_dma.c`, `snd_mem.c`,
 `snd_mix.c` and `net_dgrm.c` from WinQuake at the commit it pins, with
-`engine/connect.patch` applied, and the `engine/` files added.
+`engine/connect.patch` and `engine/menu.patch` applied, and the `engine/` files
+added.
 The source of `assets/quake2.wasm` is quake2generic at the commit
 `engine/quake2/Containerfile` pins, with `engine/quake2/signatures.patch`,
-`engine/quake2/volume.patch` and `engine/quake2/files.patch` applied and the
-`engine/quake2/` files added.
+`engine/quake2/volume.patch`, `engine/quake2/files.patch` and
+`engine/quake2/menu.patch` applied and the `engine/quake2/` files added.
 
 ## Developing
 
