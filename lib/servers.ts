@@ -21,13 +21,23 @@ export const seatOut = (id: string, seat: string): string => `${seatPath(id, sea
 /** Sticky and open to every account, as `/tmp` is: anyone makes a folder in it, and only its owner (or the administrator) removes it. */
 export const SHARED_FOLDER_MODE = 0o1777;
 
-/** A server's `server.json`, or undefined when it is not there or cannot be read. */
+/** How long a reader waits before it reads a `server.json` again that it caught while it was written. */
+const REREAD_MS = 150;
+
+/**
+ * A server's `server.json`, or undefined when it is not there or cannot be read. Writing it empties
+ * it first, so one read empty or cut short is read once more a moment later.
+ */
 export async function readServer(cmd: Command, id: string): Promise<ServerInfo | undefined> {
-  try {
-    return JSON.parse(new TextDecoder().decode(await readWhole(cmd, serverFile(id)))) as ServerInfo;
-  } catch {
-    return undefined;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, REREAD_MS));
+    try {
+      return JSON.parse(new TextDecoder().decode(await readWhole(cmd, serverFile(id)))) as ServerInfo;
+    } catch {
+      if (!(await cmd.sys.vfs.exists(cmd.access, serverFile(id)).catch(() => false))) return undefined;
+    }
   }
+  return undefined;
 }
 
 /** Write a server's `server.json`, made when it is not there yet. */

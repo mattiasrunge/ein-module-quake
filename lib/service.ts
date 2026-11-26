@@ -140,7 +140,8 @@ export class QuakeService {
       const info = await readServer(this.cmd, id);
       const running = this.#games.get(id);
       if (running) {
-        if (!info || info.state === 'stopping') await this.#stop(id);
+        // A server.json read while it is written again (a player came or left) is empty: only `stopping`, or the folder gone, stops the game.
+        if (info?.state === 'stopping') await this.#stop(id);
         else if (running.started && Date.now() - running.playedAt > EMPTY_MS) {
           await this.#log(`${id}: nobody has played for ${EMPTY_MS / 60_000} minutes`);
           await this.#stop(id);
