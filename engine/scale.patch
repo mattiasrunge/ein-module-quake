@@ -1,0 +1,1059 @@
+diff --git a/source/console.c b/source/console.c
+index 48328c9..bf124b8 100644
+--- a/source/console.c
++++ b/source/console.c
+@@ -149,7 +149,7 @@ void Con_CheckResize (void)
+ 	int		i, j, width, oldwidth, oldtotallines, numlines, numchars;
+ 	char	tbuf[CON_TEXTSIZE];
+ 
+-	width = (vid.width >> 3) - 2;
++	width = (vid.conwidth >> 3) - 2;
+ 
+ 	if (width == con_linewidth)
+ 		return;
+diff --git a/source/draw.c b/source/draw.c
+index 7efa425..0ee25d1 100644
+--- a/source/draw.c
++++ b/source/draw.c
+@@ -23,15 +23,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ 
+ #include "quakedef.h"
+ 
+-typedef struct {
+-	vrect_t	rect;
+-	int		width;
+-	int		height;
+-	byte	*ptexbytes;
+-	int		rowbytes;
+-} rectdesc_t;
+-
+-static rectdesc_t	r_rectdesc;
++// The 2D's scale: the menus, the status bar and the console are drawn on a
++// screen of vid.conwidth by vid.conheight, each of whose pixels is a
++// draw_scale by draw_scale block of the frame (vid_null.c sets them).
++int			draw_scale = 1;
+ 
+ byte		*draw_chars;				// 8*8 graphic characters
+ qpic_t		*draw_disc;
+@@ -114,11 +109,36 @@ void Draw_Init (void)
+ 	draw_chars = W_GetLumpName ("conchars");
+ 	draw_disc = W_GetLumpName ("disc");
+ 	draw_backtile = W_GetLumpName ("backtile");
++}
++
++/*
++=============
++Draw_Block
+ 
+-	r_rectdesc.width = draw_backtile->width;
+-	r_rectdesc.height = draw_backtile->height;
+-	r_rectdesc.ptexbytes = draw_backtile->data;
+-	r_rectdesc.rowbytes = draw_backtile->width;
++Draws `width` by `height` of a picture's pixels, `rowbytes` apart, at (x, y)
++on the 2D screen, each as a draw_scale by draw_scale block of the frame: all
++of them, or with `transparent` not -1 all but those of that colour, through
++`translation` when there is one.
++=============
++*/
++static void Draw_Block (int x, int y, int width, int height, byte *source, int rowbytes, int transparent, byte *translation)
++{
++	byte	*dest, *row;
++	int		u, v, pixel;
++	int		scale = draw_scale;
++
++	dest = vid.buffer + y * scale * vid.rowbytes + x * scale;
++	for (v = 0 ; v < height * scale ; v++, dest += vid.rowbytes)
++	{
++		row = source + (v / scale) * rowbytes;
++		for (u = 0 ; u < width * scale ; u++)
++		{
++			pixel = row[u / scale];
++			if (pixel == transparent)
++				continue;
++			dest[u] = translation ? translation[pixel] : pixel;
++		}
++	}
+ }
+ 
+ 
+@@ -134,9 +154,7 @@ smoothly scrolled off.
+ */
+ void Draw_Character (int x, int y, int num)
+ {
+-	byte			*dest;
+ 	byte			*source;
+-	unsigned short	*pusdest;
+ 	int				drawline;	
+ 	int				row, col;
+ 
+@@ -144,13 +162,8 @@ void Draw_Character (int x, int y, int num)
+ 	
+ 	if (y <= -8)
+ 		return;			// totally off screen
+-
+-#ifdef PARANOID
+-	if (y > vid.height - 8 || x < 0 || x > vid.width - 8)
+-		Sys_Error ("Con_DrawCharacter: (%i, %i)", x, y);
+-	if (num < 0 || num > 255)
+-		Sys_Error ("Con_DrawCharacter: char %i", num);
+-#endif
++	if (y > vid.conheight - 8 || x < 0 || x > vid.conwidth - 8)
++		return;
+ 
+ 	row = num>>4;
+ 	col = num&15;
+@@ -165,29 +178,7 @@ void Draw_Character (int x, int y, int num)
+ 	else
+ 		drawline = 8;
+ 
+-	dest = vid.conbuffer + y*vid.conrowbytes + x;
+-	
+-	while (drawline--)
+-	{
+-		if (source[0])
+-			dest[0] = source[0];
+-		if (source[1])
+-			dest[1] = source[1];
+-		if (source[2])
+-			dest[2] = source[2];
+-		if (source[3])
+-			dest[3] = source[3];
+-		if (source[4])
+-			dest[4] = source[4];
+-		if (source[5])
+-			dest[5] = source[5];
+-		if (source[6])
+-			dest[6] = source[6];
+-		if (source[7])
+-			dest[7] = source[7];
+-		source += 128;
+-		dest += vid.conrowbytes;
+-	}
++	Draw_Block (x, y, 8, drawline, source, 128, 0, NULL);
+ }
+ 
+ /*
+@@ -255,28 +246,15 @@ Draw_Pic
+ */
+ void Draw_Pic (int x, int y, qpic_t *pic)
+ {
+-	byte			*dest, *source;
+-	unsigned short	*pusdest;
+-	int				v, u;
+-
+ 	if ((x < 0) ||
+-		(x + pic->width > vid.width) ||
++		(x + pic->width > vid.conwidth) ||
+ 		(y < 0) ||
+-		(y + pic->height > vid.height))
++		(y + pic->height > vid.conheight))
+ 	{
+ 		Sys_Error ("Draw_Pic: bad coordinates");
+ 	}
+ 
+-	source = pic->data;
+-
+-	dest = vid.buffer + y * vid.rowbytes + x;
+-
+-	for (v=0 ; v<pic->height ; v++)
+-	{
+-			Q_memcpy (dest, source, pic->width);
+-			dest += vid.rowbytes;
+-			source += pic->width;
+-	}
++	Draw_Block (x, y, pic->width, pic->height, pic->data, pic->width, -1, NULL);
+ }
+ 
+ 
+@@ -287,60 +265,13 @@ Draw_TransPic
+ */
+ void Draw_TransPic (int x, int y, qpic_t *pic)
+ {
+-	byte	*dest, *source, tbyte;
+-	unsigned short	*pusdest;
+-	int				v, u;
+-
+-	if (x < 0 || (unsigned)(x + pic->width) > vid.width || y < 0 ||
+-		 (unsigned)(y + pic->height) > vid.height)
++	if (x < 0 || (unsigned)(x + pic->width) > vid.conwidth || y < 0 ||
++		 (unsigned)(y + pic->height) > vid.conheight)
+ 	{
+ 		Sys_Error ("Draw_TransPic: bad coordinates");
+ 	}
+-		
+-	source = pic->data;
+-
+-	dest = vid.buffer + y * vid.rowbytes + x;
+-
+-	if (pic->width & 7)
+-	{	// general
+-		for (v=0 ; v<pic->height ; v++)
+-		{
+-			for (u=0 ; u<pic->width ; u++)
+-				if ( (tbyte=source[u]) != TRANSPARENT_COLOR)
+-					dest[u] = tbyte;
+-
+-			dest += vid.rowbytes;
+-			source += pic->width;
+-		}
+-	}
+-	else
+-	{	// unwound
+-		for (v=0 ; v<pic->height ; v++)
+-		{
+-			for (u=0 ; u<pic->width ; u+=8)
+-			{
+-				if ( (tbyte=source[u]) != TRANSPARENT_COLOR)
+-					dest[u] = tbyte;
+-				if ( (tbyte=source[u+1]) != TRANSPARENT_COLOR)
+-					dest[u+1] = tbyte;
+-				if ( (tbyte=source[u+2]) != TRANSPARENT_COLOR)
+-					dest[u+2] = tbyte;
+-				if ( (tbyte=source[u+3]) != TRANSPARENT_COLOR)
+-					dest[u+3] = tbyte;
+-				if ( (tbyte=source[u+4]) != TRANSPARENT_COLOR)
+-					dest[u+4] = tbyte;
+-				if ( (tbyte=source[u+5]) != TRANSPARENT_COLOR)
+-					dest[u+5] = tbyte;
+-				if ( (tbyte=source[u+6]) != TRANSPARENT_COLOR)
+-					dest[u+6] = tbyte;
+-				if ( (tbyte=source[u+7]) != TRANSPARENT_COLOR)
+-					dest[u+7] = tbyte;
+-			}
+-			dest += vid.rowbytes;
+-			source += pic->width;
+-		}
+-	}
+ 
++	Draw_Block (x, y, pic->width, pic->height, pic->data, pic->width, TRANSPARENT_COLOR, NULL);
+ }
+ 
+ 
+@@ -351,59 +282,13 @@ Draw_TransPicTranslate
+ */
+ void Draw_TransPicTranslate (int x, int y, qpic_t *pic, byte *translation)
+ {
+-	byte	*dest, *source, tbyte;
+-	unsigned short	*pusdest;
+-	int				v, u;
+-
+-	if (x < 0 || (unsigned)(x + pic->width) > vid.width || y < 0 ||
+-		 (unsigned)(y + pic->height) > vid.height)
++	if (x < 0 || (unsigned)(x + pic->width) > vid.conwidth || y < 0 ||
++		 (unsigned)(y + pic->height) > vid.conheight)
+ 	{
+ 		Sys_Error ("Draw_TransPic: bad coordinates");
+ 	}
+-		
+-	source = pic->data;
+-
+-	dest = vid.buffer + y * vid.rowbytes + x;
+-
+-	if (pic->width & 7)
+-	{	// general
+-		for (v=0 ; v<pic->height ; v++)
+-		{
+-			for (u=0 ; u<pic->width ; u++)
+-				if ( (tbyte=source[u]) != TRANSPARENT_COLOR)
+-					dest[u] = translation[tbyte];
+ 
+-			dest += vid.rowbytes;
+-			source += pic->width;
+-		}
+-	}
+-	else
+-	{	// unwound
+-		for (v=0 ; v<pic->height ; v++)
+-		{
+-			for (u=0 ; u<pic->width ; u+=8)
+-			{
+-				if ( (tbyte=source[u]) != TRANSPARENT_COLOR)
+-					dest[u] = translation[tbyte];
+-				if ( (tbyte=source[u+1]) != TRANSPARENT_COLOR)
+-					dest[u+1] = translation[tbyte];
+-				if ( (tbyte=source[u+2]) != TRANSPARENT_COLOR)
+-					dest[u+2] = translation[tbyte];
+-				if ( (tbyte=source[u+3]) != TRANSPARENT_COLOR)
+-					dest[u+3] = translation[tbyte];
+-				if ( (tbyte=source[u+4]) != TRANSPARENT_COLOR)
+-					dest[u+4] = translation[tbyte];
+-				if ( (tbyte=source[u+5]) != TRANSPARENT_COLOR)
+-					dest[u+5] = translation[tbyte];
+-				if ( (tbyte=source[u+6]) != TRANSPARENT_COLOR)
+-					dest[u+6] = translation[tbyte];
+-				if ( (tbyte=source[u+7]) != TRANSPARENT_COLOR)
+-					dest[u+7] = translation[tbyte];
+-			}
+-			dest += vid.rowbytes;
+-			source += pic->width;
+-		}
+-	}
++	Draw_Block (x, y, pic->width, pic->height, pic->data, pic->width, TRANSPARENT_COLOR, translation);
+ }
+ 
+ 
+@@ -439,9 +324,8 @@ Draw_ConsoleBackground
+ */
+ void Draw_ConsoleBackground (int lines)
+ {
+-	int				x, y, v;
++	int				x, y, v, pixels;
+ 	byte			*src, *dest;
+-	unsigned short	*pusdest;
+ 	int				f, fstep;
+ 	qpic_t			*conback;
+ 	char			ver[100];
+@@ -455,145 +339,49 @@ void Draw_ConsoleBackground (int lines)
+ 	for (x=0 ; x<strlen(ver) ; x++)
+ 		Draw_CharToConback (ver[x], dest+(x<<3));
+ 	
+-// draw the pic
+-	dest = vid.conbuffer;
++// draw the pic across the frame, down to the console's edge: the whole frame
++// for a full console, which takes the rows the 2D screen leaves at its foot
++	pixels = lines >= vid.conheight ? vid.height : lines * draw_scale;
++	fstep = 320*0x10000/vid.width;
++	dest = vid.buffer;
+ 
+-	for (y=0 ; y<lines ; y++, dest += vid.conrowbytes)
++	for (y=0 ; y<pixels ; y++, dest += vid.rowbytes)
+ 	{
+-		v = (vid.conheight - lines + y)*200/vid.conheight;
++		v = (vid.height - pixels + y)*200/vid.height;
+ 		src = conback->data + v*320;
+-		if (vid.conwidth == 320)
+-			memcpy (dest, src, vid.conwidth);
+-		else
+-		{
+-			f = 0;
+-			fstep = 320*0x10000/vid.conwidth;
+-			for (x=0 ; x<vid.conwidth ; x+=4)
+-			{
+-				dest[x] = src[f>>16];
+-				f += fstep;
+-				dest[x+1] = src[f>>16];
+-				f += fstep;
+-				dest[x+2] = src[f>>16];
+-				f += fstep;
+-				dest[x+3] = src[f>>16];
+-				f += fstep;
+-			}
+-		}
++		f = 0;
++		for (x=0 ; x<vid.width ; x++, f += fstep)
++			dest[x] = src[f>>16];
+ 	}
+ }
+ 
+ 
+-/*
+-==============
+-R_DrawRect
+-==============
+-*/
+-void R_DrawRect (vrect_t *prect, int rowbytes, byte *psrc,
+-	int transparent)
+-{
+-	byte	t;
+-	int		i, j, srcdelta, destdelta;
+-	byte	*pdest;
+-
+-	pdest = vid.buffer + (prect->y * vid.rowbytes) + prect->x;
+-
+-	srcdelta = rowbytes - prect->width;
+-	destdelta = vid.rowbytes - prect->width;
+-
+-	if (transparent)
+-	{
+-		for (i=0 ; i<prect->height ; i++)
+-		{
+-			for (j=0 ; j<prect->width ; j++)
+-			{
+-				t = *psrc;
+-				if (t != TRANSPARENT_COLOR)
+-				{
+-					*pdest = t;
+-				}
+-
+-				psrc++;
+-				pdest++;
+-			}
+-
+-			psrc += srcdelta;
+-			pdest += destdelta;
+-		}
+-	}
+-	else
+-	{
+-		for (i=0 ; i<prect->height ; i++)
+-		{
+-			memcpy (pdest, psrc, prect->width);
+-			psrc += rowbytes;
+-			pdest += vid.rowbytes;
+-		}
+-	}
+-}
+-
+ /*
+ =============
+ Draw_TileClear
+ 
+ This repeats a 64*64 tile graphic to fill the screen around a sized down
+-refresh window.
++refresh window. A box that reaches the 2D screen's right or bottom edge
++fills the frame to its edge, past the pixels the 2D screen leaves there.
+ =============
+ */
+ void Draw_TileClear (int x, int y, int w, int h)
+ {
+-	int				width, height, tileoffsetx, tileoffsety;
+-	byte			*psrc;
+-	vrect_t			vr;
+-
+-	r_rectdesc.rect.x = x;
+-	r_rectdesc.rect.y = y;
+-	r_rectdesc.rect.width = w;
+-	r_rectdesc.rect.height = h;
+-
+-	vr.y = r_rectdesc.rect.y;
+-	height = r_rectdesc.rect.height;
++	byte	*dest, *row;
++	int		u, v, left, top, width, height;
++	int		scale = draw_scale;
+ 
+-	tileoffsety = vr.y % r_rectdesc.height;
++	left = x * scale;
++	top = y * scale;
++	width = x + w >= vid.conwidth ? vid.width - left : w * scale;
++	height = y + h >= vid.conheight ? vid.height - top : h * scale;
+ 
+-	while (height > 0)
++	dest = vid.buffer + top * vid.rowbytes + left;
++	for (v = 0 ; v < height ; v++, dest += vid.rowbytes)
+ 	{
+-		vr.x = r_rectdesc.rect.x;
+-		width = r_rectdesc.rect.width;
+-
+-		if (tileoffsety != 0)
+-			vr.height = r_rectdesc.height - tileoffsety;
+-		else
+-			vr.height = r_rectdesc.height;
+-
+-		if (vr.height > height)
+-			vr.height = height;
+-
+-		tileoffsetx = vr.x % r_rectdesc.width;
+-
+-		while (width > 0)
+-		{
+-			if (tileoffsetx != 0)
+-				vr.width = r_rectdesc.width - tileoffsetx;
+-			else
+-				vr.width = r_rectdesc.width;
+-
+-			if (vr.width > width)
+-				vr.width = width;
+-
+-			psrc = r_rectdesc.ptexbytes +
+-					(tileoffsety * r_rectdesc.rowbytes) + tileoffsetx;
+-
+-			R_DrawRect (&vr, r_rectdesc.rowbytes, psrc, 0);
+-
+-			vr.x += vr.width;
+-			width -= vr.width;
+-			tileoffsetx = 0;	// only the left tile can be left-clipped
+-		}
+-
+-		vr.y += vr.height;
+-		height -= vr.height;
+-		tileoffsety = 0;		// only the top tile can be top-clipped
++		row = draw_backtile->data + ((top + v) / scale % draw_backtile->height) * draw_backtile->width;
++		for (u = 0 ; u < width ; u++)
++			dest[u] = row[(left + u) / scale % draw_backtile->width];
+ 	}
+ }
+ 
+@@ -602,19 +390,17 @@ void Draw_TileClear (int x, int y, int w, int h)
+ =============
+ Draw_Fill
+ 
+-Fills a box of pixels with a single color
++Fills a box of the 2D screen with a single color
+ =============
+ */
+ void Draw_Fill (int x, int y, int w, int h, int c)
+ {
+ 	byte			*dest;
+-	unsigned short	*pusdest;
+-	unsigned		uc;
+ 	int				u, v;
+ 
+-	dest = vid.buffer + y*vid.rowbytes + x;
+-	for (v=0 ; v<h ; v++, dest += vid.rowbytes)
+-		for (u=0 ; u<w ; u++)
++	dest = vid.buffer + y*draw_scale*vid.rowbytes + x*draw_scale;
++	for (v=0 ; v<h*draw_scale ; v++, dest += vid.rowbytes)
++		for (u=0 ; u<w*draw_scale ; u++)
+ 			dest[u] = c;
+ }
+ //=============================================================================
+diff --git a/source/draw.h b/source/draw.h
+index 5055b65..e5ce625 100644
+--- a/source/draw.h
++++ b/source/draw.h
+@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ // to touch the vid buffer
+ 
+ extern	qpic_t		*draw_disc;	// also used on sbar
++extern	int			draw_scale;	// frame pixels to the 2D screen's, across and down
+ 
+ void Draw_Init (void);
+ void Draw_Character (int x, int y, int num);
+diff --git a/source/keys.c b/source/keys.c
+index 6e48ad4..552795d 100644
+--- a/source/keys.c
++++ b/source/keys.c
+@@ -237,8 +237,8 @@ void Key_Console (int key)
+ 	if (key == K_PGUP || key==K_MWHEELUP)
+ 	{
+ 		con_backscroll += 2;
+-		if (con_backscroll > con_totallines - (vid.height>>3) - 1)
+-			con_backscroll = con_totallines - (vid.height>>3) - 1;
++		if (con_backscroll > con_totallines - (vid.conheight>>3) - 1)
++			con_backscroll = con_totallines - (vid.conheight>>3) - 1;
+ 		return;
+ 	}
+ 
+@@ -252,7 +252,7 @@ void Key_Console (int key)
+ 
+ 	if (key == K_HOME)
+ 	{
+-		con_backscroll = con_totallines - (vid.height>>3) - 1;
++		con_backscroll = con_totallines - (vid.conheight>>3) - 1;
+ 		return;
+ 	}
+ 
+diff --git a/source/menu.c b/source/menu.c
+index 137a28a..7fd32d6 100644
+--- a/source/menu.c
++++ b/source/menu.c
+@@ -107,7 +107,7 @@ Draws one solid graphics character
+ */
+ void M_DrawCharacter (int cx, int line, int num)
+ {
+-	Draw_Character ( cx + ((vid.width - 320)>>1), line, num);
++	Draw_Character ( cx + ((vid.conwidth - 320)>>1), line, num);
+ }
+ 
+ void M_Print (int cx, int cy, char *str)
+@@ -132,12 +132,12 @@ void M_PrintWhite (int cx, int cy, char *str)
+ 
+ void M_DrawTransPic (int x, int y, qpic_t *pic)
+ {
+-	Draw_TransPic (x + ((vid.width - 320)>>1), y, pic);
++	Draw_TransPic (x + ((vid.conwidth - 320)>>1), y, pic);
+ }
+ 
+ void M_DrawPic (int x, int y, qpic_t *pic)
+ {
+-	Draw_Pic (x + ((vid.width - 320)>>1), y, pic);
++	Draw_Pic (x + ((vid.conwidth - 320)>>1), y, pic);
+ }
+ 
+ byte identityTable[256];
+@@ -170,7 +170,7 @@ void M_BuildTranslationTable(int top, int bottom)
+ 
+ void M_DrawTransPicTranslate (int x, int y, qpic_t *pic)
+ {
+-	Draw_TransPicTranslate (x + ((vid.width - 320)>>1), y, pic, translationTable);
++	Draw_TransPicTranslate (x + ((vid.conwidth - 320)>>1), y, pic, translationTable);
+ }
+ 
+ 
+@@ -2951,7 +2951,7 @@ void M_Draw (void)
+ 
+ 		if (scr_con_current)
+ 		{
+-			Draw_ConsoleBackground (vid.height);
++			Draw_ConsoleBackground (vid.conheight);
+ 			VID_UnlockBuffer ();
+ 			S_ExtraUpdate ();
+ 			VID_LockBuffer ();
+diff --git a/source/r_misc.c b/source/r_misc.c
+index 2dfdf5b..6f513dd 100644
+--- a/source/r_misc.c
++++ b/source/r_misc.c
+@@ -444,7 +444,7 @@ r_refdef.viewangles[2]=    0;
+ 				vrect.width = vid.width;
+ 				vrect.height = vid.height;
+ 
+-				R_ViewChanged (&vrect, sb_lines, vid.aspect);
++				R_ViewChanged (&vrect, sb_lines * draw_scale, vid.aspect);
+ 			}
+ 			else
+ 			{
+@@ -469,7 +469,7 @@ r_refdef.viewangles[2]=    0;
+ 				vrect.height = (int)h;
+ 
+ 				R_ViewChanged (&vrect,
+-							   (int)((float)sb_lines * (h/(float)vid.height)),
++							   (int)((float)(sb_lines * draw_scale) * (h/(float)vid.height)),
+ 							   vid.aspect * (h / w) *
+ 								 ((float)vid.width / (float)vid.height));
+ 			}
+@@ -481,7 +481,7 @@ r_refdef.viewangles[2]=    0;
+ 			vrect.width = vid.width;
+ 			vrect.height = vid.height;
+ 
+-			R_ViewChanged (&vrect, sb_lines, vid.aspect);
++			R_ViewChanged (&vrect, sb_lines * draw_scale, vid.aspect);
+ 		}
+ 
+ 		r_viewchanged = false;
+diff --git a/source/sbar.c b/source/sbar.c
+index be9ec9c..8b93eb0 100644
+--- a/source/sbar.c
++++ b/source/sbar.c
+@@ -260,9 +260,9 @@ Sbar_DrawPic
+ void Sbar_DrawPic (int x, int y, qpic_t *pic)
+ {
+ 	if (cl.gametype == GAME_DEATHMATCH)
+-		Draw_Pic (x /* + ((vid.width - 320)>>1)*/, y + (vid.height-SBAR_HEIGHT), pic);
++		Draw_Pic (x /* + ((vid.conwidth - 320)>>1)*/, y + (vid.conheight-SBAR_HEIGHT), pic);
+ 	else
+-		Draw_Pic (x + ((vid.width - 320)>>1), y + (vid.height-SBAR_HEIGHT), pic);
++		Draw_Pic (x + ((vid.conwidth - 320)>>1), y + (vid.conheight-SBAR_HEIGHT), pic);
+ }
+ 
+ /*
+@@ -273,9 +273,9 @@ Sbar_DrawTransPic
+ void Sbar_DrawTransPic (int x, int y, qpic_t *pic)
+ {
+ 	if (cl.gametype == GAME_DEATHMATCH)
+-		Draw_TransPic (x /*+ ((vid.width - 320)>>1)*/, y + (vid.height-SBAR_HEIGHT), pic);
++		Draw_TransPic (x /*+ ((vid.conwidth - 320)>>1)*/, y + (vid.conheight-SBAR_HEIGHT), pic);
+ 	else
+-		Draw_TransPic (x + ((vid.width - 320)>>1), y + (vid.height-SBAR_HEIGHT), pic);
++		Draw_TransPic (x + ((vid.conwidth - 320)>>1), y + (vid.conheight-SBAR_HEIGHT), pic);
+ }
+ 
+ /*
+@@ -288,9 +288,9 @@ Draws one solid graphics character
+ void Sbar_DrawCharacter (int x, int y, int num)
+ {
+ 	if (cl.gametype == GAME_DEATHMATCH)
+-		Draw_Character ( x /*+ ((vid.width - 320)>>1) */ + 4 , y + vid.height-SBAR_HEIGHT, num);
++		Draw_Character ( x /*+ ((vid.conwidth - 320)>>1) */ + 4 , y + vid.conheight-SBAR_HEIGHT, num);
+ 	else
+-		Draw_Character ( x + ((vid.width - 320)>>1) + 4 , y + vid.height-SBAR_HEIGHT, num);
++		Draw_Character ( x + ((vid.conwidth - 320)>>1) + 4 , y + vid.conheight-SBAR_HEIGHT, num);
+ }
+ 
+ /*
+@@ -301,9 +301,9 @@ Sbar_DrawString
+ void Sbar_DrawString (int x, int y, char *str)
+ {
+ 	if (cl.gametype == GAME_DEATHMATCH)
+-		Draw_String (x /*+ ((vid.width - 320)>>1)*/, y+ vid.height-SBAR_HEIGHT, str);
++		Draw_String (x /*+ ((vid.conwidth - 320)>>1)*/, y+ vid.conheight-SBAR_HEIGHT, str);
+ 	else
+-		Draw_String (x + ((vid.width - 320)>>1), y+ vid.height-SBAR_HEIGHT, str);
++		Draw_String (x + ((vid.conwidth - 320)>>1), y+ vid.conheight-SBAR_HEIGHT, str);
+ }
+ 
+ /*
+@@ -521,8 +521,8 @@ void Sbar_DrawScoreboard (void)
+ 		top = Sbar_ColorForMap (top);
+ 		bottom = Sbar_ColorForMap (bottom);
+ 
+-		Draw_Fill ( x*8+10 + ((vid.width - 320)>>1), y + vid.height - SBAR_HEIGHT, 28, 4, top);
+-		Draw_Fill ( x*8+10 + ((vid.width - 320)>>1), y+4 + vid.height - SBAR_HEIGHT, 28, 4, bottom);
++		Draw_Fill ( x*8+10 + ((vid.conwidth - 320)>>1), y + vid.conheight - SBAR_HEIGHT, 28, 4, top);
++		Draw_Fill ( x*8+10 + ((vid.conwidth - 320)>>1), y+4 + vid.conheight - SBAR_HEIGHT, 28, 4, bottom);
+ 
+ 	// draw text
+ 		for (j=0 ; j<20 ; j++)
+@@ -781,8 +781,8 @@ void Sbar_DrawFrags (void)
+ 	if (cl.gametype == GAME_DEATHMATCH)
+ 		xofs = 0;
+ 	else
+-		xofs = (vid.width - 320)>>1;
+-	y = vid.height - SBAR_HEIGHT - 23;
++		xofs = (vid.conwidth - 320)>>1;
++	y = vid.conheight - SBAR_HEIGHT - 23;
+ 
+ 	for (i=0 ; i<l ; i++)
+ 	{
+@@ -851,11 +851,11 @@ void Sbar_DrawFace (void)
+ 		if (cl.gametype == GAME_DEATHMATCH)
+ 			xofs = 113;
+ 		else
+-			xofs = ((vid.width - 320)>>1) + 113;
++			xofs = ((vid.conwidth - 320)>>1) + 113;
+ 
+ 		Sbar_DrawPic (112, 0, rsb_teambord);
+-		Draw_Fill (xofs, vid.height-SBAR_HEIGHT+3, 22, 9, top);
+-		Draw_Fill (xofs, vid.height-SBAR_HEIGHT+12, 22, 9, bottom);
++		Draw_Fill (xofs, vid.conheight-SBAR_HEIGHT+3, 22, 9, top);
++		Draw_Fill (xofs, vid.conheight-SBAR_HEIGHT+12, 22, 9, bottom);
+ 
+ 		// draw number
+ 		f = s->frags;
+@@ -925,7 +925,7 @@ Sbar_Draw
+ */
+ void Sbar_Draw (void)
+ {
+-	if (scr_con_current == vid.height)
++	if (scr_con_current == vid.conheight)
+ 		return;		// console is full screen
+ 
+ 	if (sb_updates >= vid.numpages)
+@@ -935,8 +935,8 @@ void Sbar_Draw (void)
+ 
+ 	sb_updates++;
+ 
+-	if (sb_lines && vid.width > 320) 
+-		Draw_TileClear (0, vid.height - sb_lines, vid.width, sb_lines);
++	if (sb_lines && vid.conwidth > 320) 
++		Draw_TileClear (0, vid.conheight - sb_lines, vid.conwidth, sb_lines);
+ 
+ 	if (sb_lines > 24)
+ 	{
+@@ -1037,7 +1037,7 @@ void Sbar_Draw (void)
+ 					  cl.stats[STAT_AMMO] <= 10);
+ 	}
+ 
+-	if (vid.width > 320) {
++	if (vid.conwidth > 320) {
+ 		if (cl.gametype == GAME_DEATHMATCH)
+ 			Sbar_MiniDeathmatchOverlay ();
+ 	}
+@@ -1104,7 +1104,7 @@ void Sbar_DeathmatchOverlay (void)
+ // draw the text
+ 	l = scoreboardlines;
+ 
+-	x = 80 + ((vid.width - 320)>>1);
++	x = 80 + ((vid.conwidth - 320)>>1);
+ 	y = 40;
+ 	for (i=0 ; i<l ; i++)
+ 	{
+@@ -1174,7 +1174,7 @@ void Sbar_MiniDeathmatchOverlay (void)
+ 	scoreboard_t	*s;
+ 	int				numlines;
+ 
+-	if (vid.width < 512 || !sb_lines)
++	if (vid.conwidth < 512 || !sb_lines)
+ 		return;
+ 
+ 	scr_copyeverything = 1;
+@@ -1185,7 +1185,7 @@ void Sbar_MiniDeathmatchOverlay (void)
+ 
+ // draw the text
+ 	l = scoreboardlines;
+-	y = vid.height - sb_lines;
++	y = vid.conheight - sb_lines;
+ 	numlines = sb_lines/8;
+ 	if (numlines < 3)
+ 		return;
+@@ -1206,7 +1206,7 @@ void Sbar_MiniDeathmatchOverlay (void)
+             i = 0;
+ 
+ 	x = 324;
+-	for (/* */; i < scoreboardlines && y < vid.height - 8 ; i++)
++	for (/* */; i < scoreboardlines && y < vid.conheight - 8 ; i++)
+ 	{
+ 		k = fragsort[i];
+ 		s = &cl.scores[k];
+@@ -1319,5 +1319,5 @@ void Sbar_FinaleOverlay (void)
+ 	scr_copyeverything = 1;
+ 
+ 	pic = Draw_CachePic ("gfx/finale.lmp");
+-	Draw_TransPic ( (vid.width-pic->width)/2, 16, pic);
++	Draw_TransPic ( (vid.conwidth-pic->width)/2, 16, pic);
+ }
+diff --git a/source/screen.c b/source/screen.c
+index 4cb97b7..9f67191 100644
+--- a/source/screen.c
++++ b/source/screen.c
+@@ -114,12 +114,12 @@ void SCR_EraseCenterString (void)
+ 	}
+ 
+ 	if (scr_center_lines <= 4)
+-		y = vid.height*0.35;
++		y = vid.conheight*0.35;
+ 	else
+ 		y = 48;
+ 
+ 	scr_copytop = 1;
+-	Draw_TileClear (0, y,vid.width, 8*scr_erase_lines);
++	Draw_TileClear (0, y,vid.conwidth, 8*scr_erase_lines);
+ }
+ 
+ void SCR_DrawCenterString (void)
+@@ -140,7 +140,7 @@ void SCR_DrawCenterString (void)
+ 	start = scr_centerstring;
+ 
+ 	if (scr_center_lines <= 4)
+-		y = vid.height*0.35;
++		y = vid.conheight*0.35;
+ 	else
+ 		y = 48;
+ 
+@@ -150,7 +150,7 @@ void SCR_DrawCenterString (void)
+ 		for (l=0 ; l<40 ; l++)
+ 			if (start[l] == '\n' || !start[l])
+ 				break;
+-		x = (vid.width - l*8)/2;
++		x = (vid.conwidth - l*8)/2;
+ 		for (j=0 ; j<l ; j++, x+=8)
+ 		{
+ 			Draw_Character (x, y, start[j]);	
+@@ -283,15 +283,15 @@ static void SCR_CalcRefdef (void)
+ 	vrect.width = vid.width;
+ 	vrect.height = vid.height;
+ 
+-	R_SetVrect (&vrect, &scr_vrect, sb_lines);
++	R_SetVrect (&vrect, &scr_vrect, sb_lines * draw_scale);
+ 
+ // guard against going from one mode to another that's less than half the
+ // vertical resolution
+-	if (scr_con_current > vid.height)
+-		scr_con_current = vid.height;
++	if (scr_con_current > vid.conheight)
++		scr_con_current = vid.conheight;
+ 
+ // notify the refresh of the change
+-	R_ViewChanged (&vrect, sb_lines, vid.aspect);
++	R_ViewChanged (&vrect, sb_lines * draw_scale, vid.aspect);
+ }
+ 
+ 
+@@ -369,7 +369,7 @@ void SCR_DrawRam (void)
+ 	if (!r_cache_thrash)
+ 		return;
+ 
+-	Draw_Pic (scr_vrect.x+32, scr_vrect.y, scr_ram);
++	Draw_Pic (scr_vrect.x/draw_scale+32, scr_vrect.y/draw_scale, scr_ram);
+ }
+ 
+ /*
+@@ -394,7 +394,7 @@ void SCR_DrawTurtle (void)
+ 	if (count < 3)
+ 		return;
+ 
+-	Draw_Pic (scr_vrect.x, scr_vrect.y, scr_turtle);
++	Draw_Pic (scr_vrect.x/draw_scale, scr_vrect.y/draw_scale, scr_turtle);
+ }
+ 
+ /*
+@@ -409,7 +409,7 @@ void SCR_DrawNet (void)
+ 	if (cls.demoplayback)
+ 		return;
+ 
+-	Draw_Pic (scr_vrect.x+64, scr_vrect.y, scr_net);
++	Draw_Pic (scr_vrect.x/draw_scale+64, scr_vrect.y/draw_scale, scr_net);
+ }
+ 
+ /*
+@@ -428,8 +428,8 @@ void SCR_DrawPause (void)
+ 		return;
+ 
+ 	pic = Draw_CachePic ("gfx/pause.lmp");
+-	Draw_Pic ( (vid.width - pic->width)/2, 
+-		(vid.height - 48 - pic->height)/2, pic);
++	Draw_Pic ( (vid.conwidth - pic->width)/2, 
++		(vid.conheight - 48 - pic->height)/2, pic);
+ }
+ 
+ 
+@@ -447,8 +447,8 @@ void SCR_DrawLoading (void)
+ 		return;
+ 		
+ 	pic = Draw_CachePic ("gfx/loading.lmp");
+-	Draw_Pic ( (vid.width - pic->width)/2, 
+-		(vid.height - 48 - pic->height)/2, pic);
++	Draw_Pic ( (vid.conwidth - pic->width)/2, 
++		(vid.conheight - 48 - pic->height)/2, pic);
+ }
+ 
+ 
+@@ -473,11 +473,11 @@ void SCR_SetUpToDrawConsole (void)
+ 
+ 	if (con_forcedup)
+ 	{
+-		scr_conlines = vid.height;		// full screen
++		scr_conlines = vid.conheight;		// full screen
+ 		scr_con_current = scr_conlines;
+ 	}
+ 	else if (key_dest == key_console)
+-		scr_conlines = vid.height/2;	// half screen
++		scr_conlines = vid.conheight/2;	// half screen
+ 	else
+ 		scr_conlines = 0;				// none visible
+ 	
+@@ -498,13 +498,13 @@ void SCR_SetUpToDrawConsole (void)
+ 	if (clearconsole++ < vid.numpages)
+ 	{
+ 		scr_copytop = 1;
+-		Draw_TileClear (0,(int)scr_con_current,vid.width, vid.height - (int)scr_con_current);
++		Draw_TileClear (0,(int)scr_con_current,vid.conwidth, vid.conheight - (int)scr_con_current);
+ 		Sbar_Changed ();
+ 	}
+ 	else if (clearnotify++ < vid.numpages)
+ 	{
+ 		scr_copytop = 1;
+-		Draw_TileClear (0,0,vid.width, con_notifylines);
++		Draw_TileClear (0,0,vid.conwidth, con_notifylines);
+ 	}
+ 	else
+ 		con_notifylines = 0;
+@@ -730,7 +730,7 @@ void SCR_DrawNotifyString (void)
+ 
+ 	start = scr_notifystring;
+ 
+-	y = vid.height*0.35;
++	y = vid.conheight*0.35;
+ 
+ 	do	
+ 	{
+@@ -738,7 +738,7 @@ void SCR_DrawNotifyString (void)
+ 		for (l=0 ; l<40 ; l++)
+ 			if (start[l] == '\n' || !start[l])
+ 				break;
+-		x = (vid.width - l*8)/2;
++		x = (vid.conwidth - l*8)/2;
+ 		for (j=0 ; j<l ; j++, x+=8)
+ 			Draw_Character (x, y, start[j]);	
+ 			
+@@ -893,7 +893,7 @@ void SCR_UpdateScreen (void)
+ 	if (scr_fullupdate++ < vid.numpages)
+ 	{	// clear the entire screen
+ 		scr_copyeverything = 1;
+-		Draw_TileClear (0,0,vid.width,vid.height);
++		Draw_TileClear (0,0,vid.conwidth,vid.conheight);
+ 		Sbar_Changed ();
+ 	}
+ 
+@@ -979,7 +979,7 @@ void SCR_UpdateScreen (void)
+ 		vrect.x = 0;
+ 		vrect.y = 0;
+ 		vrect.width = vid.width;
+-		vrect.height = vid.height - sb_lines;
++		vrect.height = vid.height - sb_lines * draw_scale;
+ 		vrect.pnext = 0;
+ 	
+ 		VID_Update (&vrect);
+diff --git a/source/vid_null.c b/source/vid_null.c
+index 6841597..d4a1d66 100644
+--- a/source/vid_null.c
++++ b/source/vid_null.c
+@@ -23,6 +23,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ // choose. The mode is vid_width and vid_height, which config.cfg keeps, and
+ // the Options menu's Video Options lists the modes there are. A new mode
+ // takes effect once the frame drawn in the old one is shown.
++//
++// The menus, the status bar and the console keep their size on any frame:
++// they are drawn on a 2D screen of vid.conwidth by vid.conheight, the frame
++// divided by draw_scale, a whole number so their pixels stay square. It is
++// the frame's height in 480s, rounded, unless vid_scale sets it; and never so
++// large that the 2D screen is less than Quake's 320 by 200.
+ 
+ #include "quakedef.h"
+ #include "d_local.h"
+@@ -33,6 +39,7 @@ viddef_t	vid;				// global video state
+ 
+ static cvar_t	vid_width = {"vid_width", "640", true};
+ static cvar_t	vid_height = {"vid_height", "480", true};
++static cvar_t	vid_scale = {"vid_scale", "0", true};
+ 
+ // The frame, its depth buffer and the surface cache, as large as the mode.
+ static byte	*vid_buffer;
+@@ -90,12 +97,30 @@ void	VID_ShiftPalette (unsigned char *palette)
+ 	QG_SetPalette(palette);
+ }
+ 
++/*
++================
++VID_Scale
++
++The 2D's scale on a frame of `width` by `height`.
++================
++*/
++static int VID_Scale (int width, int height)
++{
++	int		scale;
++
++	scale = vid_scale.value >= 1 ? (int) vid_scale.value : (height + 240) / 480;
++	while (scale > 1 && (width / scale < 320 || height / scale < 200))
++		scale--;
++	return scale < 1 ? 1 : scale;
++}
++
+ /*
+ ================
+ VID_SetFrame
+ 
+-Draws from now on into a frame of `width` by `height`. The surfaces cached
+-for the old frame are dropped before their cache is.
++Draws from now on into a frame of `width` by `height`, and the 2D at its
++scale. The surfaces cached for the old frame are dropped before their cache
++is.
+ ================
+ */
+ static void VID_SetFrame (int width, int height)
+@@ -108,8 +133,11 @@ static void VID_SetFrame (int width, int height)
+ 	free (zbuffer);
+ 	free (surfcache);
+ 
+-	vid.width = vid.conwidth = width;
+-	vid.height = vid.conheight = height;
++	vid.width = width;
++	vid.height = height;
++	draw_scale = VID_Scale (width, height);
++	vid.conwidth = width / draw_scale;
++	vid.conheight = height / draw_scale;
+ 	vid_buffer = malloc (width * height);
+ 	vid.buffer = vid.conbuffer = vid_buffer;
+ 	vid.rowbytes = vid.conrowbytes = width;
+@@ -148,7 +176,8 @@ static void VID_AskMode (int width, int height)
+ VID_CheckMode
+ 
+ Takes the mode vid_width and vid_height ask for, once it fits the build;
+-asked for one that does not, they go back to the mode there is.
++asked for one that does not, they go back to the mode there is. A new
++vid_scale takes effect too.
+ ================
+ */
+ static void VID_CheckMode (void)
+@@ -156,7 +185,7 @@ static void VID_CheckMode (void)
+ 	int		width = (int) vid_width.value;
+ 	int		height = (int) vid_height.value;
+ 
+-	if (width == vid.width && height == vid.height)
++	if (width == vid.width && height == vid.height && VID_Scale (width, height) == draw_scale)
+ 		return;
+ 	if (width < 320 || width > QUAKEGENERIC_RES_X || height < 200 || height > QUAKEGENERIC_RES_Y)
+ 	{
+@@ -236,6 +265,7 @@ void	VID_Init (unsigned char *palette)
+ {
+ 	Cvar_RegisterVariable (&vid_width);
+ 	Cvar_RegisterVariable (&vid_height);
++	Cvar_RegisterVariable (&vid_scale);
+ 
+ 	vid.maxwarpwidth = WARP_WIDTH;
+ 	vid.maxwarpheight = WARP_HEIGHT;
+diff --git a/source/view.c b/source/view.c
+index 5ba1f4f..adfabb6 100644
+--- a/source/view.c
++++ b/source/view.c
+@@ -914,8 +914,8 @@ void V_RenderView (void)
+ 	}
+ 
+ 	if (crosshair.value)
+-		Draw_Character (scr_vrect.x + scr_vrect.width/2 + cl_crossx.value, 
+-			scr_vrect.y + scr_vrect.height/2 + cl_crossy.value, '+');
++		Draw_Character ((scr_vrect.x + scr_vrect.width/2)/draw_scale + cl_crossx.value, 
++			(scr_vrect.y + scr_vrect.height/2)/draw_scale + cl_crossy.value, '+');
+ 		
+ }
+ 

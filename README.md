@@ -77,10 +77,15 @@ keeps. In Quake, **Options** > **Video Options** lists the modes, from 320 by 24
 up to 1920 by 1200, 4:3 and widescreen (16:9 and 16:10); **Enter** sets the one
 under the cursor. A wider frame sees more at its sides, not less above and below.
 The console's `vid_width` and `vid_height` set any size up to 1920 by 1200. In
-Quake II, **Video** sets the frame's size, from 320 by 240 to 1600 by 1200, once
-you choose **apply**. The page shows the frame at its shape. The game draws its
-menus and status bar at their own size, so a large frame makes them small, and
-it takes more of the computer to draw.
+Quake II, **Video** sets the frame's size, from the same modes, once you choose
+**apply**. The page shows the frame at its shape. A larger frame takes more of
+the computer to draw.
+
+The menus, the status bar and the console keep about the size they have at 640
+by 480 on any frame: each of their pixels is a block of the frame's, 2 by 2 at
+720 to 1080 lines, 3 by 3 at 1200, so they stay sharp. The console's `vid_scale`
+sets the block's size instead (`vid_scale 3` makes them larger at 1080 lines);
+`vid_scale 0` goes back to the frame's.
 
 ## Play together
 
@@ -255,6 +260,7 @@ music** turns the music on and off.
 | `engine/cd_ein.c`                                                                             | The CD player: tracks and their volume, handed to the page.                                                                                                                  |
 | `engine/Containerfile`                                                                        | Quake's build: pinned emsdk image, quakegeneric commit and id's Quake source, for the sound.                                                                                 |
 | `engine/resolution.patch`                                                                     | Makes the frame's size the mode the player chooses, up to the build's, with Video Options, and a field of view as wide as the frame.                                         |
+| `engine/scale.patch`                                                                          | Draws the menus, the status bar and the console at a scale of the frame's height, so they keep their size.                                                                   |
 | `engine/files.patch`                                                                          | Tells the page when Quake has saved a game or written its settings, so it can keep them.                                                                                     |
 | `engine/long-strings.patch`                                                                   | Saves strings longer than 256 bytes, as LibreQuake's are, instead of overrunning the buffer they were written into.                                                          |
 | `engine/net_ein.c`, `engine/connect.patch`                                                    | Quake's network: the loopback, and id's datagram driver over the page's or the worker's; connecting without waiting in a loop for answers.                                   |
@@ -268,6 +274,8 @@ music** turns the music on and off.
 | `engine/quake2/files.patch`                                                                   | Lists a folder's files, which saving a game needs, and tells the page when Quake II has saved a game or written its settings.                                                |
 | `engine/quake2/menu.patch`                                                                    | Makes the main menu's Multiplayer the player setup, without the menus of joining and starting a server, which the page does.                                                 |
 | `engine/quake2/video.patch`                                                                   | Leaves the driver, fullscreen and windowed mouse out of the Video menu, which would change nothing in the page.                                                              |
+| `engine/quake2/widescreen.patch`                                                              | Adds the widescreen modes up to 1920 by 1200, and a field of view as wide as the frame.                                                                                      |
+| `engine/quake2/scale.patch`                                                                   | Draws the menus, the HUD and the console at a scale of the frame's height, so they keep their size.                                                                          |
 | `engine/quake2/net_ein.c`, `engine/quake2/server_ein.c`, `engine/quake2/build.sh`             | Quake II's network, its dedicated server's platform layer, and the build of the game and the server.                                                                         |
 | `assets/icon.svg`                                                                             | The Q of Quake, drawn for the module: the sidebar's and the dashboard card's icon, filled with the text colour.                                                              |
 | `assets/quake.js`, `assets/quake.wasm`, `assets/quake2.js`, `assets/quake2.wasm`              | The built engines, committed, since a module is installed as its repository stands. `assets/quake-build.txt` and `assets/quake2-build.txt` say what built them.              |
@@ -286,7 +294,7 @@ It builds `engine/Containerfile` and `engine/quake2/Containerfile` and exports
 the results into `assets/` with the local exporter: each engine twice, the game
 and its dedicated server (`engine/build.sh`, `engine/quake2/build.sh`). The source of the committed
 `assets/quake.wasm` is quakegeneric at the commit `engine/Containerfile` pins,
-with `engine/resolution.patch`, `engine/files.patch` and
+with `engine/resolution.patch`, `engine/scale.patch`, `engine/files.patch` and
 `engine/long-strings.patch` applied, id Software's `snd_dma.c`, `snd_mem.c`,
 `snd_mix.c` and `net_dgrm.c` from WinQuake at the commit it pins, with
 `engine/connect.patch` and `engine/menu.patch` applied, and the `engine/` files
@@ -294,7 +302,8 @@ added.
 The source of `assets/quake2.wasm` is quake2generic at the commit
 `engine/quake2/Containerfile` pins, with `engine/quake2/signatures.patch`,
 `engine/quake2/volume.patch`, `engine/quake2/files.patch`,
-`engine/quake2/menu.patch` and `engine/quake2/video.patch` applied and the
+`engine/quake2/menu.patch`, `engine/quake2/video.patch`,
+`engine/quake2/widescreen.patch` and `engine/quake2/scale.patch` applied and the
 `engine/quake2/` files added.
 
 ## Developing
