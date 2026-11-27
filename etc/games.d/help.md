@@ -15,7 +15,7 @@ it, its paks say.
 - **A game of its own for Quake III's engine**, such as OpenArena: the folder of
   its pk3s, without a `pak0.pak`.
 
-### Music
+#### Music
 
 Quake III's music is in its pk3s and needs nothing more. Quake and Quake II
 played theirs from the CD's audio tracks: put the tracks in a folder called
@@ -31,7 +31,7 @@ folder before you drop that.
   the CD's 2.
 - The shareware episode and Quake II's demo have no music until you add it.
 
-### Maps and more
+#### Maps and more
 
 Drop these on the page and choose the game when more than one could take them:
 
