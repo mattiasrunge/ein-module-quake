@@ -78,10 +78,11 @@ F11, or the button in the page's header, turns it on and off as well. In
 fullscreen the game keeps the mouse, and Escape only opens and closes its menu;
 turn fullscreen off in the menu, press F11, or quit the game to leave. A game
 always starts in the page, since a browser goes fullscreen only when you press
-a key or click. That Escape stays the game's takes Chrome or Edge (their
-keyboard lock), where holding Escape still leaves fullscreen; Firefox and
-Safari leave fullscreen on Escape, and the game carries on in the page with its
-menu open. The header's other buttons turn the sound off and on.
+a key or click. That Escape stays the game's takes Chrome or Edge, with EiN's
+address starting `https://` (or on the computer EiN runs on), where holding
+Escape still leaves fullscreen; elsewhere, and in Firefox and Safari, Escape
+leaves fullscreen, and the game carries on in the page with its menu open. The
+header's other buttons turn the sound off and on.
 
 A player who has played before starts with their own settings: the game's
 **Options** and the keys bound in its controls menu are kept (below), and the
