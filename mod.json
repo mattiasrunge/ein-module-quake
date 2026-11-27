@@ -3,7 +3,7 @@
   "version": "0.12.0",
   "description": "Quake and Quake II in EiN: quakegeneric and quake2generic built to WebAssembly, played on the Games page",
   "license": "GPL-2.0-or-later",
-  "coreApi": "^0.15.74",
+  "coreApi": "^0.15.75",
   "dependencies": {
     "games": "^0.1.0"
   },
