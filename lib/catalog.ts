@@ -1,7 +1,7 @@
 import type { Command, NodeAttrs } from '@ein/client';
 import type { Game, InstalledGame } from './api.ts';
 import { coverOf } from './cover.ts';
-import { byRank, DATA_FOLDERS, ENGINE_TITLES, engineOf, GAMES, mapsOf, OFFERS, PAK_FILE, titleOf, tracksOf } from './games.ts';
+import { byRank, DATA_FOLDERS, descriptionOf, ENGINE_TITLES, engineOf, GAMES, mapsOf, OFFERS, PAK_FILE, titleOf, tracksOf } from './games.ts';
 import { type PakEntry, pakFiles } from './paks.ts';
 
 /** The files in the folder `path` and in its folders, by their paths in it. */
@@ -59,13 +59,16 @@ async function readGame(cmd: Command, name: string): Promise<InstalledGame | und
   const loose = engine === 'quake2' || inPaks.has('gfx/pop.lmp');
   const maps = mapsOf(loose ? [...inPaks, ...files] : inPaks);
   const cover = await coverOf(cmd, engine, read).catch(() => undefined);
+  const title = titleOf(name, sizes, inPaks);
+  const description = descriptionOf(title);
   return {
     id: name,
-    title: titleOf(name, sizes, inPaks),
+    title,
     state: 'installed',
     family: engine,
     path,
     detail: `${ENGINE_TITLES[engine]} · ${sizeText(size)} · ${music ? 'music' : 'no music'}`,
+    ...(description ? { description } : {}),
     ...(cover ? { cover } : {}),
     paks,
     size,

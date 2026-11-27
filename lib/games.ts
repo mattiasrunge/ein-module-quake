@@ -90,6 +90,18 @@ export const ENGINE_TITLES: Record<EngineName, string> = { quake: 'Quake', quake
 /** id's `pak0.pak` of Quake 1.06, the shareware episode's and the whole game's alike; `pak1.pak` is the rest of the game. */
 const QUAKE_PAK0_SIZE = 18689235;
 
+/** What each game the list knows is, by its title, for its page. */
+const DESCRIPTIONS: Record<string, string> = {
+  'Quake (shareware)': "Dimension of the Doomed, the first episode of id Software's Quake (1996): a gothic first-person shooter in true 3D, free to play and pass on.",
+  'Quake': "id Software's 1996 first-person shooter: four episodes of gothic, Lovecraftian horror in true 3D, with music by Trent Reznor and Nine Inch Nails.",
+  'Quake II (demo)': "The first three levels of id Software's Quake II (1997): a marine against the cyborg Strogg on their own planet.",
+  'Quake II': "id Software's 1997 first-person shooter: a lone marine on Stroggos, breaking the cyborg Strogg's hold, mission by mission.",
+  'LibreQuake': "Free game data for Quake's engine, made by its community: new levels, monsters, textures and music, played without id's files.",
+};
+
+/** What the game titled `title` is, when the list knows it. */
+export const descriptionOf = (title: string): string | undefined => DESCRIPTIONS[title];
+
 /** The games the list knows by their folder's name, in the order the list has them. */
 const KNOWN: Record<string, string> = {
   librequake: 'LibreQuake',

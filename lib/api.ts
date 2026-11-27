@@ -18,6 +18,8 @@ export type InstalledGame = {
   path: string;
   /** Its engine, its size and whether it has music, as the Games page shows them under its title. */
   detail: string;
+  /** What the game is, for a game the module knows, shown under its title on its page. */
+  description?: string;
   /** Its title art, its console background read out of its paks, as a PNG `data:` URL; none when its paks have none. */
   cover?: string;
   /** The folder's paks, in the order the engine loads them: `pak0.pak`, `pak1.pak` and on, as named in the folder. */
