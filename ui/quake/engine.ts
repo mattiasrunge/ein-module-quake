@@ -45,10 +45,9 @@ const ENGINES: Record<Exclude<EngineName, 'quake3'>, EngineSpec> = {
   quake2: {
     build: 'quake2',
     folder: '/baseq2',
-    // 1280 by 720 (r_mode 14, one of the Video menu's modes), as Quake's frame, for a player without a
-    // config.cfg, which keeps the mode and the renderer the Video menu sets; a mode on the command
-    // line would be set again after config.cfg.
-    args: (sound, first) => ['quake2', ...(first ? ['+set', 'r_mode', '14'] : []), ...(sound ? [] : ['+set', 's_initsound', '0'])],
+    // The frame's size, 1280 by 720 as Quake's, and its filtering are the engine's defaults
+    // (`glimp_ein.c`), which config.cfg keeps as the Video menu sets them.
+    args: (sound) => ['quake2', ...(sound ? [] : ['+set', 's_initsound', '0'])],
     // Free look is Quake 2's mouse look, and config.cfg keeps it.
     commands: (first) => first ? [...WASD, 'set freelook 1', 'set cl_run 1', 'set crosshair 1'] : [],
     // "unnamed" is what everyone starts with, or "Player", which the game's default.cfg sets.

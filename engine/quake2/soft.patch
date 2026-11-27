@@ -22,7 +22,7 @@ index 0d23b12b..826fa977 100644
  #define PITCH	0
  
 diff --git a/src/client/refresh/soft/sw_main.c b/src/client/refresh/soft/sw_main.c
-index dae0ac2e..bb1ef37b 100644
+index dae0ac2e..6fb75f9c 100644
 --- a/src/client/refresh/soft/sw_main.c
 +++ b/src/client/refresh/soft/sw_main.c
 @@ -20,12 +20,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
@@ -40,7 +40,23 @@ index dae0ac2e..bb1ef37b 100644
  
  #include "header/local.h"
  
-@@ -1771,9 +1773,15 @@ R_DrawBeam(const entity_t *e)
+@@ -381,7 +383,15 @@ R_RegisterVariables (void)
+ 	sw_overbrightbits = ri.Cvar_Get("sw_overbrightbits", "1.0", CVAR_ARCHIVE);
+ 	sw_custom_particles = ri.Cvar_Get("sw_custom_particles", "0", CVAR_ARCHIVE);
+ 	sw_texture_filtering = ri.Cvar_Get("sw_texture_filtering", "0", CVAR_ARCHIVE);
++#ifdef EIN
++	/* r_anisotropic is the OpenGL ES 3 renderer's texture filtering,
++	   which the module turns on: here it would smear the frame's
++	   pixels into gradients, so the software renderer's own smoothing
++	   is a setting of its own, off. */
++	sw_anisotropic = ri.Cvar_Get("sw_anisotropic", "0", CVAR_ARCHIVE);
++#else
+ 	sw_anisotropic = ri.Cvar_Get("r_anisotropic", "0", CVAR_ARCHIVE);
++#endif
+ 	r_retexturing = ri.Cvar_Get("r_retexturing", "1", CVAR_ARCHIVE);
+ 	r_scale8bittextures = ri.Cvar_Get("r_scale8bittextures", "0", CVAR_ARCHIVE);
+ 	sw_gunzposition = ri.Cvar_Get("sw_gunzposition", "8", CVAR_ARCHIVE);
+@@ -1771,9 +1781,15 @@ R_DrawBeam(const entity_t *e)
   * is only one software renderer.
   */
  
@@ -56,7 +72,7 @@ index dae0ac2e..bb1ef37b 100644
  
  /*
  ============
-@@ -1877,6 +1885,10 @@ RE_Draw_StretchRawColor(int x, int y, int w, int h, int cols, int rows,
+@@ -1877,6 +1893,10 @@ RE_Draw_StretchRawColor(int x, int y, int w, int h, int cols, int rows,
  	}
  
  	/* Full screen update should be faster */
@@ -67,7 +83,7 @@ index dae0ac2e..bb1ef37b 100644
  #ifdef USE_SDL3
  	if (!SDL_LockTexture(texture, NULL, (void**)&pixels, &pitch))
  #else
-@@ -1886,10 +1898,13 @@ RE_Draw_StretchRawColor(int x, int y, int w, int h, int cols, int rows,
+@@ -1886,10 +1906,13 @@ RE_Draw_StretchRawColor(int x, int y, int w, int h, int cols, int rows,
  		Com_Printf("Can't lock texture: %s\n", SDL_GetError());
  		return;
  	}
@@ -81,7 +97,7 @@ index dae0ac2e..bb1ef37b 100644
  		Com_Printf("Different pitch in texture %d != %d\n",
  			pitch, vid_buffer_width);
  		return;
-@@ -1897,7 +1912,7 @@ RE_Draw_StretchRawColor(int x, int y, int w, int h, int cols, int rows,
+@@ -1897,7 +1920,7 @@ RE_Draw_StretchRawColor(int x, int y, int w, int h, int cols, int rows,
  
  	for (i = 0; i < vid_buffer_width * vid_buffer_height; i ++)
  	{
@@ -90,7 +106,7 @@ index dae0ac2e..bb1ef37b 100644
  		/* SDL_PIXELFORMAT_BGRA8888 */
  		((byte*)pixels)[i * 4 + 0] = 255;
  		((byte*)pixels)[i * 4 + 1] = data[i * 4 + 0]; /* Red */
-@@ -1912,7 +1927,9 @@ RE_Draw_StretchRawColor(int x, int y, int w, int h, int cols, int rows,
+@@ -1912,7 +1935,9 @@ RE_Draw_StretchRawColor(int x, int y, int w, int h, int cols, int rows,
  #endif
  	}
  
@@ -100,7 +116,7 @@ index dae0ac2e..bb1ef37b 100644
  
  	texture_high_color = true;
  }
-@@ -1930,7 +1947,10 @@ GetRefAPI(refimport_t imp)
+@@ -1930,7 +1955,10 @@ GetRefAPI(refimport_t imp)
  	refexport_t	refexport;
  
  	// Need to communicate the SDL major version to the client.
@@ -112,7 +128,7 @@ index dae0ac2e..bb1ef37b 100644
  	int version = SDL_VERSIONNUM_MAJOR(SDL_GetVersion());
  #else
  	SDL_version ver;
-@@ -2001,6 +2021,18 @@ RE_InitContext(void *win)
+@@ -2001,6 +2029,18 @@ RE_InitContext(void *win)
  		return false;
  	}
  
@@ -131,7 +147,7 @@ index dae0ac2e..bb1ef37b 100644
  	window = (SDL_Window *)win;
  
  	/* Window title - set here so we can display renderer name in it */
-@@ -2087,6 +2119,7 @@ RE_InitContext(void *win)
+@@ -2087,6 +2127,7 @@ RE_InitContext(void *win)
  		Com_Printf("Can't create texture: %s\n", SDL_GetError());
  		return false;
  	}
@@ -139,7 +155,7 @@ index dae0ac2e..bb1ef37b 100644
  
  	R_InitGraphics(vid_buffer_width, vid_buffer_height);
  	SWimp_CreateRender(vid_buffer_width, vid_buffer_height);
-@@ -2099,7 +2132,10 @@ RE_InitContext(void *win)
+@@ -2099,7 +2140,10 @@ RE_InitContext(void *win)
   */
  void RE_GetDrawableSize(int* width, int* height)
  {
@@ -151,7 +167,7 @@ index dae0ac2e..bb1ef37b 100644
  	SDL_GetCurrentRenderOutputSize(renderer, width, height);
  #else
  	SDL_GetRendererOutputSize(renderer, width, height);
-@@ -2210,6 +2246,10 @@ RE_ShutdownContext(void)
+@@ -2210,6 +2254,10 @@ RE_ShutdownContext(void)
  	}
  	r_warpbuffer = NULL;
  
@@ -162,7 +178,7 @@ index dae0ac2e..bb1ef37b 100644
  	if (texture)
  	{
  		SDL_DestroyTexture(texture);
-@@ -2221,6 +2261,7 @@ RE_ShutdownContext(void)
+@@ -2221,6 +2269,7 @@ RE_ShutdownContext(void)
  		SDL_DestroyRenderer(renderer);
  	}
  	renderer = NULL;
@@ -170,7 +186,7 @@ index dae0ac2e..bb1ef37b 100644
  }
  
  /*
-@@ -2331,6 +2372,10 @@ RE_CleanFrame(void)
+@@ -2331,6 +2380,10 @@ RE_CleanFrame(void)
  	memset(swap_buffers, 0,
  		vid_buffer_height * vid_buffer_width * sizeof(pixel_t) * 2);
  
@@ -181,7 +197,7 @@ index dae0ac2e..bb1ef37b 100644
  #ifdef USE_SDL3
  	if (!SDL_LockTexture(texture, NULL, (void**)&pixels, &pitch))
  #else
-@@ -2340,10 +2385,13 @@ RE_CleanFrame(void)
+@@ -2340,10 +2393,13 @@ RE_CleanFrame(void)
  		Com_Printf("Can't lock texture: %s\n", SDL_GetError());
  		return;
  	}
@@ -195,7 +211,7 @@ index dae0ac2e..bb1ef37b 100644
  
  	// All changes flushed
  	VID_NoDamageBuffer();
-@@ -2387,6 +2435,10 @@ RE_FlushFrame(int vmin, int vmax)
+@@ -2387,6 +2443,10 @@ RE_FlushFrame(int vmin, int vmax)
  		rect.w = vid_buffer_width;
  		rect.h = vmax - vmin;
  
@@ -206,7 +222,7 @@ index dae0ac2e..bb1ef37b 100644
  #ifdef USE_SDL3
  		if (!SDL_LockTexture(texture, &rect, (void**)&pixels, &pitch))
  #else
-@@ -2396,12 +2448,18 @@ RE_FlushFrame(int vmin, int vmax)
+@@ -2396,12 +2456,18 @@ RE_FlushFrame(int vmin, int vmax)
  			Com_Printf("Can't lock texture: %s\n", SDL_GetError());
  			return;
  		}
@@ -225,7 +241,7 @@ index dae0ac2e..bb1ef37b 100644
  #ifdef USE_SDL3
  	SDL_RenderTexture(renderer, texture, NULL, NULL);
  #else
-@@ -2409,6 +2467,7 @@ RE_FlushFrame(int vmin, int vmax)
+@@ -2409,6 +2475,7 @@ RE_FlushFrame(int vmin, int vmax)
  #endif
  
  	SDL_RenderPresent(renderer);

@@ -168,7 +168,9 @@ otherwise: **Video** > **renderer** chooses **WebGL 2** or **Software**, Quake I
 own renderer, which draws as it did in 1997, and **apply** starts the game's
 video again with it, where you are in the game; the game keeps your choice. A
 browser that has no WebGL 2 draws with the software renderer, and its menu
-offers only that.
+offers only that. With WebGL 2 the textures are filtered trilinearly and
+anisotropically, as sharp as the browser offers (16x on most), which **texture
+filter** and **aniso filtering** change.
 
 Quake draws with WebGL 2 unless the player chooses otherwise: **Options** >
 **Video Options** > **Renderer** switches between **WebGL** and **Software**,

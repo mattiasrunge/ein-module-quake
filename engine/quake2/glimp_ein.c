@@ -156,11 +156,46 @@ void GLimp_SoftFrame(const uint32_t *pixels, int width, int height)
 	gl_frame = 0;
 }
 
+// The module's video settings, which a player starts with in place of
+// Yamagi's: 1280 by 720 (r_mode 14), trilinear filtering, and anisotropic
+// filtering at its most, which the renderer brings down to what the
+// browser offers (16 on most).
+static const struct
+{
+	const char *name;
+	const char *value;
+} defaults[] = {
+	{"r_mode", "14"},
+	{"gl_texturemode", "GL_LINEAR_MIPMAP_LINEAR"},
+	{"r_anisotropic", "16"}
+};
+
 qboolean GLimp_Init(void)
 {
+	cvar_t *applied;
+	int i;
+
 	// The page draws each frame the browser asks for: no vertical sync to
 	// wait for, which would cap the frame rate below it.
 	Cvar_Get("r_vsync", "0", CVAR_ARCHIVE);
+
+	// The module's settings are the defaults, and a config.cfg the game has
+	// run with them before (ein_defaults) keeps what the player chose since;
+	// one that has not, from before they were the module's, starts with them
+	// once. config.cfg has run by now, before a renderer starts.
+	applied = Cvar_Get("ein_defaults", "0", CVAR_ARCHIVE);
+
+	for (i = 0; i < ARRLEN(defaults); i++)
+	{
+		Cvar_Get(defaults[i].name, defaults[i].value, CVAR_ARCHIVE);
+
+		if (applied->value < 1)
+		{
+			Cvar_Set(defaults[i].name, defaults[i].value);
+		}
+	}
+
+	Cvar_Set("ein_defaults", "1");
 	return true;
 }
 

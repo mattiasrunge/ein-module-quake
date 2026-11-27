@@ -1,5 +1,5 @@
 diff --git a/src/client/menu/videomenu.c b/src/client/menu/videomenu.c
-index a512f4b6..3194b9fd 100644
+index a512f4b6..519c96fb 100644
 --- a/src/client/menu/videomenu.c
 +++ b/src/client/menu/videomenu.c
 @@ -127,7 +127,12 @@ Renderer_FillRenderdef(void)
@@ -123,7 +123,7 @@ index a512f4b6..3194b9fd 100644
  
  	static const char *pow2_names[] = {
  		"off",
-@@ -797,13 +831,20 @@ VID_MenuInit(void)
+@@ -797,17 +831,27 @@ VID_MenuInit(void)
  	s_fs_box.generic.y = (y += 10);
  	s_fs_box.itemnames = fullscreen_names;
  	s_fs_box.curvalue = (int)vid_fullscreen->value;
@@ -144,7 +144,14 @@ index a512f4b6..3194b9fd 100644
  
  	s_af_list.generic.type = MTYPE_SPINCONTROL;
  	s_af_list.generic.name = "aniso filtering";
-@@ -821,6 +862,7 @@ VID_MenuInit(void)
+ 	s_af_list.generic.x = 0;
++#ifdef EIN
++	if (current_renderer != ref_soft)
++#endif
+ 	s_af_list.generic.y = (y += 10);
+ 	s_af_list.itemnames = pow2_names;
+ 	s_af_list.curvalue = 0;
+@@ -821,6 +865,7 @@ VID_MenuInit(void)
  		s_af_list.curvalue--;
  	}
  
@@ -152,7 +159,7 @@ index a512f4b6..3194b9fd 100644
  	s_msaa_list.generic.type = MTYPE_SPINCONTROL;
  	s_msaa_list.generic.name = "multisampling";
  	s_msaa_list.generic.x = 0;
-@@ -836,6 +878,7 @@ VID_MenuInit(void)
+@@ -836,6 +881,7 @@ VID_MenuInit(void)
  				pow(2, s_msaa_list.curvalue) <= gl_msaa_samples->value);
  		s_msaa_list.curvalue--;
  	}
@@ -160,12 +167,16 @@ index a512f4b6..3194b9fd 100644
  
  	s_filter_list.generic.type = MTYPE_SPINCONTROL;
  	s_filter_list.generic.name = "texture filter";
-@@ -933,9 +976,13 @@ VID_MenuInit(void)
+@@ -933,9 +979,17 @@ VID_MenuInit(void)
  	}
  	Menu_AddItem(&s_opengl_menu, (void *)&s_uiscale_list);
  	Menu_AddItem(&s_opengl_menu, (void *)&s_fs_box);
 +#ifndef EIN
  	Menu_AddItem(&s_opengl_menu, (void *)&s_vsync_list);
++#endif
++#ifdef EIN
++	/* Anisotropic filtering is the OpenGL ES 3 renderer's. */
++	if (current_renderer != ref_soft)
 +#endif
  	Menu_AddItem(&s_opengl_menu, (void *)&s_af_list);
 +#ifndef EIN
