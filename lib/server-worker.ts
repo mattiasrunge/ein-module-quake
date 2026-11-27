@@ -1,18 +1,29 @@
 /**
  * A hosted game's dedicated server, in a worker of EiN's process of its own, so a slow frame never
- * holds up EiN. The quake-server service (`lib/service.ts`) makes the worker from this file's text and
- * starts it with the engine's glue and the network (`lib/net.ts`) as URLs it imports, the server's
- * wasm, the game's paks, and the memory it shares with it (a `Ring`). Then it writes each datagram a
- * player's connection gives it into that memory, which the game reads whenever it reads; and writes
- * each framed datagram the worker sends it to that player's connection. It imports nothing itself,
- * so it runs as it is.
+ * holds up EiN. The quake-server service (`server.ts`) makes the worker from this file's text and
+ * starts it with the engine's glue and the network (`@games/net`) as URLs it imports, the server's
+ * wasm, the game's paks and files, and the memory it shares with it (a `Ring`). Then it writes each
+ * datagram a player's connection gives it into that memory, which the game reads whenever it reads;
+ * and writes each framed datagram the worker sends it to that player's connection. It imports
+ * nothing itself, so it runs as it is.
  */
 
 /**
- * Start the server: the engine's glue and `lib/net.ts` as URLs, its wasm, the paks for its game
- * folder, its command line, and the `Ring` the players' bytes come through.
+ * Start the server: the engine's glue and the network as URLs, its wasm, the paks for its game
+ * folder and the files beside them by their paths in it, its command line, and the `Ring` the
+ * players' bytes come through.
  */
-export type StartServer = { type: 'start'; glue: string; net: string; wasm: Uint8Array; folder: string; paks: Uint8Array[]; args: string[]; ring: SharedArrayBuffer };
+export type StartServer = {
+  type: 'start';
+  glue: string;
+  net: string;
+  wasm: Uint8Array;
+  folder: string;
+  paks: Uint8Array[];
+  files: { name: string; data: Uint8Array }[];
+  args: string[];
+  ring: SharedArrayBuffer;
+};
 
 /** What the service tells the worker: only to start; the rest comes through the ring. */
 export type ToWorker = StartServer;
@@ -58,10 +69,10 @@ function end(error?: unknown) {
   tell({ type: 'ended', ...(failed ? { error: exit?.name === 'ExitStatus' ? `the server exited with status ${exit.status}` : String(error) } : {}) });
 }
 
-async function start({ glue, net, wasm, folder, paks, args, ring: shared }: StartServer) {
+async function start({ glue, net, wasm, folder, paks, files, args, ring: shared }: StartServer) {
   const [{ default: create }, { Network, Ring, addressNumber, SERVER_ADDRESS }] = await Promise.all([
     import(glue) as Promise<{ default: (options: object) => Promise<ServerModule> }>,
-    import(net) as Promise<typeof import('./net.ts')>,
+    import(net) as Promise<typeof import('@games/net')>,
   ]);
   const own = addressNumber(SERVER_ADDRESS);
   const ring = new Ring(shared);
@@ -77,6 +88,11 @@ async function start({ glue, net, wasm, folder, paks, args, ring: shared }: Star
   const engine = await create({ instantiateWasm, print: log, printErr: log, einNet: network });
   engine.FS.mkdirTree(folder);
   paks.forEach((bytes, i) => engine.FS.writeFile(`${folder}/pak${i}.pak`, bytes));
+  for (const file of files) {
+    const at = `${folder}/${file.name}`;
+    engine.FS.mkdirTree(at.slice(0, at.lastIndexOf('/')));
+    engine.FS.writeFile(at, file.data);
+  }
   const argv = engine._malloc(args.length * 4);
   args.forEach((arg, i) => engine.HEAPU32[(argv >> 2) + i] = engine.stringToNewUTF8(arg));
   try {

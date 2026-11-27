@@ -1,26 +1,36 @@
 #!ts
-/** quake-games — the games in the Quake page's folder, with each one's title, engine, paks and music, as the page lists them. */
+/** quake-games — the games in Quake's games folder and the free ones offered, as the Games page and the game's page list them. */
 import type { CmdReturn, Command } from '@ein/client';
+import type { GameEntry } from '@games/api';
 import type { Game } from '@quake/api';
 import { findGames } from '@quake/catalog';
 import { GAMES } from '@quake/games';
 
 const quakeGames = async (cmd: Command): CmdReturn => {
   const games = await findGames(cmd);
-  if (cmd.json) await cmd.writeJSON(games satisfies Game[]);
-  else for (const game of games) await cmd.writeLn(`${game.name}  ${game.title}  ${game.engine}  ${game.paks.join(' ')}${game.music ? `  music: ${game.music.folder} (${Object.keys(game.music.tracks).length} tracks)` : ''}`);
+  if (cmd.json) await cmd.writeJSON(games satisfies Game[] satisfies GameEntry[]);
+  else {
+    for (const game of games) {
+      if (game.state === 'offered') await cmd.writeLn(`${game.id}  ${game.title}  ${game.family}  offered, quake-fetch ${game.id}`);
+      else {
+        const music = game.music ? `  music: ${game.music.folder} (${Object.keys(game.music.tracks).length} tracks)` : '';
+        await cmd.writeLn(`${game.id}  ${game.title}  ${game.family}  ${game.paks.join(' ')}  ${game.maps.length} maps${music}`);
+      }
+    }
+  }
   return 0;
 };
 
 quakeGames.spec = {
   name: 'quake-games',
   effect: 'read' as const,
-  description: `List the games in ${GAMES}, which the Quake page plays: each folder with a pak0.pak, Quake's or Quake 2's, id's games first`,
+  description:
+    `List the games in ${GAMES}, each folder with a pak0.pak, Quake's or Quake II's, id's games first; then the free games quake-fetch fetches that are not there yet`,
   args: [],
   flags: [],
   examples: ['quake-games'],
   returns:
-    'One entry per game: its folder name, title, the engine that plays it (quake or quake2, from the files in its paks), paks in load order, their size in bytes, the maps in its paks, and its music: the folder it is played from and the file of each track by number.',
+    "One entry per game. An installed one: its id (the folder's name), title, state installed, family (the engine that plays it, quake or quake2, from the files in its paks), path, detail, cover (its title art as a PNG data: URL), paks in load order, their size in bytes, the files beside them it reads, its maps in its paks and its maps folder, hostable, and its music: the folder it is played from and the file of each track by number. An offered one: its id, title, state offered, family, about and download (bytes).",
 };
 
 export default quakeGames;

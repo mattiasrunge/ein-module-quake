@@ -1,0 +1,22 @@
+{
+  "title": "Quake",
+  "icon": "/usr/modules/quake/assets/icon.svg",
+  "route": "/games/quake",
+  "list": "quake-games",
+  "fetch": "quake-fetch",
+  "folder": "/groups/users/quake",
+  "drops": [
+    { "place": "module", "label": "a Quake or Quake II game", "contains": "pak0.pak" },
+    { "place": "game", "label": "a Quake map", "name": "\\.bsp$", "magic": [{ "at": 0, "hex": "1d000000" }], "into": "maps", "families": ["quake"] },
+    { "place": "game", "label": "a Quake II map", "name": "\\.bsp$", "magic": [{ "at": 0, "text": "IBSP" }], "into": "maps", "families": ["quake2"] },
+    { "place": "game", "label": "another pak of a game", "name": "^pak[1-9][0-9]*\\.pak$", "magic": [{ "at": 0, "text": "PACK" }] },
+    { "place": "game", "label": "a game's music", "name": "^music$" }
+  ],
+  "multiplayer": {
+    "modes": [{ "value": "deathmatch", "label": "Deathmatch" }, { "value": "coop", "label": "Cooperative" }],
+    "maxPlayers": 16,
+    "defaultPlayers": 8,
+    "defaultMaps": ["q2dm1", "dm3", "dm1", "e1m1", "base1", "demo1"],
+    "transport": "server"
+  }
+}

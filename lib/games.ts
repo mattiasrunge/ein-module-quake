@@ -1,32 +1,13 @@
-import type { EngineName, GameMode } from './api.ts';
+import type { EngineName, OfferedGame } from './api.ts';
 
 /**
  * Where the game data is: a folder in the household's shared home, so everyone signed in plays the
  * same games and may add to them. Each folder in it with a `pak0.pak` is a game, as Quake's `id1`
- * and Quake 2's `baseq2` are: its paks, and in `music/` the CD's tracks, when it has music. The
- * games the page offers (`OFFERS`) are fetched here by `quake-fetch`; a folder dropped on the page is
- * uploaded here.
+ * and Quake II's `baseq2` are: its paks, maps of its own in `maps/`, and in `music/` the CD's
+ * tracks, when it has music. The games the module offers (`OFFERS`) are fetched here by
+ * `quake-fetch`; a folder dropped on the Games page is uploaded here.
  */
 export const GAMES = '/groups/users/quake';
-
-/**
- * Where hosted games are: a folder each, by its id, with its `server.json` (`ServerInfo`) and the
- * socket node its players connect to (`socket`). The quake-server service makes it and empties it
- * when it starts; it is not a game, having no paks.
- */
-export const SERVERS = `${GAMES}/servers`;
-
-/** How many may play in one game, and how many a game takes when the host says nothing. */
-export const MAX_PLAYERS = 16;
-export const DEFAULT_PLAYERS = 8;
-
-/** The modes a game is hosted in. */
-export const MODES: GameMode[] = ['deathmatch', 'coop'];
-
-/** The map a game is hosted on when the host names none: a deathmatch map when the game has one, else its first. */
-export function defaultMap(maps: string[]): string | undefined {
-  return ['q2dm1', 'dm3', 'dm1', 'e1m1', 'base1', 'demo1'].find((map) => maps.includes(map)) ?? maps[0];
-}
 
 /** The folders of a game's own beside its paks that hold what the engines read, as they would in a pak. */
 export const DATA_FOLDERS = ['players', 'maps', 'models', 'sound', 'pics', 'textures', 'sprites', 'env', 'progs', 'gfx'];
@@ -70,34 +51,40 @@ export function engineOf(files: Iterable<string>): EngineName {
 }
 
 /**
- * The maps among a game's `files`, lower-case paths in its paks, by name: each `maps/<name>.bsp`,
- * but Quake's ammunition boxes and health packs, which are maps of their own (`maps/b_*.bsp`).
+ * The maps among a game's `files`, paths in its paks or its folder, by name: each `maps/<name>.bsp`,
+ * but Quake's ammunition boxes and health packs, which are maps of their own (`maps/b_*.bsp`). A map
+ * in a pak and in the folder alike is one map.
  */
 export function mapsOf(files: Iterable<string>): string[] {
-  const maps: string[] = [];
+  const maps = new Set<string>();
   for (const file of files) {
-    const match = /^maps\/([^/]+)\.bsp$/.exec(file);
-    if (match && !match[1].startsWith('b_')) maps.push(match[1]);
+    const match = /^maps\/([^/]+)\.bsp$/i.exec(file);
+    if (match && !match[1].toLowerCase().startsWith('b_')) maps.add(match[1]);
   }
-  return maps.sort();
+  return [...maps].sort();
 }
 
-/** A game the page offers to fetch with `quake-fetch`, by the folder it is fetched into. */
-export type Offer = { name: string; title: string; about: string; download: number };
-
-/** The games the page offers, while their folders are not there: free ones, for something to play. */
-export const OFFERS: Offer[] = [
-  { name: 'shareware', title: 'Quake (shareware)', about: "The first episode of id Software's Quake, free to play and pass on.", download: 8_990_046 },
+/** The games the module offers, while their folders are not there: free ones, for something to play. */
+export const OFFERS: OfferedGame[] = [
   {
-    name: 'quake2-demo',
+    id: 'shareware',
+    title: 'Quake (shareware)',
+    state: 'offered',
+    family: 'quake',
+    about: "The first episode of id Software's Quake, free to play and pass on.",
+    download: 8_990_046,
+  },
+  {
+    id: 'quake2-demo',
     title: 'Quake II (demo)',
+    state: 'offered',
+    family: 'quake2',
     about: "The first three levels of id Software's Quake II, free to play at home under its licence, which comes with it; not for showing in public.",
     download: 39_015_499,
   },
-  { name: 'librequake', title: 'LibreQuake', about: "Free game data for Quake's engine, with its music.", download: 55_987_573 },
+  { id: 'librequake', title: 'LibreQuake', state: 'offered', family: 'quake', about: "Free game data for Quake's engine, with its music.", download: 55_987_573 },
 ];
-
-/** What the page calls each engine's games. */
+/** What each engine's games are called. */
 export const ENGINE_TITLES: Record<EngineName, string> = { quake: 'Quake', quake2: 'Quake II' };
 
 /** id's `pak0.pak` of Quake 1.06, the shareware episode's and the whole game's alike; `pak1.pak` is the rest of the game. */
@@ -126,4 +113,4 @@ export function titleOf(name: string, sizes: number[], files: Set<string>): stri
 const ID_GAMES = ['Quake (shareware)', 'Quake', 'Quake II (demo)', 'Quake II'];
 const rank = (title: string) => ID_GAMES.includes(title) ? ID_GAMES.indexOf(title) : Object.values(KNOWN).includes(title) ? ID_GAMES.length : ID_GAMES.length + 1;
 
-export const byRank = (a: { title: string; name: string }, b: { title: string; name: string }): number => rank(a.title) - rank(b.title) || a.name.localeCompare(b.name);
+export const byRank = (a: { title: string; id: string }, b: { title: string; id: string }): number => rank(a.title) - rank(b.title) || a.id.localeCompare(b.id);

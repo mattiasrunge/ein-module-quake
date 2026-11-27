@@ -1,9 +1,10 @@
 /**
  * A pak, Quake's and Quake 2's alike: a 12-byte header, `PACK` and the directory's offset and
  * length; then, where the header says, the directory, 64 bytes an entry, each a name of up to 56
- * bytes, the file's offset and its length. Read by the page in the browser and by `quake-games`
- * in EiN, each fetching only the bytes it needs.
+ * bytes, the file's offset and its length. The commands read only the bytes they need of one.
  */
+
+import type { Command, NodeAttrs } from '@ein/client';
 
 /** The bytes a pak's header takes. */
 export const PAK_HEADER_SIZE = 12;
@@ -48,4 +49,57 @@ export function packPak(files: { name: string; data: Uint8Array }[]): Uint8Array
     entry += 64;
   }
   return pak;
+}
+
+/** Seek from the start of the file: core's `ResourceSeekMode.Start`, which `@ein/client` does not export. */
+const SEEK_START = 0;
+
+/** A file open to read pieces of: `read` answers `length` bytes from `at` on, fewer when the file ends sooner. */
+export type Reader = { read(at: number, length: number): Promise<Uint8Array>; close(): Promise<void> };
+
+/** Open the file at `path` to read pieces of it. */
+export async function openReader(cmd: Command, path: string): Promise<Reader> {
+  const handle = await cmd.sys.vfs.open(cmd.access, path, { mode: 'r' });
+  return {
+    async read(at, length) {
+      await handle.seek(at, SEEK_START);
+      const bytes = new Uint8Array(length);
+      let filled = 0;
+      while (filled < length) {
+        const chunk = await handle.read(length - filled);
+        if (chunk.length === 0) break;
+        bytes.set(chunk, filled);
+        filled += chunk.length;
+      }
+      return bytes.subarray(0, filled);
+    },
+    close: () => handle.close(),
+  };
+}
+
+/** `length` bytes of the file at `path` from `at` on, fewer when it ends sooner. */
+export async function readRange(cmd: Command, path: string, at: number, length: number): Promise<Uint8Array> {
+  const reader = await openReader(cmd, path);
+  try {
+    return await reader.read(at, length);
+  } finally {
+    await reader.close();
+  }
+}
+
+/** The whole file at `path`. */
+export async function readWhole(cmd: Command, path: string): Promise<Uint8Array> {
+  const size = (await cmd.sys.vfs.get<NodeAttrs & { size?: number }>(cmd.access, path)).attrs.size ?? 0;
+  return await readRange(cmd, path, 0, size);
+}
+
+/** The files in the pak at `path`, by their lower-case paths: only its header and directory are read. */
+export async function pakFiles(cmd: Command, path: string): Promise<Map<string, PakEntry>> {
+  const reader = await openReader(cmd, path);
+  try {
+    const directory = pakDirectory(await reader.read(0, PAK_HEADER_SIZE));
+    return directory ? pakEntries(await reader.read(directory.offset, directory.length)) : new Map();
+  } finally {
+    await reader.close();
+  }
 }

@@ -1,9 +1,6 @@
 import { fileUrl } from '@ein/ui/lib';
-import type { EngineName } from '../../lib/api.ts';
-import type { Network } from '../../lib/net.ts';
-import type { Kept, Written } from './saves.ts';
-import type { Sound } from './sound.ts';
-import { type Game, GAMES } from './games.ts';
+import type { StartOptions } from '@games/adapter';
+import type { EngineName, InstalledGame } from '../../lib/api.ts';
 
 /** Where the module's built engines sit in EiN's tree. */
 const ASSETS = '/usr/modules/quake/assets';
@@ -100,14 +97,10 @@ const ENGINES: Record<EngineName, EngineSpec> = {
 
 /** A running game: tick it, read its frame, hand it keys and the mouse. */
 export type Engine = {
-  game: string;
-  /** The frame's size, which a Quake 2 player changes with the video mode. */
+  /** The frame's size, which the player changes with the video mode. */
   width(): number;
   height(): number;
-  /**
-   * Run the game for the time since the last tick; throws when the game ends: what `quitted`
-   * recognises when the player chose Quit, anything else when it failed (`Sys_Error`).
-   */
+  /** Run the game for the time since the last tick; throws when the game ends, on Quit or when it failed (`Sys_Error`). */
   tick(): void;
   /** How many frames the game has drawn: a new number means a new frame to copy. */
   frames(): number;
@@ -121,15 +114,6 @@ export type Engine = {
   disconnect(): void;
 };
 
-/** A server to play on: the network to it and the address to connect to. */
-export type Online = { network: Network; address: string };
-
-/** Whether `error`, thrown by `tick`, is the game ending on Quit: Emscripten's `ExitStatus` for exit(0). */
-export function quitted(error: unknown): boolean {
-  const exit = error as { name?: string; status?: number } | null;
-  return exit?.name === 'ExitStatus' && exit.status === 0;
-}
-
 /** Fetch a file as bytes; `/file/` needs the session's cookie, which a same-origin fetch sends. */
 async function fetchFile(path: string): Promise<Uint8Array> {
   const response = await fetch(fileUrl(path));
@@ -138,37 +122,31 @@ async function fetchFile(path: string): Promise<Uint8Array> {
 }
 
 /**
- * Load `game`'s engine and paks and start the game. `log` gets what the game prints, line by line,
- * and `sound` the game's sound effects and music; without it the game is silent. `kept` are the
- * player's saves and config.cfg of `game`, which the game's Load menu lists and its start-up reads,
- * and `onKeep` hears each save or config.cfg the game writes.
+ * Load `game`'s engine, paks and files and start the game. `log` gets what the game prints, line by
+ * line, and `sound` the game's sound effects and music; without it the game is silent. `kept` are
+ * the player's saves and config.cfg of `game`, which the game's Load menu lists and its start-up
+ * reads, and `onKeep` hears each save or config.cfg the game writes.
  *
  * A player whose config.cfg has no name of their own plays under `name`, their account's. With
- * `online` the game connects to a server once it has started, through `online.network`.
+ * `map` the game starts on that map, as `+map` on its command line does; with `online` it connects
+ * to a server once it has started, through `online.network`.
  *
  * The glue is imported from a URL held in a variable, so core's bundler leaves it alone and the
  * browser loads it at runtime. The wasm is fetched here and instantiated from its bytes, so how
  * `/file/` labels a `.wasm` does not matter.
  */
-export async function startEngine({ game, sound, log, kept = [], onKeep, name, online }: {
-  game: Game;
-  sound?: Sound;
-  log: (line: string) => void;
-  kept?: Kept[];
-  onKeep?: (written: Written) => void;
-  name?: string;
-  online?: Online;
-}): Promise<Engine> {
-  const spec = ENGINES[game.engine];
+export async function startEngine({ game, sound, log, kept, onKeep, name, map, online }: Omit<StartOptions<InstalledGame>, 'demo'>): Promise<Engine> {
+  const spec = ENGINES[game.family];
   const glueUrl = fileUrl(`${ASSETS}/${spec.name}.js`);
   const [glue, wasmBinary, paks, files] = await Promise.all([
     import(glueUrl) as Promise<{ default: (options: object) => Promise<EngineModule> }>,
     fetchFile(`${ASSETS}/${spec.name}.wasm`),
-    Promise.all(game.paks.map((pak) => fetchFile(`${GAMES}/${game.name}/${pak}`))),
-    Promise.all(game.files.map((file) => fetchFile(`${GAMES}/${game.name}/${file}`))),
+    Promise.all(game.paks.map((pak) => fetchFile(`${game.path}/${pak}`))),
+    Promise.all(game.files.map((file) => fetchFile(`${game.path}/${file}`))),
   ]);
 
-  const einMusic = sound?.music(game.music);
+  // A game without music of its own is silent when it asks for a track.
+  const einMusic = sound?.music(game.music?.folder ?? game.path, game.music?.tracks ?? {});
   // Called by `ein_wrote` once the game has written a file or a save slot's folder, at a path in its
   // folder, as the game names it (`./id1/s0.sav`, `./baseq2/save/s1`); `engine` is set by then.
   const einWrote = (path: string) => {
@@ -204,7 +182,7 @@ export async function startEngine({ game, sound, log, kept = [], onKeep, name, o
   }
 
   const config = kept.find((file) => file.name === 'config.cfg');
-  const args = spec.args(!!sound, !config);
+  const args = [...spec.args(!!sound, !config), ...(map ? ['+map', map] : [])];
   const argv = engine._malloc(args.length * 4);
   args.forEach((arg, i) => {
     engine.HEAPU32[(argv >> 2) + i] = engine.stringToNewUTF8(arg);
@@ -233,7 +211,6 @@ export async function startEngine({ game, sound, log, kept = [], onKeep, name, o
   });
 
   return {
-    game: game.name,
     width: () => engine._ein_width(),
     height: () => engine._ein_height(),
     tick: () => engine._ein_tick(),

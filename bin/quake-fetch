@@ -1,10 +1,10 @@
 #!bash
-# quake-fetch — fetches one of the games the Quake page offers into its games folder, when someone
-# chooses Fetch there: Quake's shareware episode, Quake II's demo, or LibreQuake with its music. The
-# release is fetched from where its makers published it, checked against its SHA-256, and unpacked
-# into a game folder of its own; a file already there under the same name is left as it is. It runs
+# quake-fetch — fetches one of the free games quake-games offers into its games folder, when someone
+# chooses Fetch on the Games page or the game's own: Quake's shareware episode, Quake II's demo, or
+# LibreQuake with its music. The release is fetched from where its makers published it, checked
+# against its SHA-256, and unpacked into a game folder of its own; a file already there under the same name is left as it is. It runs
 # as whoever runs it, which has to be the administrator: EiN lets only the administrator fetch URLs.
-arg --desc "Fetch one of the games the Quake page offers into its games folder"
+arg --desc "Fetch one of the free Quake and Quake II games the Games page offers into the games folder"
 arg --effect write
 arg '<game>' string "shareware (Quake's shareware episode), quake2-demo (Quake II's demo) or librequake (LibreQuake and its music)"
 arg --example "quake-fetch shareware"

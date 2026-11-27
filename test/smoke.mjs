@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
- * Browser smoke test for the quake module: signs in to a running EiN in headless Chrome, opens
- * `/quake`, plays a little and saves screenshots, then prints what the page logged to its console.
+ * Browser smoke test for the quake module: signs in to a running EiN in headless Chrome, opens a
+ * game's page (`/games/quake/<game>`, the Games page's page for it), plays a little and saves
+ * screenshots, then prints what the page logged to its console.
  *
  * It talks to Chrome over the DevTools protocol with Node's own WebSocket, so it needs nothing
  * installed beyond Node 22+ and Chrome.
  *
- *   EIN_PASSWORD=... node test/smoke.mjs [--url http://localhost:8080] [--user admin] [--out shots]
+ *   EIN_PASSWORD=... node test/smoke.mjs [--url http://localhost:8080] [--user admin] [--game shareware] [--out shots]
  *
  * Environment: EIN_PASSWORD (required), CHROME (path to the Chrome binary, defaults to macOS's).
  * The mouse is not tried: headless Chrome gives no page the pointer lock.
@@ -25,6 +26,7 @@ const { values: options } = parseArgs({
   options: {
     url: { type: 'string', default: 'http://localhost:8080' },
     user: { type: 'string', default: 'admin' },
+    game: { type: 'string', default: 'shareware' },
     out: { type: 'string', default: 'shots' },
   },
 });
@@ -215,19 +217,20 @@ try {
     console.log(`/file/ serves ${name} as ${type}`);
   }
 
-  // The page.
-  await page('Page.navigate', { url: `${options.url}/quake` });
-  await waitFor(`!!document.querySelector('canvas')`);
-  await sleep(2500);
+  // The game's page.
+  const gamePath = `/games/quake/${encodeURIComponent(options.game)}`;
+  await page('Page.navigate', { url: `${options.url}${gamePath}` });
+  await waitFor(`!!document.querySelector('[data-game-state]') && document.querySelector('[data-game-state]').dataset.gameState !== 'listing'`);
+  await sleep(1500);
   await shoot('01-page');
 
-  const hasPlay = await evaluate(`!!document.querySelector('[data-quake-play]')`);
+  const hasPlay = await evaluate(`!!document.querySelector('[data-game-play]')`);
   if (!hasPlay) {
-    console.log('no Play button: there are no games yet, stopping here');
+    console.log(`no Play button: ${options.game} is not here, or not fetched yet; stopping here`);
   } else {
     // The demo loop, after the click that starts the game.
-    await click('[data-quake-play]');
-    await waitFor(`document.querySelector('[data-quake-state]')?.dataset.quakeState === 'running'`, 60000);
+    await click('[data-game-play]');
+    await waitFor(`document.querySelector('[data-game-state]')?.dataset.gameState === 'running'`, 60000);
     await sleep(4000);
     console.log(`canvas brightness in the demo: ${(await canvasBrightness()).toFixed(1)}`);
     await shoot('02-demo');
@@ -270,12 +273,12 @@ try {
     await shoot('06-strafed');
     const after = await evaluate('location.pathname');
     console.log(`after Alt+H and Alt+ArrowLeft in the game the page is ${after}`);
-    if (after !== '/quake') failed = true;
+    if (after !== gamePath) failed = true;
 
     // Fullscreen.
     await click('[aria-label="Fullscreen"]');
     await sleep(1000);
-    const fullscreen = await evaluate(`document.fullscreenElement?.dataset.quakeState ?? 'none'`);
+    const fullscreen = await evaluate(`document.fullscreenElement?.dataset.gameState ?? 'none'`);
     console.log(`fullscreen element is the game: ${fullscreen === 'running'}`);
     if (fullscreen !== 'running') failed = true;
     await shoot('07-fullscreen');
@@ -288,7 +291,7 @@ try {
     await sleep(800);
     const home = await evaluate('location.pathname');
     console.log(`after Alt+H outside the game the page is ${home}`);
-    if (home === '/quake') failed = true;
+    if (home === gamePath) failed = true;
   }
 } catch (error) {
   console.error(error);

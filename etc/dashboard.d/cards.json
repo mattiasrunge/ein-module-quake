@@ -12,7 +12,7 @@
     "params": {
       "type": "object",
       "properties": {
-        "game": { "type": "string", "title": "Game", "x-choices": { "command": "quake-games", "value": "name", "label": "title" } }
+        "game": { "type": "string", "title": "Game", "x-choices": { "command": "quake-games", "value": "id", "label": "title", "where": { "state": "installed" } } }
       }
     }
   }

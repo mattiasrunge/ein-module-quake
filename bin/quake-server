@@ -1,12 +1,13 @@
 #!ts
-/** quake-server — the quake-server service: runs the games people host until it is stopped. */
+/** quake-server — the quake-server service: runs the Quake and Quake II games people host until it is stopped. */
 import type { CmdReturn, Command } from '@ein/client';
-import { QuakeService } from '@quake/service';
+import { GameServers } from '@games/host';
+import { serverEngine } from '@quake/server';
 
 const quakeServer = async (cmd: Command): CmdReturn => {
   const stopped = new Promise<void>((resolve) => cmd.onInterrupt(resolve));
   await cmd.writeLn('quake-server: running the games people host');
-  await new QuakeService(cmd).run(stopped);
+  await new GameServers(cmd, ['quake'], serverEngine(cmd)).run(stopped);
   return 0;
 };
 
@@ -16,7 +17,8 @@ quakeServer.spec = {
   daemon: true,
   effect: 'write' as const,
   json: false,
-  description: 'Run the Quake and Quake II games people host, each a dedicated server, and carry their players\' datagrams (the quake-server service)',
+  description:
+    "Run the Quake and Quake II games people host with games-host or on a game's page, each a dedicated server, and carry their players' datagrams (the quake-server service)",
   args: [],
   flags: [],
   examples: ['service restart quake-server'],

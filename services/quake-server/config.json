@@ -1,5 +1,5 @@
 {
   "description": "Runs the Quake and Quake II games people host, and carries their players' datagrams",
   "restartPolicy": "on-failure",
-  "statusCommand": "quake-servers --count"
+  "statusCommand": "games-servers --module quake --count"
 }
