@@ -292,6 +292,9 @@ A game is a folder of paks, as Quake's `id1` and Quake II's `baseq2` are:
 computer and drop it anywhere on the Games page; it is uploaded, paks and all,
 and appears as a card under the folder's name.
 
+The Games page's **?** (**How to add games**) says the same in short: which
+folders, files and music the module takes (`etc/games.d/help.md`).
+
 The Games page knows what else of a game's is dropped on it, and asks which game
 it goes into when more than one could take it:
 
@@ -387,6 +390,7 @@ music** turns the music on and off.
 | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `mod.json`                                                                        | The manifest: the games module it needs, and the routes of a game's page and the dashboard card.                                                                                                                                  |
 | `etc/games.d/games.json`                                                          | What the games module knows of the module: its title, icon and route, its list and fetch commands, its games folder, the files it takes when dropped, and how its games are played together.                                      |
+| `etc/games.d/help.md`                                                             | How to add games, their music and maps, which the Games page's **?** shows.                                                                                                                                                       |
 | `ui/pages/game.tsx`                                                               | A game's page, `/games/quake/<game>`: the games module's page for a game, with the module's adapter.                                                                                                                              |
 | `ui/cards/demo.tsx`                                                               | The dashboard card, offered in `etc/dashboard.d/cards.json`: the games module's demo card, a game running its demos.                                                                                                              |
 | `ui/adapter.ts`                                                                   | The adapter the games module plays the games with: lists them, starts one, maps the keys, the mouse and the wheel, and names the saves kept.                                                                                      |
