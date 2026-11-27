@@ -50,7 +50,7 @@ archive.
 
 ## Install
 
-It needs EiN's games module (`games`, 0.1.2-dev.5 or later). As an administrator, open
+It needs EiN's games module (`games`, 0.1.2-dev.8 or later). As an administrator, open
 **Settings → Modules**, choose **Install**, and give
 `https://github.com/mattiasrunge/ein-module-quake` under **From a repository**.
 
