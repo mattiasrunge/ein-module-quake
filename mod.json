@@ -18,7 +18,7 @@
   },
   "ui": {
     "workers": {
-      "quake3": "ui/quake/quake3-worker.ts"
+      "engine": "ui/quake/engine-worker.ts"
     },
     "routes": {
       "/games/quake/:game": "ui/pages/game.tsx",

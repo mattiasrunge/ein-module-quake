@@ -79,7 +79,7 @@ case "${1:-all}" in object)
 esac
 
 mkdir -p /out
-# The game runs in a worker of the page's (ui/quake/quake3-worker.ts), which reads the game's pk3s a
+# The game runs in the module's worker (ui/quake/engine-worker.ts), which reads the game's pk3s a
 # piece at a time as the engine asks, with synchronous range requests, which only a worker may make.
 case "${1:-all}" in all | client)
   objects=$(compile client $COMMON $CLIENT $LIBRARIES $(shaders))

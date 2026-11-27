@@ -15,20 +15,22 @@ See the GNU General Public License for more details.
 */
 // quake2generic_ein.c -- quake2generic's platform layer for the EiN page,
 // as quakegeneric_ein.c is Quake's: no SDL, no window and no loop of its
-// own. The page writes the game's paks into Emscripten's in-memory file
-// system under /baseq2, calls ein_start once, then ein_tick from
-// requestAnimationFrame, copies the frame from ein_screen onto its canvas
+// own. It runs in the module's worker (ui/quake/engine-worker.ts), which
+// puts the game's paks into Emscripten's file system under /baseq2, read
+// from EiN as the game asks, calls ein_start once, then ein_tick for each of
+// the page's animation frames, hands the page the frame from ein_screen
 // whenever ein_frames moves on, and hands over keys with ein_key, already
 // in Quake 2's key codes, and the mouse's movement with ein_mouse. The
 // frame is the software renderer's, at the size of the video mode the
 // player chose (sw_mode), so ein_width and ein_height can change between
 // frames. The game's saves and config.cfg are files in /baseq2 too: the
-// page writes the player's there before ein_start and hears from ein_wrote
-// when Quake 2 has written a save slot or config.cfg. Sound is snd_ein.c,
-// the music cd_ein.c. After each tick the page asks ein_menu (menu_ein.c)
-// whether to give the mouse back, and ein_fullscreen whether to show the
-// frame fullscreen, which the Video menu sets; ein_set_fullscreen tells the
-// game the browser left fullscreen itself.
+// worker writes the player's there before ein_start and hears from
+// ein_wrote when Quake 2 has written a save slot or config.cfg. Sound is
+// snd_ein.c, the music cd_ein.c, which the page plays. After each tick the
+// worker asks ein_menu (menu_ein.c) whether the page is to give the mouse
+// back, and ein_fullscreen whether to show the frame fullscreen, which the
+// Video menu sets; ein_set_fullscreen tells the game the browser left
+// fullscreen itself.
 
 #include <stdint.h>
 #include <stdlib.h>

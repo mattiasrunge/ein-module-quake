@@ -1,6 +1,6 @@
 # Builds Quake 3 (ioquake3) to WebAssembly for the module's page: assets/quake3.js and
 # assets/quake3.wasm, single-threaded, with no SDL and no main loop (quake3_ein.c), run in a worker
-# of the page's (ui/quake/quake3-worker.ts). It draws with ioquake3's OpenGL 2 renderer on WebGL 2
+# of the module's (ui/quake/engine-worker.ts). It draws with ioquake3's OpenGL 2 renderer on WebGL 2
 # (glimp_ein.c), into the worker's canvas, each frame of which the page draws onto its own.
 # The game code is the game's own QVMs, in its pk3s, which the engine's interpreter runs. The sound
 # is Quake 3's own mixer, music included, played by the page (snd_ein.c); the network is the page's

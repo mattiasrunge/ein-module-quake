@@ -2,7 +2,6 @@ import { execCommand } from '@ein/ui/signals';
 import type { GameAdapter } from '@games/adapter';
 import type { Game } from '../lib/api.ts';
 import { startEngine } from './quake/engine.ts';
-import { mouseKey, quakeKey, WHEEL } from './quake/keys.ts';
 import { startQuake3 } from './quake/quake3.ts';
 
 /**
@@ -22,35 +21,9 @@ export const adapter: GameAdapter<Game> = {
   list: () => execCommand<Game[]>('quake-games'),
   async start({ game, ...options }) {
     if (game.state !== 'installed') throw new Error(`${game.title} is not here yet`);
-    if (game.family === 'quake3') return await startQuake3({ game, ...options });
-    const engine = await startEngine({ game, ...options });
-    const wheel = WHEEL[game.family];
-    const press = (pressed: boolean, key: number | undefined): boolean => {
-      if (key === undefined) return false;
-      engine.key(pressed, key);
-      return true;
-    };
-    return {
-      width: engine.width,
-      height: engine.height,
-      frames: engine.frames,
-      draw: engine.draw,
-      step: engine.tick,
-      key: (pressed, code) => press(pressed, quakeKey(code)),
-      button: (pressed, button) => press(pressed, mouseKey(button)),
-      mouse: engine.mouse,
-      wheel(up) {
-        const key = up ? wheel.up : wheel.down;
-        engine.key(true, key);
-        engine.key(false, key);
-      },
-      keep: engine.writeConfig,
-      disconnect: engine.disconnect,
-      // The menus and the console are worked with the keys; Video Options or the Video menu sets fullscreen.
-      menu: engine.menu,
-      fullscreen: engine.fullscreen,
-      setFullscreen: engine.setFullscreen,
-    };
+    // Each engine runs in the module's worker; the menus and the console of Quake and Quake II are
+    // worked with the keys, Quake 3's with its pointer too.
+    return game.family === 'quake3' ? await startQuake3({ game, ...options }) : await startEngine({ game, ...options });
   },
   help: 'The mouse looks and fires, WASD or the arrows move, Space jumps, Shift runs, Escape is the menu, ` the console.',
   pointer: true,

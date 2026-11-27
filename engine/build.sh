@@ -30,7 +30,7 @@ link() {
   name=$1
   shift
   emcc -O2 -std=gnu99 -w -DQUAKEGENERIC_RES_X=$WIDTH -DQUAKEGENERIC_RES_Y=$HEIGHT "$@" -o "/out/$name.js" \
-    -sMODULARIZE=1 -sEXPORT_ES6=1 -sENVIRONMENT=web \
+    -sMODULARIZE=1 -sEXPORT_ES6=1 \
     -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=128MB -sSTACK_SIZE=1MB \
     -sSUPPORT_LONGJMP=emscripten \
     -sEXPORTED_RUNTIME_METHODS=FS,HEAPU8,HEAP16,HEAPU32,stringToNewUTF8,UTF8ToString \
@@ -40,14 +40,16 @@ link() {
 }
 
 mkdir -p /out
+# The game runs in the module's worker (ui/quake/engine-worker.ts), which reads the game's paks a
+# piece at a time as the engine asks, with synchronous range requests, which only a worker may make.
 case "${1:-all}" in all | client)
-  link quake $(sources $COMMON $CLIENT) -sEXPORT_NAME=createQuake \
+  link quake $(sources $COMMON $CLIENT) -sEXPORT_NAME=createQuake -sENVIRONMENT=worker \
     -sEXPORTED_FUNCTIONS=_ein_start,_ein_tick,_ein_key,_ein_mouse,_ein_disconnect,_ein_write_config,_ein_screen,_ein_width,_ein_height,_ein_frames,_ein_menu,_ein_fullscreen,_ein_set_fullscreen,_ein_audio_rate,_ein_audio_render,_malloc
   ;;
 esac
 # The server runs in a Deno worker, which Emscripten's web runtime suits once it is handed the wasm.
 case "${1:-all}" in all | server)
-  link quake-server $(sources $COMMON $SERVER) -sEXPORT_NAME=createQuakeServer \
+  link quake-server $(sources $COMMON $SERVER) -sEXPORT_NAME=createQuakeServer -sENVIRONMENT=web \
     -sEXPORTED_FUNCTIONS=_ein_start,_ein_tick,_ein_status,_malloc
   ;;
 esac

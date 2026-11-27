@@ -14,17 +14,18 @@ See the GNU General Public License for more details.
 
 */
 // quakegeneric_ein.c -- quakegeneric's platform layer for the EiN page:
-// no SDL, no window and no loop of its own. The page drives the game: it
-// writes the game's paks into Emscripten's in-memory file system under
-// /id1, calls ein_start once, then ein_tick from requestAnimationFrame,
-// copies the frame from ein_screen onto its canvas whenever ein_frames
-// moves on, and hands over keys with ein_key, already in Quake's key
-// codes, and the mouse's movement with ein_mouse. The frame is the size of
+// no SDL, no window and no loop of its own. It runs in the module's worker
+// (ui/quake/engine-worker.ts), which drives the game: it puts the game's
+// paks into Emscripten's file system under /id1, read from EiN as the game
+// asks, calls ein_start once, then ein_tick for each of the page's animation
+// frames, hands the page the frame from ein_screen whenever ein_frames
+// moves on, and hands over keys with ein_key, already in Quake's key codes,
+// and the mouse's movement with ein_mouse. The frame is the size of
 // the mode the player chose (vid_null.c), so ein_width and ein_height can
-// change between frames. The game's saves and
-// config.cfg are files in /id1 too: the page writes the player's there
-// before ein_start and hears from ein_wrote when Quake has written one.
-// Sound is snd_ein.c, the music cd_ein.c. After each tick the page asks
+// change between frames. The game's saves and config.cfg are files in /id1
+// too: the worker writes the player's there before ein_start and hears from
+// ein_wrote when Quake has written one. Sound is snd_ein.c, the music
+// cd_ein.c, which the page plays. After each tick the worker asks
 // ein_menu whether to give the mouse back, and ein_fullscreen whether to
 // show the frame fullscreen, which Video Options sets; ein_set_fullscreen
 // tells the game the browser left fullscreen itself.

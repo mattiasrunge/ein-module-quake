@@ -1,6 +1,7 @@
 #!/bin/sh
 # Compiles Quake 2 to WebAssembly in quake2generic's patched source tree, the current directory, into
-# /out: the game the page plays (quake2.js, quake2.wasm) and its dedicated server, which the
+# /out: the game the page plays, in the module's worker (quake2.js, quake2.wasm), and its dedicated
+# server, which the
 # quake-server service runs in a worker (quake2-server.js, quake2-server.wasm). Run by
 # engine/quake2/Containerfile in the emsdk image; `client` or `server` builds one of them.
 set -eu
@@ -37,7 +38,7 @@ link() {
 mkdir -p /out
 case "${1:-all}" in all | client)
   link quake2 $(sources $CLIENT $COMMON) \
-    -sEXPORT_NAME=createQuake2 -sENVIRONMENT=web -sINITIAL_MEMORY=128MB \
+    -sEXPORT_NAME=createQuake2 -sENVIRONMENT=worker -sINITIAL_MEMORY=128MB \
     -sEXPORTED_FUNCTIONS=_ein_start,_ein_tick,_ein_key,_ein_mouse,_ein_disconnect,_ein_write_config,_ein_screen,_ein_width,_ein_height,_ein_frames,_ein_menu,_ein_fullscreen,_ein_set_fullscreen,_ein_audio_rate,_ein_audio_render,_malloc
   ;;
 esac
