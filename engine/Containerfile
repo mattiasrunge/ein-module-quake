@@ -4,7 +4,8 @@
 # played by the page (engine/snd_ein.c); the music is the page's (engine/cd_ein.c); the network
 # is id's datagram driver over the page's (engine/net_ein.c). Beside it, the same engine as a
 # dedicated server without frame or sound (engine/server_ein.c), which the quake-server service
-# runs: assets/quake-server.js and assets/quake-server.wasm.
+# runs: assets/quake-server.js and assets/quake-server.wasm. The game draws with a WebGL 2 renderer
+# of its own (engine/gl_*.c) or with Quake's software renderer, as the player chooses.
 #
 #   docker buildx build --file engine/Containerfile --output type=local,dest=assets engine
 #
@@ -73,14 +74,22 @@ RUN git -C /src apply /src/menu.patch
 COPY controls.patch /src/
 RUN git -C /src apply /src/controls.patch
 
+# The WebGL 2 renderer (gl_*.c) draws in place of the software renderer while the player has chosen it
+# (vid_renderer, Video Options): R_RenderView, R_NewMap and the particles hand over to it, the BSP's
+# textures and surfaces keep what it built of them, and Video Options chooses the renderer and its
+# filtering.
+COPY webgl.patch /src/
+RUN git -C /src apply /src/webgl.patch
+
 WORKDIR /src/source
 COPY quakegeneric_ein.c sys_ein.c snd_ein.c cd_ein.c net_ein.c server_ein.c build.sh ./
+COPY gl_ein.h gl_local.h gl_main.c gl_world.c gl_models.c gl_shaders.c gl_null.c ./
 
 # The game and its dedicated server (build.sh). Two compilers at a time keep the build's memory small
 # beside a running EiN.
 ENV EMCC_CORES=2
 RUN sh build.sh \
-  && echo "quakegeneric ${QUAKEGENERIC_COMMIT} with resolution.patch, scale.patch, files.patch, long-strings.patch, connect.patch, menu.patch and controls.patch, id Software's Quake ${QUAKE_COMMIT}'s WinQuake sound and datagram driver, modes up to 1920x1200: the game and its dedicated server; emsdk 6.0.13" > /out/quake-build.txt
+  && echo "quakegeneric ${QUAKEGENERIC_COMMIT} with resolution.patch, scale.patch, files.patch, long-strings.patch, connect.patch, menu.patch, controls.patch and webgl.patch, id Software's Quake ${QUAKE_COMMIT}'s WinQuake sound and datagram driver, modes up to 1920x1200, a WebGL 2 renderer beside the software one: the game and its dedicated server; emsdk 6.0.13" > /out/quake-build.txt
 
 FROM scratch
 COPY --from=build /out/ /

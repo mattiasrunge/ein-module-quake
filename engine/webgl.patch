@@ -1,0 +1,195 @@
+diff --git a/source/d_part.c b/source/d_part.c
+index 062cf7d..04e6aab 100644
+--- a/source/d_part.c
++++ b/source/d_part.c
+@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ 
+ #include "quakedef.h"
+ #include "d_local.h"
++#include "gl_ein.h"
+ 
+ 
+ /*
+@@ -57,6 +58,12 @@ void D_DrawParticle (particle_t *pparticle)
+ 	short	*pz;
+ 	int		i, izi, pix, count, u, v;
+ 
++	if (gl_drawing)
++	{
++		GL_Particle (pparticle);
++		return;
++	}
++
+ // transform point
+ 	VectorSubtract (pparticle->org, r_origin, local);
+ 
+diff --git a/source/model.h b/source/model.h
+index 2e89862..c05f539 100644
+--- a/source/model.h
++++ b/source/model.h
+@@ -74,6 +74,13 @@ typedef struct texture_s
+ 	struct texture_s *anim_next;		// in the animation sequence
+ 	struct texture_s *alternate_anims;	// bmodels in frmae 1 use these
+ 	unsigned	offsets[MIPLEVELS];		// four mip maps stored
++// the WebGL renderer's (gl_world.c): the map they were made on, its
++// textures of the indexes and of the colours (a sky's back layer), a
++// sky's front layer, and the surfaces to draw with it in a pass
++	int			gl_gen;
++	unsigned	gl_index, gl_rgba;
++	unsigned	gl_front, gl_frontrgba;
++	struct msurface_s *gl_chain;
+ } texture_t;
+ 
+ 
+@@ -123,6 +130,16 @@ typedef struct msurface_s
+ // lighting info
+ 	byte		styles[MAXLIGHTMAPS];
+ 	byte		*samples;		// [numstyles*surfsize]
++
++// the WebGL renderer's (gl_world.c): its first vertex in its model's
++// buffer, its lightmap's place (x, y, layer), the light styles' values and
++// whether a dynamic light lit it when it was last lit, and the next
++// surface on its texture's chain
++	int			gl_vertex;
++	unsigned short	gl_light[3];
++	int			gl_cached[MAXLIGHTMAPS];
++	qboolean	gl_dlit;
++	struct msurface_s *gl_next;
+ } msurface_t;
+ 
+ typedef struct mnode_s
+diff --git a/source/r_main.c b/source/r_main.c
+index d154abc..c3cccf6 100644
+--- a/source/r_main.c
++++ b/source/r_main.c
+@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ 
+ #include "quakedef.h"
+ #include "r_local.h"
++#include "gl_ein.h"
+ 
+ //define	PASSAGES
+ 
+@@ -289,6 +290,7 @@ void R_NewMap (void)
+ 
+ 	r_dowarpold = false;
+ 	r_viewchanged = false;
++	GL_NewMap ();
+ #ifdef PASSAGES
+ CreatePassages ();
+ #endif
+@@ -1022,6 +1024,12 @@ void R_RenderView (void)
+ {
+ 	int		dummy;
+ 	int		delta;
++
++	if (gl_drawing)
++	{
++		GL_RenderView ();
++		return;
++	}
+ 	
+ 	delta = (byte *)&dummy - r_stack_start;
+ 	if (delta < -10000 || delta > 10000)
+diff --git a/source/vid_null.c b/source/vid_null.c
+index 2b6e680..50820d4 100644
+--- a/source/vid_null.c
++++ b/source/vid_null.c
+@@ -33,6 +33,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ 
+ #include "quakedef.h"
+ #include "d_local.h"
++#include "gl_ein.h"
+ 
+ #include "quakegeneric.h"
+ 
+@@ -78,12 +79,23 @@ static vidmode_t	vid_modes[] =
+ // game starts in the page.
+ cvar_t	vid_fullscreen = {"vid_fullscreen", "0"};
+ 
++// Which renderer draws the frames: WebGL 2 ("gl", gl_main.c) or the
++// software one ("soft"); and how WebGL filters the textures: "nearest", the
++// software renderer's look, or "linear", mipmapped, as GLQuake did.
++// config.cfg keeps both. A browser without WebGL 2 draws with the software
++// renderer whatever vid_renderer says.
++cvar_t	vid_renderer = {"vid_renderer", "gl", true};
++cvar_t	gl_filter = {"gl_filter", "nearest", true};
++
+ // The line Video Options' cursor is on: a mode, or VID_FULLSCREEN, the line
+-// after the modes and a blank one.
++// after the modes and a blank one, then the renderer's and the filtering's.
+ static int	vid_cursor;
+ 
+ #define VID_FULLSCREEN	VID_NUM_MODES
+-#define VID_LINE_Y(i)	(32 + ((i) + ((i) == VID_FULLSCREEN)) * 8)
++#define VID_RENDERER	(VID_NUM_MODES + 1)
++#define VID_FILTER		(VID_NUM_MODES + 2)
++#define VID_LAST		VID_FILTER
++#define VID_LINE_Y(i)	(32 + ((i) + ((i) >= VID_FULLSCREEN)) * 8)
+ 
+ // menu.c's, which menu.h does not declare.
+ extern void (*vid_menudrawfn)(void);
+@@ -212,7 +224,7 @@ static void VID_CheckMode (void)
+ VID_MenuDraw
+ 
+ Video Options: the modes, the one played in white, whether the frame is
+-fullscreen, and the cursor.
++fullscreen, the renderer and how WebGL filters, and the cursor.
+ ================
+ */
+ static void VID_MenuDraw (void)
+@@ -244,6 +256,10 @@ static void VID_MenuDraw (void)
+ 	}
+ 	M_Print (88, VID_LINE_Y (VID_FULLSCREEN), "Fullscreen");
+ 	M_DrawCheckbox (184, VID_LINE_Y (VID_FULLSCREEN), vid_fullscreen.value);
++	M_Print (88, VID_LINE_Y (VID_RENDERER), "Renderer");
++	M_Print (184, VID_LINE_Y (VID_RENDERER), strcmp (vid_renderer.string, "soft") ? gl_failed ? "no WebGL" : "WebGL" : "Software");
++	M_Print (88, VID_LINE_Y (VID_FILTER), "Filtering");
++	M_Print (184, VID_LINE_Y (VID_FILTER), strcmp (gl_filter.string, "linear") ? "Nearest" : "Linear");
+ 	M_DrawCharacter (72, VID_LINE_Y (vid_cursor), 12 + ((int) (realtime * 4) & 1));
+ }
+ 
+@@ -259,24 +275,29 @@ static void VID_MenuKey (int key)
+ 	case K_UPARROW:
+ 		S_LocalSound ("misc/menu1.wav");
+ 		if (--vid_cursor < 0)
+-			vid_cursor = VID_FULLSCREEN;
++			vid_cursor = VID_LAST;
+ 		break;
+ 
+ 	case K_DOWNARROW:
+ 		S_LocalSound ("misc/menu1.wav");
+-		if (++vid_cursor > VID_FULLSCREEN)
++		if (++vid_cursor > VID_LAST)
+ 			vid_cursor = 0;
+ 		break;
+ 
+ 	case K_LEFTARROW:
+ 	case K_RIGHTARROW:
+-		if (vid_cursor != VID_FULLSCREEN)
++		if (vid_cursor < VID_FULLSCREEN)
+ 			break;
+-		// Left and right turn fullscreen on and off, as Enter does.
++		// Left and right turn fullscreen on and off and choose the renderer
++		// and the filtering, as Enter does.
+ 	case K_ENTER:
+ 		S_LocalSound ("misc/menu2.wav");
+ 		if (vid_cursor == VID_FULLSCREEN)
+ 			Cvar_SetValue ("vid_fullscreen", !vid_fullscreen.value);
++		else if (vid_cursor == VID_RENDERER)
++			Cvar_Set ("vid_renderer", strcmp (vid_renderer.string, "soft") ? "soft" : "gl");
++		else if (vid_cursor == VID_FILTER)
++			Cvar_Set ("gl_filter", strcmp (gl_filter.string, "linear") ? "linear" : "nearest");
+ 		else
+ 			VID_AskMode (vid_modes[vid_cursor].width, vid_modes[vid_cursor].height);
+ 		break;
+@@ -289,6 +310,9 @@ void	VID_Init (unsigned char *palette)
+ 	Cvar_RegisterVariable (&vid_height);
+ 	Cvar_RegisterVariable (&vid_fullscreen);
+ 	Cvar_RegisterVariable (&vid_scale);
++	Cvar_RegisterVariable (&vid_renderer);
++	Cvar_RegisterVariable (&gl_filter);
++	GL_Register ();
+ 
+ 	vid.maxwarpwidth = WARP_WIDTH;
+ 	vid.maxwarpheight = WARP_HEIGHT;

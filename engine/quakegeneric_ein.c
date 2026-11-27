@@ -28,7 +28,10 @@ See the GNU General Public License for more details.
 // cd_ein.c, which the page plays. After each tick the worker asks
 // ein_menu whether to give the mouse back, and ein_fullscreen whether to
 // show the frame fullscreen, which Video Options sets; ein_set_fullscreen
-// tells the game the browser left fullscreen itself.
+// tells the game the browser left fullscreen itself. A frame is drawn with
+// WebGL 2 on the canvas the worker gave (gl_main.c) or by the software
+// renderer into ein_screen, as the player chooses in Video Options;
+// ein_gl says which the last one was.
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -37,6 +40,7 @@ See the GNU General Public License for more details.
 
 #include "quakedef.h"
 #include "quakegeneric.h"
+#include "gl_ein.h"
 
 // host.c's, which quakedef.h does not declare.
 void Host_WriteConfiguration(void);
@@ -66,6 +70,9 @@ static int height = 0;
 // How many frames the game has finished: the page blits when it moves.
 static uint32_t frames = 0;
 
+// Whether the last frame was drawn with WebGL, on the canvas.
+static int drawn_gl = 0;
+
 // When the last tick ran, in seconds.
 static double last_tick = 0;
 
@@ -85,11 +92,19 @@ void QG_SetPalette(unsigned char pal[768])
 		palette[i] = 0xff000000u | (pal[i * 3 + 2] << 16) | (pal[i * 3 + 1] << 8) | pal[i * 3];
 }
 
-// The renderer's frame, at vid's size: the mode's.
+// The renderer's frame, at vid's size: the mode's. WebGL's is on the
+// canvas already; the software renderer's is put through the palette.
 void QG_DrawFrame(void *pixels)
 {
 	const unsigned char *indexes = pixels;
 	int i;
+
+	drawn_gl = GL_EndFrame();
+	if (drawn_gl)
+	{
+		frames++;
+		return;
+	}
 
 	if (vid.width != width || vid.height != height)
 	{
@@ -249,4 +264,12 @@ EMSCRIPTEN_KEEPALIVE
 uint32_t ein_frames(void)
 {
 	return frames;
+}
+
+// Whether the last frame is on the canvas, drawn with WebGL, rather than
+// in ein_screen.
+EMSCRIPTEN_KEEPALIVE
+int ein_gl(void)
+{
+	return drawn_gl;
 }
