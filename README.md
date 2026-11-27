@@ -23,17 +23,23 @@ single-threaded, with a platform layer of its own and no SDL:
   Quake 3 has no software renderer: it draws with ioquake3's OpenGL 2 renderer
   on the browser's WebGL 2 (`engine/quake3/glimp_ein.c`), at the screen's size
   or the video mode the player chooses. Its game code is the game's own QVMs,
-  in its pk3s, which ioquake3's interpreter runs. It runs in a worker of the
-  page's (`ui/quake/quake3-worker.ts`), which reads the game's pk3s from EiN a
-  megabyte at a time as the engine asks for them, with range requests, so a
-  game starts without downloading all of it.
+  in its pk3s, which ioquake3's interpreter runs.
+
+Each engine runs in the module's worker (`ui/quake/engine-worker.ts`, `ui.workers`
+in `mod.json`), not in the page, so a frame the game takes long over never holds
+up the page. The worker reads the game's paks from EiN a megabyte at a time as
+the engine asks for them, with range requests, so a game starts without
+downloading all of it: a level of the whole Quake II reads some 18 MB of its
+208, one of Quake some 13 MB of its 53. The browser keeps what it read, so the
+next start reads it from there.
 
 The module tells the games apart by what their paks hold: a folder of pk3s is a
-Quake 3 game. Its adapter (`ui/adapter.ts`) loads the game's engine at runtime
-from the module's `assets/` directory and hands it to the games module's page,
-which drives it from `requestAnimationFrame` and draws its frames on a canvas.
-Quake 3 draws on a canvas of its own in its worker, which hands each frame to the
-page as a picture, which the page draws.
+Quake 3 game. Its adapter (`ui/adapter.ts`) starts the game's engine, from the
+module's `assets/` directory, in the worker, and hands it to the games module's
+page, which ticks it from `requestAnimationFrame` and draws on a canvas each
+frame the worker hands back as a picture: Quake 3 draws its own with WebGL on
+the worker's canvas, and the worker puts Quake's and Quake II's pixels on one.
+The sound the engine mixes, and its music, are played by the page.
 
 It is not one of EiN's own modules and has nothing to do with a family's
 archive.
@@ -218,8 +224,9 @@ game's server runs no bots of its own.
 The game's **Save** and **Load** keep your games in your home, in
 `.quake/<game>/`, one folder for each game you play, so a save is loaded only
 into the game it was made in and nobody else sees it. Beside them is
-`config.cfg`, the game's settings and key bindings, written when you quit the
-game, go to another page of EiN's or close the tab.
+`config.cfg`, the game's settings and key bindings, written each time you close
+the game's menu or console, where they change, when you quit the game, and when
+you go to another page of EiN's.
 
 - Quake's slots are a file each, `s0.sav` to `s11.sav`, as Quake writes them.
 - Quake II's are a folder each, `save/<slot>/`, as Quake II writes them: the
@@ -347,9 +354,9 @@ music** turns the music on and off.
 | `ui/pages/game.tsx`                                                               | A game's page, `/games/quake/<game>`: the games module's page for a game, with the module's adapter.                                                                                         |
 | `ui/cards/demo.tsx`                                                               | The dashboard card, offered in `etc/dashboard.d/cards.json`: the games module's demo card, a game running its demos.                                                                         |
 | `ui/adapter.ts`                                                                   | The adapter the games module plays the games with: lists them, starts one, maps the keys, the mouse and the wheel, and names the saves kept.                                                 |
-| `ui/quake/engine.ts`                                                              | Loads the game's engine, its glue and wasm, the paks and the files beside them, and wraps the engine's exports; what differs between the engines.                                            |
-| `ui/quake/quake3.ts`                                                              | Starts a Quake III game in its worker, hands it the keys, the characters they type, the mouse and the datagrams, and draws its frames and plays its sound.                                 |
-| `ui/quake/quake3-worker.ts`, `ui/quake/quake3-messages.ts`                        | The worker Quake III runs in (`ui.workers` in `mod.json`): its pk3s read with range requests, a tick a frame, the frame and the sound handed back; and what the two tell each other.        |
+| `ui/quake/worker-game.ts`                                                         | Starts a game in the engine worker and runs it for the page: ticks, frames, sound, music, the network and the player's files; each engine says what it is given and how it takes keys.    |
+| `ui/quake/engine.ts`, `ui/quake/quake3.ts`                                        | What Quake and Quake II, and Quake III, are given, their command lines and their keys; Quake III's the characters they type too, and the household's CD key.                              |
+| `ui/quake/engine-worker.ts`, `ui/quake/engine-messages.ts`                        | The worker every engine runs in (`ui.workers` in `mod.json`): the paks read with range requests, a tick a frame, the frame and the sound handed back; and what it and the page tell each other. |
 | `ui/quake/keys.ts`                                                                | Browser key codes and mouse buttons to Quake's, which are Quake II's too, and to Quake III's, with the characters they type.                                                                |
 | `bin/quake-games`                                                                 | Lists the games with their titles, engines, title art, paks, maps and music, and the free ones not fetched yet, for the Games page, a game's page and the card's choice of game.             |
 | `lib/games.ts`, `lib/api.ts`                                                      | Where the games are, which engine plays a game, its maps and music, the games known by name, the free games offered, and the shape `quake-games` answers in.                                 |
