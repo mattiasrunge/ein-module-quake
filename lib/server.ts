@@ -73,7 +73,7 @@ const SPECS: Record<EngineName, ServerSpec> = {
     reads: /^(maps\/[^/]+\.(bsp|aas)|vm\/qagame\.qvm|scripts\/.*|botfiles\/.*|[^/]+\.cfg)$/,
     // id's demo is played with ioquake3's own game code, whose name sorts after the demo's pk3, as
     // the players' pages play it (`ui/quake/quake3.ts`).
-    extra: (info) => gamedirOf(info.game, info.title) === 'demoq3' ? [{ name: 'zz-ioquake3.pk3', path: `${MODULE}/assets/quake3-vm.pk3` }] : [],
+    extra: (info) => gamedirOf(info.game, info.title) === 'demoq3' ? [{ name: 'zz-ein-game.pk3', path: `${MODULE}/assets/quake3-game.pk3` }] : [],
     // Quake 3 has no cooperative game: a deathmatch is its free for all (g_gametype 0). Bots join on
     // the console, as `addbot`.
     modes: ['deathmatch'],

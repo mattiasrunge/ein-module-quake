@@ -7,7 +7,7 @@
 import { argv, type EmscriptenModule, type Engine, FrameCanvas, heapSound, keptPath, serveEngine, startEmscripten } from '@games/engine';
 import type { QuakeStart } from './start.ts';
 
-/** The widest frame Quake 3 starts at, whatever the screen: wider takes more of the GPU than it shows. */
+/** The widest frame Quake 3 draws at the screen's size, whatever the screen: wider takes more of the GPU than it shows. */
 const MAX_WIDTH = 1920;
 
 /**
@@ -41,9 +41,8 @@ let drawn = 0;
 let sound: ((count: number) => Int16Array<ArrayBuffer>) | undefined;
 
 /**
- * The size Quake 3 starts drawing at when the player has chosen none (r_mode -2, `Module.einDisplay`
- * in `glimp_ein.c`): the screen's, in its pixels, as the game is shown fullscreen, but no wider than
- * `MAX_WIDTH`.
+ * The size Quake 3 draws at with r_mode -2 (`Module.einDisplay` in `glimp_ein.c`): the screen's, in
+ * its pixels, as the game is shown fullscreen, but no wider than `MAX_WIDTH`.
  */
 function display(screen: { width: number; height: number }): { width: number; height: number } {
   const width = Math.min(MAX_WIDTH, screen.width);

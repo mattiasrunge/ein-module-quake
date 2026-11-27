@@ -21,8 +21,9 @@ See the GNU General Public License for more details.
 // "!canvas"). After each frame the worker hands what was drawn to the page,
 // which draws it onto its own; ein_frames says whether a frame was drawn
 // since it last looked. The frame is the size of the
-// video mode the player chose (r_mode), or with r_mode -2 the size the page
-// shows the game at (Module.einDisplay), and the canvas takes that size.
+// video mode the player chose (r_mode), one of those the game's menu lists
+// (r_availableModes) or any with r_mode -1, or with r_mode -2 the size the
+// page shows the game at (Module.einDisplay), and the canvas takes that size.
 // There is no window to go fullscreen or to minimise: the page shows the
 // frame fullscreen when r_fullscreen asks for it (ein_fullscreen).
 
@@ -58,6 +59,14 @@ QGL_ARB_framebuffer_object_PROCS;
 QGL_ARB_vertex_array_object_PROCS;
 QGL_EXT_direct_state_access_PROCS;
 #undef GLE
+
+// The modes the game's menu offers (q3_ui reads them from r_availableModes):
+// 4:3, 16:9 and 16:10, up to 1920 by 1200. Each that is not one of
+// Quake 3's own (r_mode 0 to 11) is chosen as r_mode -1 with r_customwidth
+// and r_customheight.
+#define AVAILABLE_MODES "640x480 800x600 1024x768 1280x960 1600x1200 " \
+	"1280x720 1600x900 1920x1080 " \
+	"1280x800 1440x900 1680x1050 1920x1200"
 
 // The context, made once: a canvas has one WebGL context, which a video
 // restart keeps.
@@ -218,7 +227,16 @@ void GLimp_Init( qboolean fixedFunction )
 	if ( r_ext_compressed_textures->integer && SDL_GL_ExtensionSupported( "GL_EXT_texture_compression_s3tc" ) )
 		glConfig.textureCompression = TC_S3TC_ARB;
 
+	// Anisotropic filtering, when the player asks for it and the GPU has it.
+	textureFilterAnisotropic = qfalse;
+	if ( r_ext_texture_filter_anisotropic->integer && SDL_GL_ExtensionSupported( "GL_EXT_texture_filter_anisotropic" ) )
+	{
+		qglGetIntegerv( GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, (GLint *) &maxAnisotropy );
+		textureFilterAnisotropic = maxAnisotropy > 0;
+	}
+
 	ri.Cvar_Get( "r_availableModes", "", CVAR_ROM );
+	ri.Cvar_Set( "r_availableModes", AVAILABLE_MODES );
 
 	ri.IN_Init( NULL );
 }

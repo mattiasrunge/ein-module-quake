@@ -3,5 +3,7 @@
 *.PAK
 *.pk3
 *.ogg
-# But ioquake3's own game code, which the module builds and ships.
-!assets/quake3-vm.pk3
+# But the game code the module builds and ships: ioquake3's and OpenArena's menus, ioquake3's game.
+!assets/quake3-ui.pk3
+!assets/quake3-game.pk3
+!assets/openarena-ui.pk3

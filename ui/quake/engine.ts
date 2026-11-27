@@ -34,20 +34,22 @@ const ENGINES: Record<Exclude<EngineName, 'quake3'>, EngineSpec> = {
     folder: '/id1',
     args: (sound) => ['quake', ...(sound ? [] : ['-nosound'])],
     // Mouse look, as players have played since, which Quake does not keep in config.cfg. Always Run is
-    // the speeds Quake's Options set.
-    commands: (first) => ['+mlook', ...(first ? [...WASD, 'cl_forwardspeed 400', 'cl_backspeed 400', 'crosshair 1'] : [])],
+    // the speeds Quake's Options set. A player without a config.cfg plays at 1280 by 720, one of the
+    // modes Video Options lists, which config.cfg then keeps.
+    commands: (first) => ['+mlook', ...(first ? [...WASD, 'cl_forwardspeed 400', 'cl_backspeed 400', 'crosshair 1', 'vid_width 1280', 'vid_height 720'] : [])],
     // Quake keeps the name as _cl_name; "player" is what everyone starts with.
     playerName: (config) => /^_cl_name "(.*)"/m.exec(config)?.[1].replace(/^player$/i, '') || undefined,
   },
   quake2: {
     build: 'quake2',
     folder: '/baseq2',
-    // 640 by 480 (sw_mode 3), as Quake's frame, for a player without a config.cfg, which keeps the mode
-    // the Video menu sets; a mode on the command line would be set again after config.cfg. And without
-    // the frame rate quake2generic draws in the corner (cg_drawfps, which no config.cfg keeps).
+    // 1280 by 720 (sw_mode 11, one of the Video menu's modes), as Quake's frame, for a player without a
+    // config.cfg, which keeps the mode the Video menu sets; a mode on the command line would be set
+    // again after config.cfg. And without the frame rate quake2generic draws in the corner
+    // (cg_drawfps, which no config.cfg keeps).
     args: (sound, first) => [
       'quake2',
-      ...(first ? ['+set', 'sw_mode', '3'] : []),
+      ...(first ? ['+set', 'sw_mode', '11'] : []),
       '+set',
       'cg_drawfps',
       '0',

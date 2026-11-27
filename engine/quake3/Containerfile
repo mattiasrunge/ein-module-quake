@@ -42,6 +42,23 @@ RUN git -C /src apply /src/config.patch
 COPY cdkey.patch /src/
 RUN git -C /src apply /src/cdkey.patch
 
+# The menus' Setup > System lists the modes the engine offers (r_availableModes, glimp_ein.c),
+# widescreen ones too, and has no GL driver, extensions, colour depth or texture bits to choose,
+# which the page's WebGL has one of; its Graphics Settings set the quality, not the mode or
+# fullscreen.
+COPY graphics.patch /src/
+RUN git -C /src apply /src/graphics.patch
+
+# OpenArena 0.8.8's game code, its menus' source, pinned: the head of its 0.8.8 branch, from which
+# its pak6-patch088.pk3 was built. GPL-2.0-or-later. Its Setup > System is patched as Quake III's,
+# keeping its flares and anisotropy.
+ARG OPENARENA_COMMIT=db7dfa574c291dd0a73a8341397f0a9de448aefd
+RUN git init -q /oa \
+  && git -C /oa fetch -q --depth 1 https://github.com/OpenArena/gamecode.git ${OPENARENA_COMMIT} \
+  && git -C /oa checkout -q FETCH_HEAD
+COPY openarena-graphics.patch /oa/
+RUN git -C /oa apply /oa/openarena-graphics.patch
+
 WORKDIR /src/code
 COPY quake3_ein.c glimp_ein.c snd_ein.c net_ein.c server_ein.c ein/
 COPY build.sh ./
@@ -51,15 +68,17 @@ COPY build.sh ./
 ENV EMCC_CORES=2
 RUN sh build.sh
 
-# ioquake3's own game code for Quake III Arena, its cgame, qagame and ui, compiled from its source to
-# QVMs with its own compiler (its CMake, with the image's gcc for the compiler itself) and packed as
-# a pk3, quake3-vm.pk3, its files dated alike so a build makes the same bytes. The demo's own QVMs
-# are older than ioquake3 runs, so a demo is played with these, as ioquake3 says to.
+# The game code the module brings, as QVMs (qvms.sh): ioquake3's own for Quake III Arena, compiled
+# from its source with its own compiler (its CMake, with the image's gcc for the compiler itself),
+# its menus (quake3-ui.pk3), which id's demo and whole game are played with, and its cgame and
+# qagame (quake3-game.pk3), which the demo is played with, as ioquake3 says to: the demo's own are
+# older than ioquake3 runs; and OpenArena's menus (openarena-ui.pk3), compiled with the same compiler.
+COPY qvms.sh ./
 RUN cmake -S /src -B /qvm -DCMAKE_BUILD_TYPE=Release -DBUILD_CLIENT=OFF -DBUILD_SERVER=OFF -DBUILD_GAME_LIBRARIES=OFF \
     -DBUILD_GAME_QVMS=ON -DBUILD_RENDERER_GL1=OFF -DBUILD_RENDERER_GL2=OFF > /dev/null \
   && cmake --build /qvm -j2 > /dev/null \
-  && python3 -c "import zipfile; z = zipfile.ZipFile('/out/quake3-vm.pk3', 'w'); [z.writestr(zipfile.ZipInfo(f'vm/{n}.qvm', (1999, 12, 2, 0, 0, 0)), open(f'/qvm/Release/baseq3/vm/{n}.qvm', 'rb').read(), zipfile.ZIP_DEFLATED) for n in ('cgame', 'qagame', 'ui')]; z.close()" \
-  && echo "ioquake3 ${IOQ3_COMMIT} with main.patch, frame.patch, config.patch and cdkey.patch: the game, OpenGL 2 renderer on WebGL 2, in a worker, and its dedicated server; and its baseq3 game code as QVMs (quake3-vm.pk3); emsdk 6.0.13" > /out/quake3-build.txt
+  && sh qvms.sh \
+  && echo "ioquake3 ${IOQ3_COMMIT} with main.patch, frame.patch, config.patch, cdkey.patch and graphics.patch: the game, OpenGL 2 renderer on WebGL 2, in a worker, and its dedicated server; its baseq3 menus (quake3-ui.pk3) and game code (quake3-game.pk3) as QVMs; OpenArena ${OPENARENA_COMMIT}'s menus with openarena-graphics.patch (openarena-ui.pk3); emsdk 6.0.13" > /out/quake3-build.txt
 
 FROM scratch
 COPY --from=build /out/ /

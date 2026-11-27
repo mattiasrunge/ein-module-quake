@@ -13,17 +13,18 @@ single-threaded, with a platform layer of its own and no SDL:
 
 - Quake's is [quakegeneric](https://github.com/erysdren/quakegeneric), id
   Software's WinQuake made easy to port (`engine/quakegeneric_ein.c`). It draws
-  with Quake's software renderer at 640 by 480, WinQuake's VGA mode.
+  with Quake's software renderer at 1280 by 720, or the video mode the player
+  chooses.
 - Quake II's is [quake2generic](https://github.com/ozkl/quake2generic), id
   Software's Quake II made easy to port, its game code linked in
   (`engine/quake2/quake2generic_ein.c`). It draws with Quake II's software
-  renderer at 640 by 480, or the video mode the player chooses.
+  renderer at 1280 by 720, or the video mode the player chooses.
 - Quake 3's is [ioquake3](https://github.com/ioquake/ioq3), the community's
   continuation of id Software's Quake III Arena (`engine/quake3/quake3_ein.c`).
   Quake 3 has no software renderer: it draws with ioquake3's OpenGL 2 renderer
-  on the browser's WebGL 2 (`engine/quake3/glimp_ein.c`), at the screen's size
-  or the video mode the player chooses. Its game code is the game's own QVMs,
-  in its pk3s, which ioquake3's interpreter runs.
+  on the browser's WebGL 2 (`engine/quake3/glimp_ein.c`), at 1920 by 1080, or
+  the video mode the player chooses. Its game code is the game's own QVMs, in
+  its pk3s, which ioquake3's interpreter runs, but for its menus (below).
 
 Each engine runs in the module's worker (`ui/quake/engine-worker.ts`, `ui.workers`
 in `mod.json`), not in the page, so a frame the game takes long over never holds
@@ -76,7 +77,7 @@ release's SHA-256 and puts it in a folder of its own:
   of its arenas, which id let anyone copy and pass on free of charge and not
   for profit with its licence. The licence is beside it, `license.txt` in its
   folder. Its own game code is older than ioquake3 runs, so it is played with
-  ioquake3's, built from its source with the engine (`assets/quake3-vm.pk3`),
+  ioquake3's, built from its source with the engine (`assets/quake3-game.pk3`),
   as ioquake3 says to, which notes that the demo's bot files do not wholly match
   it.
 - **OpenArena**: [OpenArena](https://openarena.ws) 0.8.8, a free arena shooter
@@ -130,20 +131,35 @@ WASD keys, free look, always run and the crosshair are only the first settings
 of a player who has none yet. Until you choose a name in the game's
 **Multiplayer** menu, you play under your account's.
 
-The game's frame is 640 by 480 until you choose another size, which the game
-keeps. In Quake, **Options** > **Video Options** lists the modes, from 320 by 240
-up to 1920 by 1200, 4:3 and widescreen (16:9 and 16:10); **Enter** sets the one
-under the cursor. A wider frame sees more at its sides, not less above and below.
-The console's `vid_width` and `vid_height` set any size up to 1920 by 1200. In
-Quake II, **Video** sets the frame's size, from the same modes, once you choose
-**apply**. The page shows the frame at its shape. A larger frame takes more of
-the computer to draw.
+The game's frame is 1280 by 720 in Quake and Quake II, and 1920 by 1080 in
+Quake III, until you choose another size, which the game keeps; a player who has
+played before keeps the size they had. In Quake, **Options** > **Video Options**
+lists the modes, from 320 by 240 up to 1920 by 1200, 4:3 and widescreen (16:9
+and 16:10); **Enter** sets the one under the cursor. A wider frame sees more at
+its sides, not less above and below. The console's `vid_width` and `vid_height`
+set any size up to 1920 by 1200. In Quake II, **Video** sets the frame's size,
+from the same modes, once you choose **apply**. The page shows the frame at its
+shape. A larger frame takes more of the computer to draw.
 
-A Quake III game starts at the size of the screen, in its pixels, but no wider
-than 1920, so it is sharp fullscreen; **Setup** > **System** sets another video
-mode, and the console's `r_mode -1` with `r_customwidth` and `r_customheight`
-any size. Its menus and status bar are drawn to the frame's size, as Quake III
-draws them.
+In Quake III, **Setup** > **System** lists the modes by their shape: **Aspect
+Ratio** chooses 4:3, 16:9 or 16:10, **Resolution** one of its sizes, from 640 by
+480 up to 1920 by 1200, and **Accept** sets it, and **Fullscreen** with it. Its
+**Graphics Settings**, from **Very High Quality** to **Fastest**, set the
+detail, lighting and filtering, and leave the mode and fullscreen as they are.
+The menus have no GL driver, GL extensions, colour depth or texture quality to
+choose: the browser's WebGL has one of each. OpenArena's own menus are played
+patched alike, with its flares and anisotropic filtering, but without its bloom,
+which ioquake3 does not draw. The console's `r_mode -1` with `r_customwidth` and
+`r_customheight` sets any size, and `r_mode -2` the size of the screen, in its
+pixels, but no wider than 1920. Its menus and status bar are drawn to the
+frame's size, as Quake III draws them.
+
+Quake III Arena's and its demo's menus are ioquake3's, built from its source
+with the engine (`assets/quake3-ui.pk3`), and OpenArena's are its own 0.8.8 menus
+built from its source (`assets/openarena-ui.pk3`), each with the module's changes
+to **Setup** > **System**; the rest of each game's code is its own. id's whole
+game's menus are the same as its 1.32 point release's, whose source id published
+and ioquake3 carries on.
 
 In Quake and Quake II, the menus, the status bar and the console keep about the
 size they have at 640 by 480 on any frame: each of their pixels is a block of the frame's, 2 by 2 at
@@ -167,10 +183,11 @@ has played on for five minutes stops by itself.
 The game's own **Multiplayer** menu sets who you are in a game: your name, and
 your colours in Quake or your model and skin in Quake II. Joining and starting a
 game are the page's, so that menu no longer offers them. In Quake III, **Setup**
+
 > **Player** sets your name and model; its own **Multiplayer** menu finds no
-servers, since the page joins them, and a server started there runs in your
-browser, where nobody else reaches it. Its **Single Player** arenas, against
-bots, are played in the browser, as any game on your own.
+> servers, since the page joins them, and a server started there runs in your
+> browser, where nobody else reaches it. Its **Single Player** arenas, against
+> bots, are played in the browser, as any game on your own.
 
 The game's server runs on EiN, not in anyone's browser: the module's
 `quake-server` service runs each hosted game as Quake's, Quake II's or Quake
@@ -394,7 +411,7 @@ music** turns the music on and off.
 | `engine/quake2/scale.patch`                                                       | Draws the menus, the HUD and the console at a scale of the frame's height, so they keep their size.                                                                                                                               |
 | `engine/quake2/net_ein.c`, `engine/quake2/server_ein.c`, `engine/quake2/build.sh` | Quake II's network, its dedicated server's platform layer, and the build of the game and the server.                                                                                                                              |
 | `engine/quake3/quake3_ein.c`                                                      | ioquake3's platform layer for the page: start-up, a frame a tick, keys, characters, the mouse, and whether the console is up and the frame fullscreen.                                                                            |
-| `engine/quake3/glimp_ein.c`                                                       | Quake III's OpenGL: a WebGL 2 context on the page's canvas for the OpenGL 2 renderer, at the video mode's size or the screen's.                                                                                                   |
+| `engine/quake3/glimp_ein.c`                                                       | Quake III's OpenGL: a WebGL 2 context on the page's canvas for the OpenGL 2 renderer, at the video mode's size or the screen's, and the modes the menus list.                                                                     |
 | `engine/quake3/snd_ein.c`, `engine/quake3/net_ein.c`                              | Quake III's sound card, as Quake's, and its network over the page's or the worker's.                                                                                                                                              |
 | `engine/quake3/server_ein.c`, `engine/quake3/build.sh`                            | Quake III's dedicated server's platform layer, and the build of the game and the server.                                                                                                                                          |
 | `engine/quake3/Containerfile`                                                     | Quake III's build: pinned emsdk image and ioquake3 commit.                                                                                                                                                                        |
@@ -402,10 +419,14 @@ music** turns the music on and off.
 | `engine/quake3/frame.patch`                                                       | Returns at once from a frame that is not due yet, rather than waiting for its time.                                                                                                                                               |
 | `engine/quake3/config.patch`                                                      | Tells the page when Quake III has written its settings or the CD key, so it can keep them.                                                                                                                                        |
 | `engine/quake3/cdkey.patch`                                                       | Asks no CD key of a game played standalone, the demo or a game of its own.                                                                                                                                                        |
+| `engine/quake3/graphics.patch`                                                    | Makes ioquake3's Setup > System the page's: the modes the engine offers, no driver, extensions, colour depth or texture bits, presets that leave the mode and fullscreen.                                                         |
+| `engine/quake3/openarena-graphics.patch`                                          | The same for OpenArena 0.8.8's Setup > System, without its bloom too.                                                                                                                                                             |
+| `engine/quake3/qvms.sh`                                                           | Compiles the menus and game code the module brings to QVMs with ioquake3's compiler and packs them.                                                                                                                               |
 | `assets/icon.svg`                                                                 | The Q of Quake, drawn for the module: its icon on the Games page and the dashboard card's, filled with the text colour.                                                                                                           |
 | `assets/quake.js`, `assets/quake.wasm`, `assets/quake2.js`, `assets/quake2.wasm`  | The built engines, committed, since a module is installed as its repository stands. `assets/quake-build.txt` and `assets/quake2-build.txt` say what built them.                                                                   |
 | `assets/quake3.js`, `assets/quake3.wasm`                                          | Quake III's built engine; `assets/quake3-build.txt` says what built it.                                                                                                                                                           |
-| `assets/quake3-vm.pk3`                                                            | ioquake3's own game code for Quake III Arena, as QVMs, which the demo is played with.                                                                                                                                             |
+| `assets/quake3-ui.pk3`, `assets/quake3-game.pk3`                                  | ioquake3's own menus for Quake III Arena, which the demo and the whole game are played with, and its cgame and qagame, which the demo is played with, as QVMs.                                                                    |
+| `assets/openarena-ui.pk3`                                                         | OpenArena 0.8.8's menus, as a QVM, which OpenArena is played with.                                                                                                                                                                |
 | `assets/quake-server.*`, `assets/quake2-server.*`, `assets/quake3-server.*`       | The built dedicated servers, which the quake-server service runs.                                                                                                                                                                 |
 | `scripts/build-engine.sh`                                                         | Rebuilds the three engines into `assets/`.                                                                                                                                                                                        |
 | `test/smoke.mjs`                                                                  | Signs in with headless Chrome, plays a little, saves screenshots.                                                                                                                                                                 |
@@ -435,12 +456,19 @@ The source of `assets/quake2.wasm` is quake2generic at the commit
 `engine/quake2/` files added.
 The source of `assets/quake3.wasm` is ioquake3 at the commit
 `engine/quake3/Containerfile` pins, with `engine/quake3/main.patch`,
-`engine/quake3/frame.patch`, `engine/quake3/config.patch` and
-`engine/quake3/cdkey.patch` applied and the `engine/quake3/` files added; it
-builds ioquake3's sources itself (`engine/quake3/build.sh`) rather than with
-ioquake3's CMake, which builds the browser's game with SDL and no dedicated
-server. `assets/quake3-vm.pk3` is ioquake3's `baseq3` game code from the same
-source, compiled to QVMs with its CMake and its own compiler.
+`engine/quake3/frame.patch`, `engine/quake3/config.patch`,
+`engine/quake3/cdkey.patch` and `engine/quake3/graphics.patch` applied and the
+`engine/quake3/` files added; it builds ioquake3's sources itself
+(`engine/quake3/build.sh`) rather than with ioquake3's CMake, which builds the
+browser's game with SDL and no dedicated server. `assets/quake3-ui.pk3` and
+`assets/quake3-game.pk3` are ioquake3's `baseq3` menus and game code from the
+same source, compiled to QVMs with its CMake and its own compiler.
+`assets/openarena-ui.pk3` is OpenArena's menus from its game code at the commit
+`engine/quake3/Containerfile` pins, the head of its 0.8.8 branch, with
+`engine/quake3/openarena-graphics.patch` applied, compiled with the same compiler
+as OpenArena's Makefile compiles them (`engine/quake3/qvms.sh`); without the
+patch it is byte for byte the `ui.qvm` of OpenArena 0.8.8's
+`pak6-patch088.pk3`.
 
 ## Developing
 
