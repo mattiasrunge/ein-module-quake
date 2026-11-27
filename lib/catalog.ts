@@ -1,8 +1,24 @@
 import type { Command, NodeAttrs } from '@ein/client';
-import type { Game, InstalledGame } from './api.ts';
-import { coverOf } from './cover.ts';
-import { byRank, DATA_FOLDERS, descriptionOf, ENGINE_TITLES, engineOf, GAMES, mapsOf, OFFERS, PAK_FILE, titleOf, tracksOf } from './games.ts';
+import type { EngineName, Game, InstalledGame } from './api.ts';
+import { coverOf, quake3CoverOf } from './cover.ts';
+import {
+  byRank,
+  DATA_FOLDERS,
+  descriptionOf,
+  ENGINE_TITLES,
+  engineOf,
+  gamedirOf,
+  GAMES,
+  mapsOf,
+  OFFERS,
+  PAK_FILE,
+  PK3_FILE,
+  QUAKE3_FOLDERS,
+  titleOf,
+  tracksOf,
+} from './games.ts';
 import { type PakEntry, pakFiles } from './paks.ts';
+import { type Pk3Entry, pk3Files } from './pk3.ts';
 
 /** The files in the folder `path` and in its folders, by their paths in it. */
 async function filesUnder(cmd: Command, path: string, prefix = ''): Promise<string[]> {
@@ -17,22 +33,32 @@ async function filesUnder(cmd: Command, path: string, prefix = ''): Promise<stri
 
 /**
  * What the engine reads of the game in the folder `folder`: its paks, in the order the engine loads
- * them, and the files beside them in the folders it reads as it reads a pak's (`DATA_FOLDERS`), by
- * their paths in it. No paks is no game.
+ * them, and the files beside them in the folders it reads as it reads a pak's (`DATA_FOLDERS`, and
+ * Quake 3's `QUAKE3_FOLDERS`), by their paths in it; and whether it is a Quake 3 game, one with pk3s
+ * and no `pak0.pak`. No paks is no game.
  */
-export async function gameFiles(cmd: Command, folder: string): Promise<{ paks: string[]; files: string[] }> {
-  // Quake and Quake II load pak0, pak1 and on, and stop at the first number missing.
+export async function gameFiles(cmd: Command, folder: string): Promise<{ paks: string[]; files: string[]; quake3: boolean }> {
+  // Quake and Quake II load pak0, pak1 and on, and stop at the first number missing; Quake 3 loads
+  // every pk3 there is.
   const found = new Map<number, string>();
+  const pk3s: string[] = [];
   const folders: string[] = [];
-  for (const child of await cmd.sys.vfs.children(cmd.access, folder)) {
+  const children = await cmd.sys.vfs.children(cmd.access, folder);
+  for (const child of children) {
     const match = PAK_FILE.exec(child.name);
     if (match && child.node.type !== 'directory') found.set(Number(match[1]), child.name);
-    if (child.node.type === 'directory' && DATA_FOLDERS.includes(child.name.toLowerCase())) folders.push(child.name);
+    if (PK3_FILE.test(child.name) && child.node.type !== 'directory') pk3s.push(child.name);
+  }
+  const quake3 = !found.has(0) && pk3s.length > 0;
+  const read = quake3 ? [...DATA_FOLDERS, ...QUAKE3_FOLDERS] : DATA_FOLDERS;
+  for (const child of children) {
+    if (child.node.type === 'directory' && read.includes(child.name.toLowerCase())) folders.push(child.name);
   }
   const paks: string[] = [];
-  while (found.has(paks.length)) paks.push(found.get(paks.length)!);
+  if (quake3) paks.push(...pk3s.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())));
+  else while (found.has(paks.length)) paks.push(found.get(paks.length)!);
   const files = (await Promise.all(folders.map((name) => filesUnder(cmd, `${folder}/${name}`, `${name}/`)))).flat();
-  return { paks, files };
+  return { paks, files, quake3 };
 }
 
 /** `bytes` as a person reads a size: `18 MB`. */
@@ -43,23 +69,29 @@ const sizeText = (bytes: number): string =>
 async function readGame(cmd: Command, name: string): Promise<InstalledGame | undefined> {
   const vfs = cmd.sys.vfs;
   const path = `${GAMES}/${name}`;
-  const { paks, files } = await gameFiles(cmd, path);
+  const { paks, files, quake3 } = await gameFiles(cmd, path);
   if (paks.length === 0) return undefined;
   const sizes = await Promise.all(paks.map(async (pak) => (await vfs.get<NodeAttrs & { size?: number }>(cmd.access, `${path}/${pak}`)).attrs.size ?? 0));
   // What the paks hold says which game it is; a pak that cannot be read says nothing.
-  const read = await Promise.all(paks.map(async (pak) => ({ path: `${path}/${pak}`, files: await pakFiles(cmd, `${path}/${pak}`).catch(() => new Map<string, PakEntry>()) })));
-  const inPaks = new Set(read.flatMap(({ files }) => [...files.keys()]));
-  const engine = engineOf(inPaks);
+  const read = quake3
+    ? []
+    : await Promise.all(paks.map(async (pak) => ({ path: `${path}/${pak}`, files: await pakFiles(cmd, `${path}/${pak}`).catch(() => new Map<string, PakEntry>()) })));
+  const zipped = quake3
+    ? await Promise.all(paks.map(async (pak) => ({ path: `${path}/${pak}`, files: await pk3Files(cmd, `${path}/${pak}`).catch(() => new Map<string, Pk3Entry>()) })))
+    : [];
+  const inPaks = new Set([...read, ...zipped].flatMap(({ files }) => [...files.keys()]));
+  const engine: EngineName = quake3 ? 'quake3' : engineOf(inPaks);
   const size = sizes.reduce((sum, each) => sum + each, 0);
+  // Quake 3's music is files it plays, in its pk3s or beside them; Quake's and Quake II's a CD's tracks.
   const musicFolder = `${path}/music`;
-  const tracks = tracksOf((await vfs.children(cmd.access, musicFolder).catch(() => [])).map((child) => child.name));
+  const tracks = quake3 ? {} : tracksOf((await vfs.children(cmd.access, musicFolder).catch(() => [])).map((child) => child.name));
   const music = Object.keys(tracks).length > 0 ? { folder: musicFolder, tracks } : undefined;
   // Quake's shareware episode reads no file in a folder but from its paks (it is registered when its
   // paks have `gfx/pop.lmp`), so its own maps are those of its paks alone.
-  const loose = engine === 'quake2' || inPaks.has('gfx/pop.lmp');
+  const loose = engine !== 'quake' || inPaks.has('gfx/pop.lmp');
   const maps = mapsOf(loose ? [...inPaks, ...files] : inPaks);
-  const cover = await coverOf(cmd, engine, read).catch(() => undefined);
-  const title = titleOf(name, sizes, inPaks);
+  const title = titleOf(name, engine, sizes, inPaks);
+  const cover = await (quake3 ? quake3CoverOf(cmd, zipped, maps) : coverOf(cmd, engine, read)).catch(() => undefined);
   const description = descriptionOf(title);
   return {
     id: name,
@@ -67,10 +99,11 @@ async function readGame(cmd: Command, name: string): Promise<InstalledGame | und
     state: 'installed',
     family: engine,
     path,
-    detail: `${ENGINE_TITLES[engine]} · ${sizeText(size)} · ${music ? 'music' : 'no music'}`,
+    detail: quake3 ? `${ENGINE_TITLES[engine]} · ${sizeText(size)} · ${maps.length} maps` : `${ENGINE_TITLES[engine]} · ${sizeText(size)} · ${music ? 'music' : 'no music'}`,
     ...(description ? { description } : {}),
     ...(cover ? { cover } : {}),
     paks,
+    ...(quake3 ? { gamedir: gamedirOf(name, title) } : {}),
     size,
     files,
     maps,

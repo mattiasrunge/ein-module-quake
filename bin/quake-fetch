@@ -1,12 +1,12 @@
 #!bash
 # quake-fetch — fetches one of the free games quake-games offers into its games folder, when someone
-# chooses Fetch on the Games page or the game's own: Quake's shareware episode, Quake II's demo, or
-# LibreQuake with its music. The release is fetched from where its makers published it, checked
+# chooses Fetch on the Games page or the game's own: Quake's shareware episode, Quake II's demo,
+# LibreQuake with its music, or OpenArena for Quake 3's engine. The release is fetched from where its makers published it, checked
 # against its SHA-256, and unpacked into a game folder of its own; a file already there under the same name is left as it is. It runs
 # as whoever runs it, which has to be the administrator: EiN lets only the administrator fetch URLs.
-arg --desc "Fetch one of the free Quake and Quake II games the Games page offers into the games folder"
+arg --desc "Fetch one of the free Quake, Quake II and Quake 3 games the Games page offers into the games folder"
 arg --effect write
-arg '<game>' string "shareware (Quake's shareware episode), quake2-demo (Quake II's demo) or librequake (LibreQuake and its music)"
+arg '<game>' string "shareware (Quake's shareware episode), quake2-demo (Quake II's demo), librequake (LibreQuake and its music) or openarena (OpenArena, for Quake 3's engine)"
 arg --example "quake-fetch shareware"
 arg --returns "nothing; the game is in a folder of its own in /groups/users/quake, named as the game."
 arg --export
@@ -33,8 +33,15 @@ case "$GAME" in
     url=https://github.com/lavenderdotpet/LibreQuake/releases/download/v0.09-beta/lite.zip
     sha256=428e736b2f01d953e09a08c60bee975bdc4a0ac2219e97fa095c8af41754da83
     ;;
+  openarena)
+    # OpenArena 0.8.8 (https://openarena.ws) is a free game for Quake 3's engine, under the GPL; its
+    # release for every platform as the Internet Archive keeps it, the same as its makers' mirror
+    # (download.tuxfamily.org, which answers over IPv6 first), of which only its game data is kept.
+    url=https://archive.org/download/openarena-0.8.8/openarena-0.8.8.zip
+    sha256=5a8faf7f5b51f351b0a1618c06b6b98a5f1a6758f1d39818de2c87df2a0bac4a
+    ;;
   *)
-    echo "quake-fetch: $GAME is not a game it fetches: shareware, quake2-demo or librequake" >&2
+    echo "quake-fetch: $GAME is not a game it fetches: shareware, quake2-demo, librequake or openarena" >&2
     exit 2
     ;;
 esac
@@ -81,6 +88,13 @@ case "$GAME" in
     mkdir -p "$game/music"
     for track in 02 03 04 05 06 07 08 09 10 11; do
       [ -e "$game/music/track$track.ogg" ] || mv "$work/lite/id1/music/track$track.ogg" "$game/music/track$track.ogg"
+    done
+    ;;
+  openarena)
+    # Its pk3s but pak2-players-mature, which puts more revealing models of some of its characters in
+    # place of pak2-players'; the game is whole without it.
+    for pak in pak0 pak1-maps pak2-players pak4-textures pak5-TA pak6-misc pak6-patch085 pak6-patch088; do
+      [ -e "$game/$pak.pk3" ] || mv "$work/openarena-0.8.8/baseoa/$pak.pk3" "$game/$pak.pk3"
     done
     ;;
 esac

@@ -1,7 +1,8 @@
 # quake
 
-A module for [EiN](https://einhq.eu) that plays Quake and Quake II in the
-browser, with sound and music, alone or together: a game someone hosts runs on
+A module for [EiN](https://einhq.eu) that plays Quake, Quake II and Quake III
+Arena, and the games made for their engines, in the browser, with sound and
+music, alone or together: a game someone hosts runs on
 EiN, and others here, or on another EiN they are invited from, join it. Its games
 are on EiN's **Games** page, which the games module gives: the module brings the
 engines and its games, and the games module the page each is played on, the
@@ -17,11 +18,19 @@ single-threaded, with a platform layer of its own and no SDL:
   Software's Quake II made easy to port, its game code linked in
   (`engine/quake2/quake2generic_ein.c`). It draws with Quake II's software
   renderer at 640 by 480, or the video mode the player chooses.
+- Quake 3's is [ioquake3](https://github.com/ioquake/ioq3), the community's
+  continuation of id Software's Quake III Arena (`engine/quake3/quake3_ein.c`).
+  Quake 3 has no software renderer: it draws with ioquake3's OpenGL 2 renderer
+  on the browser's WebGL 2 (`engine/quake3/glimp_ein.c`), at the screen's size
+  or the video mode the player chooses. Its game code is the game's own QVMs,
+  in its pk3s, which ioquake3's interpreter runs.
 
-The module tells the games apart by what their paks hold. Its adapter
-(`ui/adapter.ts`) loads the game's engine at runtime from the module's
-`assets/` directory and hands it to the games module's page, which drives it
-from `requestAnimationFrame` and draws its frames on a canvas.
+The module tells the games apart by what their paks hold: a folder of pk3s is a
+Quake 3 game. Its adapter (`ui/adapter.ts`) loads the game's engine at runtime
+from the module's `assets/` directory and hands it to the games module's page,
+which drives it from `requestAnimationFrame` and draws its frames on a canvas.
+Quake 3 draws on a canvas of its own, which the page never shows: its frame is
+read back from WebGL into the page's each time.
 
 It is not one of EiN's own modules and has nothing to do with a family's
 archive.
@@ -34,7 +43,7 @@ It needs EiN's games module (`games`, 0.1 or later). As an administrator, open
 
 The games are on the **Games** page, under Browse in the sidebar, a card each.
 The module comes with no games. Until they are there, the Games page offers
-three free ones under **Free to fetch**, each with a **Fetch** button for an
+four free ones under **Free to fetch**, each with a **Fetch** button for an
 administrator (EiN lets only the administrator fetch from the internet) that
 downloads it from where its makers published it, checks it against the
 release's SHA-256 and puts it in a folder of its own:
@@ -51,6 +60,12 @@ release's SHA-256 and puts it in a folder of its own:
 - **LibreQuake**: [LibreQuake](https://github.com/lavenderdotpet/LibreQuake)'s
   free game data for Quake's engine, its lite release, the one made for the
   original engine. With it comes its music.
+- **OpenArena**: [OpenArena](https://openarena.ws) 0.8.8, a free arena shooter
+  for Quake 3's engine, under the GPL: its own arenas, characters, weapons, bots
+  and music. Its release is 425 MB, for every platform; only its game data is
+  kept, its pk3s (390 MB) but `pak2-players-mature.pk3`, which puts more
+  revealing models of some of its characters in place of its own. A browser
+  loads all of it to play, so it takes a while to start the first time.
 
 ## Play
 

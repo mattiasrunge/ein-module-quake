@@ -10,8 +10,9 @@ import type { HostedGame, ServerEngine, ServerIo } from '@games/host';
 import { FRAME_HEADER, Ring } from '@games/net';
 import type { EngineName } from './api.ts';
 import { gameFiles } from './catalog.ts';
-import { GAMES } from './games.ts';
+import { gamedirOf, GAMES } from './games.ts';
 import { openReader, packPak, PAK_HEADER_SIZE, pakDirectory, pakEntries, readWhole } from './paks.ts';
+import { trimPk3 } from './pk3.ts';
 import type { FromWorker, StartServer, ToWorker } from './server-worker.ts';
 
 /** Where the module is in EiN's tree: the servers' engines in `assets/`, the worker in `lib/`. */
@@ -24,33 +25,74 @@ const MODULE = '/usr/modules/quake';
 const NET = '/usr/modules/games/lib/net.ts';
 
 /**
- * What each engine's dedicated server takes: its game folder, its build in `assets/`, the files it
- * never reads (sounds, pictures, skins), which are left out of the paks and the files it is given
- * when it says, and its command line for a game.
+ * What each engine's dedicated server takes: its game folder for the game `info` hosts, its build in
+ * `assets/`, the files it never reads (sounds, pictures, skins), which are left out of the paks and
+ * the files it is given when it says, or for Quake 3 the only files it reads, its modes, and its
+ * command line for a game.
  */
-type ServerSpec = { folder: string; build: string; unread?: RegExp; args(info: ServerInfo): string[] };
+type ServerSpec = { folder(info: ServerInfo): string; build: string; unread?: RegExp; reads?: RegExp; modes: string[]; args(info: ServerInfo): string[] };
+
+/** Where Quake 3's server has its game's folder (`fs_basepath`), and its own files (`fs_homepath`). */
+const QUAKE3_BASE = '/q3';
+const QUAKE3_HOME = '/home';
 
 const SPECS: Record<EngineName, ServerSpec> = {
   quake2: {
-    folder: '/baseq2',
+    folder: () => '/baseq2',
     build: 'quake2-server',
     // Quake II's server reads its maps and its configuration; models, sounds and pictures it names only.
     unread: /\.(wav|pcx|wal|md2|sp2|cin|tga|jpg|png|ogg|mp3|dm2)$/,
     // The mode is the cvar that sets it: deathmatch or coop.
+    modes: ['deathmatch', 'coop'],
     args: (info) => ['quake2', '+set', 'dedicated', '1', '+set', info.mode, '1', '+set', 'maxclients', String(info.maxPlayers), '+map', info.map],
   },
   quake: {
-    folder: '/id1',
+    folder: () => '/id1',
     build: 'quake-server',
     // Quake's paks are given whole: one with fewer files than id's is a modified game, which the
     // shareware episode refuses to run.
     // -dedicated sets deathmatch when it has room for more than one; a cooperative game says otherwise.
+    modes: ['deathmatch', 'coop'],
     args: (info) => ['quake', '-dedicated', String(info.maxPlayers), ...(info.mode === 'coop' ? ['+deathmatch', '0', '+coop', '1'] : []), '+map', info.map],
   },
+  quake3: {
+    folder: (info) => `${QUAKE3_BASE}/${gamedirOf(info.game, info.title)}`,
+    build: 'quake3-server',
+    // Quake 3's server reads its arenas and their bots' routes, its game code, its scripts and bots,
+    // and its configuration; textures, models and sounds are the players'. Its pk3s are not its
+    // players' then, so it asks for none of them (sv_pure 0) and each player plays with their own.
+    reads: /^(maps\/[^/]+\.(bsp|aas)|vm\/qagame\.qvm|scripts\/.*|botfiles\/.*|[^/]+\.cfg)$/,
+    // Quake 3 has no cooperative game: a deathmatch is its free for all (g_gametype 0). Bots join on
+    // the console, as `addbot`.
+    modes: ['deathmatch'],
+    args: (info) => [
+      'quake3',
+      '+set',
+      'dedicated',
+      '1',
+      '+set',
+      'fs_basepath',
+      QUAKE3_BASE,
+      '+set',
+      'fs_homepath',
+      QUAKE3_HOME,
+      '+set',
+      'com_basegame',
+      gamedirOf(info.game, info.title),
+      '+set',
+      'sv_pure',
+      '0',
+      '+set',
+      'g_gametype',
+      '0',
+      '+set',
+      'sv_maxclients',
+      String(info.maxPlayers),
+      '+map',
+      info.map,
+    ],
+  },
 };
-
-/** The modes the servers are hosted in, by the cvar each sets. */
-const MODES = ['deathmatch', 'coop'];
 
 /** The engine that runs `cmd`'s hosted games, Quake's and Quake II's, each a dedicated server in a worker. */
 export function serverEngine(cmd: Command): ServerEngine {
@@ -60,8 +102,8 @@ export function serverEngine(cmd: Command): ServerEngine {
 /** Start the game `info` asks for: its paks and files but those its server never reads, and the server's build, handed to a new worker. */
 async function start(cmd: Command, info: ServerInfo, io: ServerIo): Promise<HostedGame> {
   const spec = SPECS[info.family as EngineName];
-  if (!spec) throw new Error(`${info.title} is played by neither Quake's engine nor Quake II's`);
-  if (!MODES.includes(info.mode)) throw new Error(`a game is hosted in ${MODES.join(' or ')}, not ${info.mode}`);
+  if (!spec) throw new Error(`${info.title} is played by none of Quake's, Quake II's and Quake 3's engines`);
+  if (!spec.modes.includes(info.mode)) throw new Error(`${info.title} is hosted in ${spec.modes.join(' or ')}, not ${info.mode}`);
   const urls: string[] = [];
   const blob = async (path: string, type: string) => {
     const url = URL.createObjectURL(new Blob([await readWhole(cmd, path) as Uint8Array<ArrayBuffer>], { type }));
@@ -70,7 +112,7 @@ async function start(cmd: Command, info: ServerInfo, io: ServerIo): Promise<Host
   };
   try {
     const [{ paks, files }, wasm, glue, net, code] = await Promise.all([
-      gameData(cmd, info.game, spec.unread),
+      gameData(cmd, info.game, spec),
       readWhole(cmd, `${MODULE}/assets/${spec.build}.wasm`),
       blob(`${MODULE}/assets/${spec.build}.js`, 'text/javascript'),
       blob(NET, 'application/typescript'),
@@ -112,8 +154,8 @@ async function start(cmd: Command, info: ServerInfo, io: ServerIo): Promise<Host
       worker.terminate();
       ended(event.message);
     };
-    const message: StartServer = { type: 'start', glue, net, wasm, folder: spec.folder, paks, files, args: spec.args(info), ring: ring.buffer };
-    worker.postMessage(message satisfies ToWorker, [wasm.buffer as ArrayBuffer, ...[...paks, ...files.map((file) => file.data)].map((bytes) => bytes.buffer as ArrayBuffer)]);
+    const message: StartServer = { type: 'start', glue, net, wasm, folder: spec.folder(info), paks, files, args: spec.args(info), ring: ring.buffer };
+    worker.postMessage(message satisfies ToWorker, [wasm.buffer as ArrayBuffer, ...[...paks, ...files].map((file) => file.data.buffer as ArrayBuffer)]);
     try {
       await started.promise;
     } catch (error) {
@@ -132,17 +174,24 @@ async function start(cmd: Command, info: ServerInfo, io: ServerIo): Promise<Host
 }
 
 /**
- * The paks of the game in the folder `game`, each without its files `unread` matches, or whole
- * without it; and the files beside them the server reads, by their paths in the folder.
+ * The paks of the game in the folder `game` under the names its server loads them by: Quake's and
+ * Quake II's as `pak<N>.pak`, each without its files `spec.unread` matches, or whole without it;
+ * Quake 3's pk3s under their own names, each with only the files `spec.reads` matches. And the
+ * files beside them the server reads, by their paths in the folder.
  */
-async function gameData(cmd: Command, game: string, unread?: RegExp): Promise<{ paks: Uint8Array[]; files: StartServer['files'] }> {
+async function gameData(cmd: Command, game: string, { unread, reads }: ServerSpec): Promise<{ paks: StartServer['paks']; files: StartServer['files'] }> {
   const folder = `${GAMES}/${game}`;
   const found = await gameFiles(cmd, folder);
   if (found.paks.length === 0) throw new Error(`${game} has no paks`);
-  const paks: Uint8Array[] = [];
-  for (const pak of found.paks) {
+  const skipped = (name: string) => reads ? !reads.test(name.toLowerCase()) : !!unread?.test(name.toLowerCase());
+  const paks: StartServer['paks'] = [];
+  for (const [i, pak] of found.paks.entries()) {
+    if (reads) {
+      paks.push({ name: pak, data: await trimPk3(cmd, `${folder}/${pak}`, (name) => reads.test(name)) });
+      continue;
+    }
     if (!unread) {
-      paks.push(await readWhole(cmd, `${folder}/${pak}`));
+      paks.push({ name: `pak${i}.pak`, data: await readWhole(cmd, `${folder}/${pak}`) });
       continue;
     }
     const reader = await openReader(cmd, `${folder}/${pak}`);
@@ -153,12 +202,12 @@ async function gameData(cmd: Command, game: string, unread?: RegExp): Promise<{ 
       for (const entry of pakEntries(await reader.read(directory.offset, directory.length)).values()) {
         if (!unread.test(entry.name.toLowerCase())) files.push({ name: entry.name, data: await reader.read(entry.at, entry.size) });
       }
-      paks.push(packPak(files));
+      paks.push({ name: `pak${i}.pak`, data: packPak(files) });
     } finally {
       await reader.close();
     }
   }
-  const read = found.files.filter((name) => !unread?.test(name.toLowerCase()));
+  const read = found.files.filter((name) => !skipped(name));
   const files = await Promise.all(read.map(async (name) => ({ name, data: await readWhole(cmd, `${folder}/${name}`) })));
   return { paks, files };
 }

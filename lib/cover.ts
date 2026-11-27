@@ -2,6 +2,7 @@ import type { Command } from '@ein/client';
 import { pngDataUrl } from '@games/png';
 import type { EngineName } from './api.ts';
 import { openReader, type PakEntry } from './paks.ts';
+import { type Pk3Entry, readPk3File } from './pk3.ts';
 
 /** The widest a cover is: a picture twice as wide, as Quake II's 640 by 480 is, is drawn at half its size. */
 const COVER_WIDTH = 320;
@@ -35,6 +36,27 @@ export async function coverOf(cmd: Command, engine: EngineName, paks: { path: st
   if (picture.length < 8) return undefined;
   const view = new DataView(picture.buffer, picture.byteOffset, picture.byteLength);
   return await toPng(view.getInt32(0, true), view.getInt32(4, true), picture.subarray(8), colours);
+}
+
+/** The arenas whose levelshot is a Quake 3 game's cover when it has them: OpenArena's first, id's first. */
+const COVER_MAPS = ['oa_dm1', 'q3dm1'];
+
+/**
+ * A Quake 3 game's title art as a JPEG `data:` URL: the levelshot of one of its arenas, the picture
+ * its menus show of it, of `COVER_MAPS`' first it has, else of its first of `maps` with a JPEG one
+ * (`levelshots/<map>.jpg`). `pk3s` are the game's pk3s in the order the engine loads them, each by
+ * its path with its files (`pk3Files`); the last that has the picture is the one the game uses.
+ * Only the picture's bytes are read. Undefined when none of its arenas has a JPEG levelshot.
+ */
+export async function quake3CoverOf(cmd: Command, pk3s: { path: string; files: Map<string, Pk3Entry> }[], maps: string[]): Promise<string | undefined> {
+  const find = (name: string) => pk3s.filter(({ files }) => files.has(name)).map(({ path, files }) => ({ path, entry: files.get(name)! })).at(-1);
+  const ordered = [...COVER_MAPS.filter((map) => maps.includes(map)), ...maps];
+  const shot = ordered.map((map) => find(`levelshots/${map.toLowerCase()}.jpg`)).find((found) => found !== undefined);
+  if (!shot) return undefined;
+  const bytes = await readPk3File(cmd, shot.path, shot.entry);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return `data:image/jpeg;base64,${btoa(binary)}`;
 }
 
 /**
