@@ -75,10 +75,19 @@ let engine: EngineModule | undefined;
 let canvas: OffscreenCanvas;
 let pixels: OffscreenCanvasRenderingContext2D | undefined;
 let drawn = 0;
+let inMenu = false;
 let rate = 0;
 let soundAt = 0;
 let soundBuffer = 0;
 let soundFrames = 0;
+/** The files of the player's last handed to the page, by their path, so one written again unchanged is not handed over again. */
+const handed = new Map<string, Uint8Array>();
+const changed = (path: string, data: Uint8Array): boolean => {
+  const before = handed.get(path);
+  handed.set(path, data);
+  return !before || before.length !== data.length || before.some((byte, i) => byte !== data[i]);
+};
+
 /** The datagrams waiting for each port the game opened, as the page handed them over. */
 const sockets = new Map<number, Datagram[]>();
 
@@ -178,7 +187,8 @@ async function start(message: StartMessage) {
     const name = path.replace(/^\.?\/+/, '').replace(/^[^/]+\//, '');
     const at = `${writes}/${name}`;
     if (!running.FS.isDir(running.FS.stat(at).mode)) {
-      tell({ type: 'wrote', files: [{ name, data: running.FS.readFile(at) }] });
+      const data = running.FS.readFile(at);
+      if (changed(at, data)) tell({ type: 'wrote', files: [{ name, data }] });
       return;
     }
     const inside = running.FS.readdir(at).filter((file) => file !== '.' && file !== '..');
@@ -200,6 +210,7 @@ async function start(message: StartMessage) {
   for (const file of files) {
     running.FS.mkdirTree(file.path.slice(0, file.path.lastIndexOf('/')));
     running.FS.writeFile(file.path, file.data);
+    handed.set(file.path, file.data);
   }
   const argv = running._malloc(args.length * 4);
   args.forEach((arg, i) => running.HEAPU32[(argv >> 2) + i] = running.stringToNewUTF8(arg));
@@ -257,7 +268,13 @@ function tick(running: EngineModule, datagrams: Datagram[]) {
       transfer.push(sound.buffer);
     }
   }
-  tell({ type: 'frame', frame, sound, menu: running._ein_menu() !== 0, fullscreen: running._ein_fullscreen() !== 0 }, transfer);
+  const menu = running._ein_menu() !== 0;
+  tell({ type: 'frame', frame, sound, menu, fullscreen: running._ein_fullscreen() !== 0 }, transfer);
+  // The player's settings are written as a menu or the console closes, where they change: a page
+  // whose tab is closed does not wait for its worker to write them then. Quake 3 writes its own
+  // whenever they change.
+  if (inMenu && !menu) running._ein_write_config();
+  inMenu = menu;
 }
 
 scope.onmessage = ({ data: message }: MessageEvent<ToWorker>) => {
