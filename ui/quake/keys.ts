@@ -8,7 +8,8 @@ import type { EngineName } from '../../lib/api.ts';
 
 const K_TAB = 9;
 const K_ENTER = 13;
-const K_ESCAPE = 27;
+/** Escape, which opens and closes the game's menu. */
+export const K_ESCAPE = 27;
 const K_SPACE = 32;
 const K_BACKSPACE = 127;
 const K_UPARROW = 128;

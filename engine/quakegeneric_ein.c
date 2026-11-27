@@ -24,7 +24,10 @@ See the GNU General Public License for more details.
 // change between frames. The game's saves and
 // config.cfg are files in /id1 too: the page writes the player's there
 // before ein_start and hears from ein_wrote when Quake has written one.
-// Sound is snd_ein.c, the music cd_ein.c.
+// Sound is snd_ein.c, the music cd_ein.c. After each tick the page asks
+// ein_menu whether to give the mouse back, and ein_fullscreen whether to
+// show the frame fullscreen, which Video Options sets; ein_set_fullscreen
+// tells the game the browser left fullscreen itself.
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -36,6 +39,9 @@ See the GNU General Public License for more details.
 
 // host.c's, which quakedef.h does not declare.
 void Host_WriteConfiguration(void);
+
+// vid_null.c's: whether the frame is shown fullscreen.
+extern cvar_t vid_fullscreen;
 
 // Keys the page handed over that the game has not read yet. A frame
 // reads them all, so this only needs to hold one frame's worth.
@@ -195,6 +201,29 @@ EMSCRIPTEN_KEEPALIVE
 void ein_write_config(void)
 {
 	Host_WriteConfiguration();
+}
+
+// Whether a menu or the console is up, which the player works without
+// the mouse.
+EMSCRIPTEN_KEEPALIVE
+int ein_menu(void)
+{
+	return key_dest == key_menu || key_dest == key_console;
+}
+
+// Whether the player wants the frame shown fullscreen.
+EMSCRIPTEN_KEEPALIVE
+int ein_fullscreen(void)
+{
+	return vid_fullscreen.value != 0;
+}
+
+// Fullscreen on (1) or off (0): what the page does when the browser
+// leaves fullscreen without the game, or on F11.
+EMSCRIPTEN_KEEPALIVE
+void ein_set_fullscreen(int on)
+{
+	Cvar_SetValue("vid_fullscreen", on ? 1 : 0);
 }
 
 EMSCRIPTEN_KEEPALIVE

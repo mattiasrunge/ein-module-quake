@@ -944,13 +944,13 @@ index 4cb97b7..9f67191 100644
  	
  		VID_Update (&vrect);
 diff --git a/source/vid_null.c b/source/vid_null.c
-index 6841597..d4a1d66 100644
+index 16dc6fa..2b6e680 100644
 --- a/source/vid_null.c
 +++ b/source/vid_null.c
-@@ -23,6 +23,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
- // choose. The mode is vid_width and vid_height, which config.cfg keeps, and
+@@ -24,6 +24,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  // the Options menu's Video Options lists the modes there are. A new mode
- // takes effect once the frame drawn in the old one is shown.
+ // takes effect once the frame drawn in the old one is shown. Video Options
+ // also sets vid_fullscreen, whether the page shows the frame fullscreen.
 +//
 +// The menus, the status bar and the console keep their size on any frame:
 +// they are drawn on a 2D screen of vid.conwidth by vid.conheight, the frame
@@ -960,7 +960,7 @@ index 6841597..d4a1d66 100644
  
  #include "quakedef.h"
  #include "d_local.h"
-@@ -33,6 +39,7 @@ viddef_t	vid;				// global video state
+@@ -34,6 +40,7 @@ viddef_t	vid;				// global video state
  
  static cvar_t	vid_width = {"vid_width", "640", true};
  static cvar_t	vid_height = {"vid_height", "480", true};
@@ -968,7 +968,7 @@ index 6841597..d4a1d66 100644
  
  // The frame, its depth buffer and the surface cache, as large as the mode.
  static byte	*vid_buffer;
-@@ -90,12 +97,30 @@ void	VID_ShiftPalette (unsigned char *palette)
+@@ -101,12 +108,30 @@ void	VID_ShiftPalette (unsigned char *palette)
  	QG_SetPalette(palette);
  }
  
@@ -1001,7 +1001,7 @@ index 6841597..d4a1d66 100644
  ================
  */
  static void VID_SetFrame (int width, int height)
-@@ -108,8 +133,11 @@ static void VID_SetFrame (int width, int height)
+@@ -119,8 +144,11 @@ static void VID_SetFrame (int width, int height)
  	free (zbuffer);
  	free (surfcache);
  
@@ -1015,7 +1015,7 @@ index 6841597..d4a1d66 100644
  	vid_buffer = malloc (width * height);
  	vid.buffer = vid.conbuffer = vid_buffer;
  	vid.rowbytes = vid.conrowbytes = width;
-@@ -148,7 +176,8 @@ static void VID_AskMode (int width, int height)
+@@ -159,7 +187,8 @@ static void VID_AskMode (int width, int height)
  VID_CheckMode
  
  Takes the mode vid_width and vid_height ask for, once it fits the build;
@@ -1025,7 +1025,7 @@ index 6841597..d4a1d66 100644
  ================
  */
  static void VID_CheckMode (void)
-@@ -156,7 +185,7 @@ static void VID_CheckMode (void)
+@@ -167,7 +196,7 @@ static void VID_CheckMode (void)
  	int		width = (int) vid_width.value;
  	int		height = (int) vid_height.value;
  
@@ -1034,10 +1034,10 @@ index 6841597..d4a1d66 100644
  		return;
  	if (width < 320 || width > QUAKEGENERIC_RES_X || height < 200 || height > QUAKEGENERIC_RES_Y)
  	{
-@@ -236,6 +265,7 @@ void	VID_Init (unsigned char *palette)
- {
+@@ -259,6 +288,7 @@ void	VID_Init (unsigned char *palette)
  	Cvar_RegisterVariable (&vid_width);
  	Cvar_RegisterVariable (&vid_height);
+ 	Cvar_RegisterVariable (&vid_fullscreen);
 +	Cvar_RegisterVariable (&vid_scale);
  
  	vid.maxwarpwidth = WARP_WIDTH;

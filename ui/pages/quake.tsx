@@ -25,7 +25,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { titlePicture } from '../quake/conback.ts';
 import { type Engine, quitted, startEngine } from '../quake/engine.ts';
 import { deleteGame, ENGINE_TITLES, fetchGame, type Game, GAMES, listGames, type Offer, OFFERS } from '../quake/games.ts';
-import { mouseKey, quakeKey, WHEEL } from '../quake/keys.ts';
+import { K_ESCAPE, mouseKey, quakeKey, WHEEL } from '../quake/keys.ts';
 import { DEFAULT_PLAYERS, defaultMap, MAX_PLAYERS } from '../../lib/games.ts';
 import { useGameLoop } from '../quake/loop.ts';
 import {
@@ -76,6 +76,21 @@ const SERVERS_POLL_MS = 3000;
 /** How many of the game's last printed lines an error shows, since `Sys_Error` prints its reason before it exits. */
 const LOG_TAIL = 6;
 
+/**
+ * How long after the page itself entered or left fullscreen, or took or gave back the mouse, the
+ * browser's own changes to them are the page's doing.
+ */
+const OWN_CHANGE_MS = 1000;
+
+/**
+ * How close to the browser taking the mouse or leaving fullscreen an Escape the game had counts as
+ * the one that did it, and how long the page waits for it.
+ */
+const ESCAPE_MS = 150;
+
+/** Chromium's keyboard lock, which hands a fullscreen page the keys the browser would take: Escape and F11 for the game. */
+const keyboard = (navigator as Navigator & { keyboard?: { lock(codes?: string[]): Promise<void>; unlock(): void } }).keyboard;
+
 /** The browser remembers the game last chosen and whether the sound was off. */
 const CHOSEN_KEY = 'quake.game';
 const MUTED_KEY = 'quake.muted';
@@ -103,9 +118,12 @@ const BAR_BUTTON = { size: 36, icon: 22 };
  * The module's page: the games there are in a box at the left, as Chat's recent chats are, and the
  * game beside them, Quake's or Quake 2's, each played by its own engine. A click on a game plays it, which is also the click a browser wants before a
  * page may make sound. A folder of paks dropped anywhere on the page is uploaded into `GAMES` as a
- * game. A click on the running game hands it the mouse (the browser's pointer lock), which looks
- * around and fires; while the game has the mouse or the focus it takes every key it knows before the
- * shell does. A game saved from the game's menu, and the player's settings, are kept in their home
+ * game. The game has the mouse (the browser's pointer lock), which looks around and fires, while
+ * none of its menus is up, and while it is fullscreen, menus too: a click on the game hands it over,
+ * and in the page a menu gives it back. The game's Video menu, or F11, shows it fullscreen, where
+ * Escape is the game's alone (the keyboard lock) until it is quit or fullscreen turned off again.
+ * While the game has the mouse or the focus it takes every key it knows before the shell does. A
+ * game saved from the game's menu, and the player's settings, are kept in their home
  * (`savesFolder`), and Load lists the saves next time.
  *
  * Playing together is in the header's corner, for a game that has maps to host: Start server has EiN
@@ -127,6 +145,8 @@ export default function Quake() {
   const [state, setState] = useState<State>({ kind: 'idle' });
   const [fullscreen, setFullscreen] = useState(false);
   const [locked, setLocked] = useState(false);
+  // Brings the browser's fullscreen and pointer lock in line with the game, after each tick, while it runs.
+  const sync = useRef<(() => void) | null>(null);
   const [muted, setMuted] = useState(() => remembered(MUTED_KEY) === '1');
 
   // The game to offer: the one chosen last, else the first, Quake's shareware episode when it is there.
@@ -189,6 +209,10 @@ export default function Quake() {
     sound.current?.close();
     sound.current = null;
     if (document.pointerLockElement === frame.current) document.exitPointerLock();
+    if (document.fullscreenElement === frame.current) {
+      keyboard?.unlock();
+      void document.exitFullscreen().catch(() => undefined);
+    }
   }, []);
   useEffect(() => stop, [stop]);
   // Closing or reloading the tab unmounts nothing, so the player's settings are written as the page
@@ -385,14 +409,20 @@ export default function Quake() {
     return () => observer.disconnect();
   }, []);
 
-  useGameLoop(state.kind === 'running' ? engine.current : null, canvas, (error) => {
-    // The game has ended: it wrote its settings itself on Quit, and can write nothing after an error.
-    engine.current = null;
-    stop();
-    // Quit from the game's menu leaves the page as it was before Play.
-    if (quitted(error)) setState({ kind: 'idle' });
-    else if (state.kind === 'running') setState({ kind: 'error', game: state.game, message: describe(error, log.current) });
-  }, (width, height) => setFrameSize({ width, height }));
+  useGameLoop(
+    state.kind === 'running' ? engine.current : null,
+    canvas,
+    (error) => {
+      // The game has ended: it wrote its settings itself on Quit, and can write nothing after an error.
+      engine.current = null;
+      stop();
+      // Quit from the game's menu leaves the page as it was before Play.
+      if (quitted(error)) setState({ kind: 'idle' });
+      else if (state.kind === 'running') setState({ kind: 'error', game: state.game, message: describe(error, log.current) });
+    },
+    (width, height) => setFrameSize({ width, height }),
+    () => sync.current?.(),
+  );
 
   // A hidden page draws no frames, so the game stands still; its sound and music wait with it.
   useEffect(() => {
@@ -402,21 +432,98 @@ export default function Quake() {
   }, []);
 
   // Keys and the mouse, in the capture phase on the window so the shell's own listeners (on the
-  // document, and the window's bubbling phase) never see them while the game has the focus or the mouse.
+  // document, and the window's bubbling phase) never see them while the game has the focus or the
+  // mouse; and the browser's fullscreen and pointer lock kept to the game's.
   useEffect(() => {
     if (state.kind !== 'running') return;
     const node = frame.current;
+    if (!node) return;
     const wheel = WHEEL[state.game.engine];
     const held = new Set<number>();
-    const captured = () => !!node && document.pointerLockElement === node;
-    const focused = () => captured() || (!!node && node.contains(document.activeElement));
+    const captured = () => document.pointerLockElement === node;
+    const fullscreened = () => document.fullscreenElement === node;
+    const focused = () => captured() || node.contains(document.activeElement);
+    // Until when the browser's changes to the pointer lock and fullscreen are the page's own doing.
+    let own = 0;
+    const ownChange = () => own = performance.now() + OWN_CHANGE_MS;
+    // When the game last had Escape pressed.
+    let escaped = -Infinity;
+    // Whether a menu was up at the last tick, and whether the page has asked for fullscreen.
+    let menu: boolean | undefined;
+    let asked = false;
+    const capture = () => {
+      if (!captured()) void Promise.resolve(node.requestPointerLock()).catch(() => undefined);
+    };
+    const uncapture = () => {
+      if (!captured()) return;
+      ownChange();
+      document.exitPointerLock();
+    };
     const press = (pressed: boolean, key: number) => {
       if (pressed) held.add(key);
       else held.delete(key);
+      if (pressed && key === K_ESCAPE) escaped = performance.now();
       engine.current?.key(pressed, key);
+    };
+    sync.current = () => {
+      const game = engine.current;
+      if (!game) return;
+      const wanted = game.fullscreen();
+      if (wanted !== asked) {
+        asked = wanted;
+        if (wanted && !fullscreened()) {
+          ownChange();
+          // A browser goes fullscreen only on a key or a click, which a Video menu's choice, F11 and
+          // the header's button are, and takes it up doing so: the mouse is taken first. Where it
+          // does not, the game goes on in the page.
+          capture();
+          node.requestFullscreen().then(() => {
+            void keyboard?.lock(['Escape', 'F11']).catch(() => undefined);
+            capture();
+          }, () => {
+            asked = false;
+            game.setFullscreen(false);
+            if (game.menu()) uncapture();
+          });
+        } else if (!wanted && fullscreened()) {
+          ownChange();
+          keyboard?.unlock();
+          void document.exitFullscreen().catch(() => undefined);
+        }
+      }
+      // In the page the mouse is the game's while no menu is up, from the click that first hands it
+      // over; fullscreen, it stays the game's.
+      const up = game.menu();
+      if (up === menu) return;
+      const first = menu === undefined;
+      menu = up;
+      if (first || fullscreened()) return;
+      if (up) uncapture();
+      else if (focused()) capture();
+    };
+    // The browser took the mouse or left fullscreen on an Escape the game did not have, or as the
+    // window lost the focus: the game opens its menu, as Escape would, unless the page did it itself.
+    const tookEscape = () => {
+      const at = performance.now();
+      if (at < own) return;
+      setTimeout(() => {
+        const game = engine.current;
+        if (!game || game.menu() || escaped > at - ESCAPE_MS) return;
+        game.key(true, K_ESCAPE);
+        game.key(false, K_ESCAPE);
+      }, ESCAPE_MS);
     };
     const onKey = (event: KeyboardEvent) => {
       if (!engine.current || !focused() || event.metaKey) return;
+      // F11 shows the game fullscreen rather than the browser's window, and back.
+      if (event.code === 'F11') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (event.type !== 'keydown' || event.repeat) return;
+        engine.current.setFullscreen(!engine.current.fullscreen());
+        sync.current?.();
+        return;
+      }
       const key = quakeKey(event.code);
       if (key === undefined) return;
       event.preventDefault();
@@ -425,12 +532,12 @@ export default function Quake() {
       if (pressed && event.repeat) return;
       press(pressed, key);
     };
-    // The first click hands the game the mouse; after that the buttons are the game's.
+    // A click hands the game the mouse, in the page once its menus are closed; while it has the mouse the buttons are the game's.
     const onMouseDown = (event: MouseEvent) => {
-      if (!node?.contains(event.target as Node)) return;
+      if (!node.contains(event.target as Node)) return;
       if (!captured()) {
         node.focus();
-        void Promise.resolve(node.requestPointerLock()).catch(() => undefined);
+        if (fullscreened() || !engine.current?.menu()) capture();
         return;
       }
       const key = mouseKey(event.button);
@@ -453,7 +560,7 @@ export default function Quake() {
       engine.current?.key(false, key);
     };
     const onContextMenu = (event: MouseEvent) => {
-      if (node?.contains(event.target as Node)) event.preventDefault();
+      if (node.contains(event.target as Node)) event.preventDefault();
     };
     // A key or button held while the game loses the focus or the mouse would never come up for it: let go of them all.
     const release = () => {
@@ -462,7 +569,28 @@ export default function Quake() {
     };
     const onLockChange = () => {
       setLocked(captured());
-      if (!captured()) release();
+      if (captured()) return;
+      release();
+      // Leaving fullscreen, the browser lets go of the mouse too, which in the page stays the game's
+      // while no menu is up.
+      if (performance.now() < own) {
+        if (!engine.current?.menu()) capture();
+        return;
+      }
+      tookEscape();
+    };
+    const onFullscreenChange = () => {
+      setFullscreen(fullscreened());
+      if (fullscreened()) return;
+      keyboard?.unlock();
+      // The browser left fullscreen itself: the game goes on in the page, its Video menu saying so.
+      if (asked) {
+        asked = false;
+        engine.current?.setFullscreen(false);
+      }
+      tookEscape();
+      if (engine.current?.menu()) uncapture();
+      else if (performance.now() < own) capture();
     };
     globalThis.addEventListener('keydown', onKey, { capture: true });
     globalThis.addEventListener('keyup', onKey, { capture: true });
@@ -473,7 +601,8 @@ export default function Quake() {
     globalThis.addEventListener('contextmenu', onContextMenu, { capture: true });
     globalThis.addEventListener('blur', release);
     document.addEventListener('pointerlockchange', onLockChange);
-    node?.addEventListener('focusout', release);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    node.addEventListener('focusout', release);
     return () => {
       globalThis.removeEventListener('keydown', onKey, { capture: true });
       globalThis.removeEventListener('keyup', onKey, { capture: true });
@@ -484,22 +613,20 @@ export default function Quake() {
       globalThis.removeEventListener('contextmenu', onContextMenu, { capture: true });
       globalThis.removeEventListener('blur', release);
       document.removeEventListener('pointerlockchange', onLockChange);
-      node?.removeEventListener('focusout', release);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      node.removeEventListener('focusout', release);
+      sync.current = null;
       setLocked(false);
+      setFullscreen(false);
     };
   }, [state]);
 
-  useEffect(() => {
-    const onChange = () => setFullscreen(document.fullscreenElement === frame.current);
-    document.addEventListener('fullscreenchange', onChange);
-    return () => document.removeEventListener('fullscreenchange', onChange);
-  }, []);
-
+  // The header's button, as the game's Video menu and F11 do.
   const toggleFullscreen = () => {
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else {
-      void frame.current?.requestFullscreen().then(() => frame.current?.requestPointerLock()).catch(() => undefined);
-    }
+    const game = engine.current;
+    if (!game) return;
+    game.setFullscreen(!game.fullscreen());
+    sync.current?.();
     frame.current?.focus();
   };
 
@@ -676,11 +803,11 @@ export default function Quake() {
             <Text c='dimmed' size='xs' ta='center' lineClamp={2} maw={960}>
               {state.kind === 'running' && state.seat ? `On ${state.seat.server}, ${state.seat.title} on ${state.seat.map}. ` : ''}
               {state.kind === 'running' && !locked
-                ? 'Click the game to give it the mouse and the keyboard. '
+                ? 'Click the game to give it the keyboard, and the mouse while no menu is up. '
                 : state.kind === 'running'
-                ? 'Escape gives the mouse back. '
+                ? 'Escape opens the menu and gives the mouse back. '
                 : ''}
-              The mouse looks and fires, WASD or the arrows move, Space jumps, Shift runs, Escape is the menu, ` the console.
+              The mouse looks and fires, WASD or the arrows move, Space jumps, Shift runs, Escape is the menu, ` the console, F11 fullscreen.
             </Text>
           )}
         </Box>

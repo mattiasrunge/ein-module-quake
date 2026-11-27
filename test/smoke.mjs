@@ -9,9 +9,10 @@
  *   EIN_PASSWORD=... node test/smoke.mjs [--url http://localhost:8080] [--user admin] [--out shots]
  *
  * Environment: EIN_PASSWORD (required), CHROME (path to the Chrome binary, defaults to macOS's).
- * The mouse is not tried: headless Chrome gives no page the pointer lock.
+ * The mouse is not tried: headless Chrome gives no page the pointer lock, and once the game asks
+ * for it (as its menu closes) the clicks go to the game, so fullscreen is F11's.
  * Exits non-zero if the page threw, if the game never drew a frame that is not black, if a key
- * meant for the game took the page elsewhere, if fullscreen did not take the game, or if Alt+H
+ * meant for the game took the page elsewhere, if F11 did not take the game fullscreen and back, or if Alt+H
  * outside the game did not reach the shell (the control that shows the game's keys are held back).
  */
 
@@ -272,15 +273,18 @@ try {
     console.log(`after Alt+H and Alt+ArrowLeft in the game the page is ${after}`);
     if (after !== '/quake') failed = true;
 
-    // Fullscreen.
-    await click('[aria-label="Fullscreen"]');
+    // Fullscreen, and back.
+    await press('F11', 'F11', 122);
     await sleep(1000);
     const fullscreen = await evaluate(`document.fullscreenElement?.dataset.quakeState ?? 'none'`);
     console.log(`fullscreen element is the game: ${fullscreen === 'running'}`);
     if (fullscreen !== 'running') failed = true;
     await shoot('07-fullscreen');
-    await evaluate('document.exitFullscreen()');
-    await sleep(500);
+    await press('F11', 'F11', 122);
+    await sleep(1000);
+    const left = await evaluate('!document.fullscreenElement');
+    console.log(`F11 again left fullscreen: ${left}`);
+    if (!left) failed = true;
 
     // The control: with the focus off the game, Alt+H is the shell's again.
     await evaluate('document.activeElement.blur()');

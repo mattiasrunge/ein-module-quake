@@ -617,10 +617,10 @@ index 47f8813..d399c16 100644
  	/* Add some console commands that we want to handle */
  	Cmd_AddCommand ("vid_restart", VID_Restart_f);
 diff --git a/other/vid_menu.c b/other/vid_menu.c
-index 45d1107..7f83b96 100644
+index 4dd72e2..3bcac43 100644
 --- a/other/vid_menu.c
 +++ b/other/vid_menu.c
-@@ -108,7 +108,7 @@ void VID_MenuInit( void )
+@@ -112,7 +112,7 @@ void VID_MenuInit( void )
  	if ( !scr_viewsize )
  		scr_viewsize = Cvar_Get ("viewsize", "100", CVAR_ARCHIVE);
  
@@ -629,7 +629,7 @@ index 45d1107..7f83b96 100644
  	s_software_menu.nitems = 0;
  
  	s_mode_list.generic.type = MTYPE_SPINCONTROL;
-@@ -180,7 +180,7 @@ void VID_MenuDraw (void)
+@@ -192,7 +192,7 @@ void VID_MenuDraw (void)
  	** draw the banner
  	*/
  	re.DrawGetPicSize( &w, &h, "m_banner_video" );

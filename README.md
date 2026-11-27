@@ -60,11 +60,24 @@ Click the game to give it the mouse and the keyboard: the browser hides the
 pointer and the mouse turns and looks, as players have played since (`+mlook`
 in Quake, free look in Quake II). The left button fires. WASD or the arrows
 move, Space jumps, Shift runs, Alt strafes, Escape opens the game's menu, and
-the key under Escape (`` ` ``) its console. Escape also gives the mouse back to
-the browser; click the game to hand it over again. While the game has the mouse
-or the focus it takes its keys before EiN does, Alt+letter included. The
-buttons in the header turn the sound off and on and show the game full screen.
-Quit in the game's menu goes back to the list.
+the key under Escape (`` ` ``) its console. While the game has the mouse or the
+focus it takes its keys before EiN does, Alt+letter included. Quit in the
+game's menu goes back to the list.
+
+In the page, the mouse is yours while the game's menu or console is up, and the
+game's again when you close it. If the browser does not hand the mouse back
+then (Chrome does not after you let it go with Escape), click the game.
+
+Fullscreen is in the game's video menu: **Options** > **Video Options** >
+**Fullscreen** in Quake, **Video** > **fullscreen** and **apply** in Quake II.
+F11, or the button in the page's header, turns it on and off as well. In
+fullscreen the game keeps the mouse, and Escape only opens and closes its menu;
+turn fullscreen off in the menu, press F11, or quit the game to leave. A game
+always starts in the page, since a browser goes fullscreen only when you press
+a key or click. That Escape stays the game's takes Chrome or Edge (their
+keyboard lock), where holding Escape still leaves fullscreen; Firefox and
+Safari leave fullscreen on Escape, and the game goes on in the page with its
+menu open. The other button in the header turns the sound off and on.
 
 A player who has played before starts with their own settings: the game's
 **Options** and the keys bound in its controls menu are kept (below), and the
@@ -236,7 +249,7 @@ music** turns the music on and off.
 | Path                                                                                          | What it is for                                                                                                                                                               |
 | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `mod.json`, `ui/nav.json`                                                                     | The manifest, and the sidebar entry with its Games section.                                                                                                                  |
-| `ui/pages/quake.tsx`                                                                          | The page: the list of games, uploads, the game loop, keyboard, mouse, sound and fullscreen.                                                                                  |
+| `ui/pages/quake.tsx`                                                                          | The page: the list of games, uploads, the game loop, keyboard, mouse, sound, and fullscreen and the mouse kept to the game's menus.                                          |
 | `ui/cards/demo.tsx`                                                                           | The dashboard card, offered in `etc/dashboard.d/cards.json`: a game running its demos.                                                                                       |
 | `ui/quake/games.ts`                                                                           | Lists and deletes games.                                                                                                                                                     |
 | `ui/quake/conback.ts`                                                                         | Draws a game's title art out of its console background, Quake's with its palette, Quake II's a PCX, fetching only those.                                                     |
@@ -254,26 +267,27 @@ music** turns the music on and off.
 | `lib/net.ts`                                                                                  | The network both engines play on: framing datagrams on a link, the fake addresses, the engines' sockets, and the memory a server's worker reads its players' datagrams from. |
 | `lib/catalog.ts`, `lib/servers.ts`                                                            | The games and their paks as the commands read them, and the hosted games' folders and `server.json`.                                                                         |
 | `ui/quake/multiplayer.ts`                                                                     | The page's side of playing together: the commands, and the connection to a game's socket as the engine's network.                                                            |
-| `engine/quakegeneric_ein.c`                                                                   | quakegeneric's platform layer for the page: the frame, keys, mouse and start-up.                                                                                             |
+| `engine/quakegeneric_ein.c`                                                                   | quakegeneric's platform layer for the page: the frame, keys, mouse, start-up, and whether a menu is up and the frame fullscreen.                                             |
 | `engine/sys_ein.c`                                                                            | The system driver: files, the clock, and Quit and errors that end the game.                                                                                                  |
 | `engine/snd_ein.c`                                                                            | The sound card: the ring Quake's mixer paints, handed to the page.                                                                                                           |
 | `engine/cd_ein.c`                                                                             | The CD player: tracks and their volume, handed to the page.                                                                                                                  |
 | `engine/Containerfile`                                                                        | Quake's build: pinned emsdk image, quakegeneric commit and id's Quake source, for the sound.                                                                                 |
-| `engine/resolution.patch`                                                                     | Makes the frame's size the mode the player chooses, up to the build's, with Video Options, and a field of view as wide as the frame.                                         |
+| `engine/resolution.patch`                                                                     | Makes the frame's size the mode the player chooses, up to the build's, with Video Options, which also sets fullscreen, and a field of view as wide as the frame.             |
 | `engine/scale.patch`                                                                          | Draws the menus, the status bar and the console at a scale of the frame's height, so they keep their size.                                                                   |
 | `engine/files.patch`                                                                          | Tells the page when Quake has saved a game or written its settings, so it can keep them.                                                                                     |
 | `engine/long-strings.patch`                                                                   | Saves strings longer than 256 bytes, as LibreQuake's are, instead of overrunning the buffer they were written into.                                                          |
 | `engine/net_ein.c`, `engine/connect.patch`                                                    | Quake's network: the loopback, and id's datagram driver over the page's or the worker's; connecting without waiting in a loop for answers.                                   |
 | `engine/menu.patch`                                                                           | Makes the main menu's Multiplayer the player's setup, without the menu of joining and starting a game, which the page does.                                                  |
 | `engine/server_ein.c`, `engine/build.sh`                                                      | Quake's dedicated server's platform layer, and the build of the game and the server.                                                                                         |
-| `engine/quake2/quake2generic_ein.c`                                                           | quake2generic's platform layer for the page: the frame at the video mode's size, keys, mouse and start-up.                                                                   |
+| `engine/quake2/quake2generic_ein.c`                                                           | quake2generic's platform layer for the page: the frame at the video mode's size, keys, mouse, start-up and fullscreen.                                                       |
+| `engine/quake2/menu_ein.c`                                                                    | Tells the page whether a menu or the console is up, which it gives the mouse back for.                                                                                       |
 | `engine/quake2/snd_ein.c`, `engine/quake2/cd_ein.c`                                           | Quake II's sound card and CD player, as Quake's.                                                                                                                             |
 | `engine/quake2/Containerfile`                                                                 | Quake II's build: pinned emsdk image and quake2generic commit.                                                                                                               |
 | `engine/quake2/signatures.patch`                                                              | Gives two of the game code's functions the parameters they are called with, which WebAssembly holds them to.                                                                 |
 | `engine/quake2/volume.patch`                                                                  | The mixer's volume of an 8-bit sound, which quake2generic had made silent.                                                                                                   |
 | `engine/quake2/files.patch`                                                                   | Lists a folder's files, which saving a game needs, and tells the page when Quake II has saved a game or written its settings.                                                |
 | `engine/quake2/menu.patch`                                                                    | Makes the main menu's Multiplayer the player setup, without the menus of joining and starting a server, which the page does.                                                 |
-| `engine/quake2/video.patch`                                                                   | Leaves the driver, fullscreen and windowed mouse out of the Video menu, which would change nothing in the page.                                                              |
+| `engine/quake2/video.patch`                                                                   | Leaves the driver and windowed mouse out of the Video menu, which would change nothing in the page; its fullscreen is the page's.                                            |
 | `engine/quake2/widescreen.patch`                                                              | Adds the widescreen modes up to 1920 by 1200, and a field of view as wide as the frame.                                                                                      |
 | `engine/quake2/scale.patch`                                                                   | Draws the menus, the HUD and the console at a scale of the frame's height, so they keep their size.                                                                          |
 | `engine/quake2/net_ein.c`, `engine/quake2/server_ein.c`, `engine/quake2/build.sh`             | Quake II's network, its dedicated server's platform layer, and the build of the game and the server.                                                                         |

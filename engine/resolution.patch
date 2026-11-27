@@ -108,10 +108,10 @@ index 3d82948..4cb97b7 100644
  
  // intermission is always full screen	
 diff --git a/source/vid_null.c b/source/vid_null.c
-index acb69cc..6841597 100644
+index acb69cc..16dc6fa 100644
 --- a/source/vid_null.c
 +++ b/source/vid_null.c
-@@ -17,7 +17,12 @@ along with this program; if not, write to the Free Software
+@@ -17,7 +17,13 @@ along with this program; if not, write to the Free Software
  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  
  */
@@ -121,11 +121,12 @@ index acb69cc..6841597 100644
 +// largest, QUAKEGENERIC_RES_X by QUAKEGENERIC_RES_Y; 640 by 480 until they
 +// choose. The mode is vid_width and vid_height, which config.cfg keeps, and
 +// the Options menu's Video Options lists the modes there are. A new mode
-+// takes effect once the frame drawn in the old one is shown.
++// takes effect once the frame drawn in the old one is shown. Video Options
++// also sets vid_fullscreen, whether the page shows the frame fullscreen.
  
  #include "quakedef.h"
  #include "d_local.h"
-@@ -26,13 +31,52 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+@@ -26,13 +32,62 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  
  viddef_t	vid;				// global video state
  
@@ -169,8 +170,17 @@ index acb69cc..6841597 100644
 +
 +#define VID_NUM_MODES	(sizeof (vid_modes) / sizeof (vid_modes[0]))
 +
-+// The mode Video Options' cursor is on.
++// Whether the page shows the frame fullscreen (quakegeneric_ein.c). Not kept
++// in config.cfg: a browser goes fullscreen only on a key or a click, so a
++// game starts in the page.
++cvar_t	vid_fullscreen = {"vid_fullscreen", "0"};
++
++// The line Video Options' cursor is on: a mode, or VID_FULLSCREEN, the line
++// after the modes and a blank one.
 +static int	vid_cursor;
++
++#define VID_FULLSCREEN	VID_NUM_MODES
++#define VID_LINE_Y(i)	(32 + ((i) + ((i) == VID_FULLSCREEN)) * 8)
 +
 +// menu.c's, which menu.h does not declare.
 +extern void (*vid_menudrawfn)(void);
@@ -181,10 +191,11 @@ index acb69cc..6841597 100644
 +void M_DrawPic (int x, int y, qpic_t *pic);
 +void M_DrawTransPic (int x, int y, qpic_t *pic);
 +void M_DrawCharacter (int cx, int line, int num);
++void M_DrawCheckbox (int x, int y, int on);
  
  void	VID_SetPalette (unsigned char *palette)
  {
-@@ -46,22 +90,163 @@ void	VID_ShiftPalette (unsigned char *palette)
+@@ -46,22 +101,175 @@ void	VID_ShiftPalette (unsigned char *palette)
  	QG_SetPalette(palette);
  }
  
@@ -269,7 +280,8 @@ index acb69cc..6841597 100644
 +================
 +VID_MenuDraw
 +
-+Video Options: the modes, the one played in white, and the cursor.
++Video Options: the modes, the one played in white, whether the frame is
++fullscreen, and the cursor.
 +================
 +*/
 +static void VID_MenuDraw (void)
@@ -292,14 +304,16 @@ index acb69cc..6841597 100644
 +
 +	for (i = 0 ; i < VID_NUM_MODES ; i++)
 +	{
-+		y = 32 + i * 8;
++		y = VID_LINE_Y (i);
 +		sprintf (line, "%4i x %-4i  %s", vid_modes[i].width, vid_modes[i].height, vid_modes[i].shape);
 +		if (vid_modes[i].width == vid.width && vid_modes[i].height == vid.height)
 +			M_PrintWhite (88, y, line);
 +		else
 +			M_Print (88, y, line);
 +	}
-+	M_DrawCharacter (72, 32 + vid_cursor * 8, 12 + ((int) (realtime * 4) & 1));
++	M_Print (88, VID_LINE_Y (VID_FULLSCREEN), "Fullscreen");
++	M_DrawCheckbox (184, VID_LINE_Y (VID_FULLSCREEN), vid_fullscreen.value);
++	M_DrawCharacter (72, VID_LINE_Y (vid_cursor), 12 + ((int) (realtime * 4) & 1));
 +}
 +
 +static void VID_MenuKey (int key)
@@ -314,18 +328,26 @@ index acb69cc..6841597 100644
 +	case K_UPARROW:
 +		S_LocalSound ("misc/menu1.wav");
 +		if (--vid_cursor < 0)
-+			vid_cursor = VID_NUM_MODES - 1;
++			vid_cursor = VID_FULLSCREEN;
 +		break;
 +
 +	case K_DOWNARROW:
 +		S_LocalSound ("misc/menu1.wav");
-+		if (++vid_cursor >= VID_NUM_MODES)
++		if (++vid_cursor > VID_FULLSCREEN)
 +			vid_cursor = 0;
 +		break;
 +
++	case K_LEFTARROW:
++	case K_RIGHTARROW:
++		if (vid_cursor != VID_FULLSCREEN)
++			break;
++		// Left and right turn fullscreen on and off, as Enter does.
 +	case K_ENTER:
 +		S_LocalSound ("misc/menu2.wav");
-+		VID_AskMode (vid_modes[vid_cursor].width, vid_modes[vid_cursor].height);
++		if (vid_cursor == VID_FULLSCREEN)
++			Cvar_SetValue ("vid_fullscreen", !vid_fullscreen.value);
++		else
++			VID_AskMode (vid_modes[vid_cursor].width, vid_modes[vid_cursor].height);
 +		break;
 +	}
 +}
@@ -336,6 +358,7 @@ index acb69cc..6841597 100644
 -	vid.maxwarpheight = vid.height = vid.conheight = BASEHEIGHT;
 +	Cvar_RegisterVariable (&vid_width);
 +	Cvar_RegisterVariable (&vid_height);
++	Cvar_RegisterVariable (&vid_fullscreen);
 +
 +	vid.maxwarpwidth = WARP_WIDTH;
 +	vid.maxwarpheight = WARP_HEIGHT;
@@ -357,7 +380,7 @@ index acb69cc..6841597 100644
  
  	// quake generic
  	QG_Init();
-@@ -69,13 +254,14 @@ void	VID_Init (unsigned char *palette)
+@@ -69,13 +277,14 @@ void	VID_Init (unsigned char *palette)
  
  void	VID_Shutdown (void)
  {
@@ -373,7 +396,7 @@ index acb69cc..6841597 100644
  }
  
  /*
-@@ -96,5 +282,3 @@ D_EndDirectRect
+@@ -96,5 +305,3 @@ D_EndDirectRect
  void D_EndDirectRect (int x, int y, int width, int height)
  {
  }
