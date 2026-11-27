@@ -42,6 +42,12 @@ RUN git -C /src apply /src/config.patch
 COPY cdkey.patch /src/
 RUN git -C /src apply /src/cdkey.patch
 
+# A QVM's cast of a float to an int truncates, as C's does and as on x86; ioquake3's interpreter
+# rounds it elsewhere (lrintf), which threw off the game code's arithmetic, its menus' aspect ratios
+# among it.
+COPY truncate.patch /src/
+RUN git -C /src apply /src/truncate.patch
+
 # The menus' Setup > System lists the modes the engine offers (r_availableModes, glimp_ein.c),
 # widescreen ones too, and has no GL driver, extensions, colour depth or texture bits to choose,
 # which the page's WebGL has one of; its Graphics Settings set the quality, not the mode or
@@ -78,7 +84,7 @@ RUN cmake -S /src -B /qvm -DCMAKE_BUILD_TYPE=Release -DBUILD_CLIENT=OFF -DBUILD_
     -DBUILD_GAME_QVMS=ON -DBUILD_RENDERER_GL1=OFF -DBUILD_RENDERER_GL2=OFF > /dev/null \
   && cmake --build /qvm -j2 > /dev/null \
   && sh qvms.sh \
-  && echo "ioquake3 ${IOQ3_COMMIT} with main.patch, frame.patch, config.patch, cdkey.patch and graphics.patch: the game, OpenGL 2 renderer on WebGL 2, in a worker, and its dedicated server; its baseq3 menus (quake3-ui.pk3) and game code (quake3-game.pk3) as QVMs; OpenArena ${OPENARENA_COMMIT}'s menus with openarena-graphics.patch (openarena-ui.pk3); emsdk 6.0.13" > /out/quake3-build.txt
+  && echo "ioquake3 ${IOQ3_COMMIT} with main.patch, frame.patch, config.patch, cdkey.patch, truncate.patch and graphics.patch: the game, OpenGL 2 renderer on WebGL 2, in a worker, and its dedicated server; its baseq3 menus (quake3-ui.pk3) and game code (quake3-game.pk3) as QVMs; OpenArena ${OPENARENA_COMMIT}'s menus with openarena-graphics.patch (openarena-ui.pk3); emsdk 6.0.13" > /out/quake3-build.txt
 
 FROM scratch
 COPY --from=build /out/ /

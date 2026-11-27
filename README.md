@@ -419,6 +419,7 @@ music** turns the music on and off.
 | `engine/quake3/frame.patch`                                                       | Returns at once from a frame that is not due yet, rather than waiting for its time.                                                                                                                                               |
 | `engine/quake3/config.patch`                                                      | Tells the page when Quake III has written its settings or the CD key, so it can keep them.                                                                                                                                        |
 | `engine/quake3/cdkey.patch`                                                       | Asks no CD key of a game played standalone, the demo or a game of its own.                                                                                                                                                        |
+| `engine/quake3/truncate.patch`                                                    | Makes a QVM's cast of a float to an int truncate, as C's does, where ioquake3's interpreter rounded it off x86.                                                                                                                   |
 | `engine/quake3/graphics.patch`                                                    | Makes ioquake3's Setup > System the page's: the modes the engine offers, no driver, extensions, colour depth or texture bits, presets that leave the mode and fullscreen.                                                         |
 | `engine/quake3/openarena-graphics.patch`                                          | The same for OpenArena 0.8.8's Setup > System, without its bloom too.                                                                                                                                                             |
 | `engine/quake3/qvms.sh`                                                           | Compiles the menus and game code the module brings to QVMs with ioquake3's compiler and packs them.                                                                                                                               |
@@ -457,7 +458,8 @@ The source of `assets/quake2.wasm` is quake2generic at the commit
 The source of `assets/quake3.wasm` is ioquake3 at the commit
 `engine/quake3/Containerfile` pins, with `engine/quake3/main.patch`,
 `engine/quake3/frame.patch`, `engine/quake3/config.patch`,
-`engine/quake3/cdkey.patch` and `engine/quake3/graphics.patch` applied and the
+`engine/quake3/cdkey.patch`, `engine/quake3/truncate.patch` and
+`engine/quake3/graphics.patch` applied and the
 `engine/quake3/` files added; it builds ioquake3's sources itself
 (`engine/quake3/build.sh`) rather than with ioquake3's CMake, which builds the
 browser's game with SDL and no dedicated server. `assets/quake3-ui.pk3` and

@@ -1,0 +1,18 @@
+diff --git a/code/qcommon/vm_interpreted.c b/code/qcommon/vm_interpreted.c
+index cb86a08d..4e6b70ad 100644
+--- a/code/qcommon/vm_interpreted.c
++++ b/code/qcommon/vm_interpreted.c
+@@ -877,7 +877,13 @@ nextInstruction2:
+ 			((float *) opStack)[opStackOfs] = (float) opStack[opStackOfs];
+ 			goto nextInstruction;
+ 		case OP_CVFI:
++#ifdef EIN
++			// A cast to int truncates, as C's does and the x86 builds'
++			// Q_ftol: elsewhere Q_ftol is lrintf, which rounds.
++			opStack[opStackOfs] = (int) ((float *) opStack)[opStackOfs];
++#else
+ 			opStack[opStackOfs] = Q_ftol(((float *) opStack)[opStackOfs]);
++#endif
+ 			goto nextInstruction;
+ 		case OP_SEX8:
+ 			opStack[opStackOfs] = (signed char) opStack[opStackOfs];
