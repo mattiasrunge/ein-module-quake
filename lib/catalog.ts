@@ -54,7 +54,10 @@ async function readGame(cmd: Command, name: string): Promise<InstalledGame | und
   const musicFolder = `${path}/music`;
   const tracks = tracksOf((await vfs.children(cmd.access, musicFolder).catch(() => [])).map((child) => child.name));
   const music = Object.keys(tracks).length > 0 ? { folder: musicFolder, tracks } : undefined;
-  const maps = mapsOf([...inPaks, ...files]);
+  // Quake's shareware episode reads no file in a folder but from its paks (it is registered when its
+  // paks have `gfx/pop.lmp`), so its own maps are those of its paks alone.
+  const loose = engine === 'quake2' || inPaks.has('gfx/pop.lmp');
+  const maps = mapsOf(loose ? [...inPaks, ...files] : inPaks);
   const cover = await coverOf(cmd, engine, read).catch(() => undefined);
   return {
     id: name,

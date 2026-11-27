@@ -30,7 +30,7 @@ export type InstalledGame = {
    * and a map dropped on the Games page is in `maps/`.
    */
   files: string[];
-  /** Its maps, in its paks and in its `maps/` folder, by the name a game is started on (`q2dm1`, `e1m1`). */
+  /** Its maps, in its paks and in its `maps/` folder (but Quake's shareware episode's), by the name a game is started on (`q2dm1`, `e1m1`). */
   maps: string[];
   /** Whether it can be hosted: it has maps. */
   hostable: boolean;
