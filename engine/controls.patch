@@ -1,0 +1,72 @@
+diff --git a/source/menu.c b/source/menu.c
+index fb4637b..fd915d1 100644
+--- a/source/menu.c
++++ b/source/menu.c
+@@ -1024,7 +1024,10 @@ again:
+ //=============================================================================
+ /* OPTIONS MENU */
+ 
+-#define	OPTIONS_ITEMS	13
++// The crosshair, which Options turns on and off (view.c).
++extern cvar_t crosshair;
++
++#define	OPTIONS_ITEMS	14
+ 
+ #define	SLIDER_RANGE	10
+ 
+@@ -1109,6 +1112,10 @@ void M_AdjustSliders (int dir)
+ 	case 11:	// lookstrafe
+ 		Cvar_SetValue ("lookstrafe", !lookstrafe.value);
+ 		break;
++
++	case 12:	// crosshair
++		Cvar_SetValue ("crosshair", !crosshair.value);
++		break;
+ 	}
+ }
+ 
+@@ -1187,8 +1194,11 @@ void M_Options_Draw (void)
+ 	M_Print (16, 120, "            Lookstrafe");
+ 	M_DrawCheckbox (220, 120, lookstrafe.value);
+ 
++	M_Print (16, 128, "             Crosshair");
++	M_DrawCheckbox (220, 128, crosshair.value);
++
+ 	if (vid_menudrawfn)
+-		M_Print (16, 128, "         Video Options");
++		M_Print (16, 136, "         Video Options");
+ 
+ // cursor
+ 	M_DrawCharacter (200, 32 + options_cursor*8, 12+((int)(realtime*4)&1));
+@@ -1217,7 +1227,7 @@ void M_Options_Key (int k)
+ 		case 2:
+ 			Cbuf_AddText ("exec default.cfg\n");
+ 			break;
+-		case 12:
++		case 13:
+ 			M_Menu_Video_f ();
+ 			break;
+ 		default:
+@@ -1249,10 +1259,10 @@ void M_Options_Key (int k)
+ 		break;
+ 	}
+ 
+-	if (options_cursor == 12 && vid_menudrawfn == NULL)
++	if (options_cursor == 13 && vid_menudrawfn == NULL)
+ 	{
+ 		if (k == K_UPARROW)
+-			options_cursor = 11;
++			options_cursor = 12;
+ 		else
+ 			options_cursor = 0;
+ 	}
+@@ -1264,7 +1274,8 @@ void M_Options_Key (int k)
+ char *bindnames[][2] =
+ {
+ {"+attack", 		"attack"},
+-{"impulse 10", 		"change weapon"},
++{"impulse 10", 		"next weapon"},
++{"impulse 12", 		"prev weapon"},
+ {"+jump", 			"jump / swim up"},
+ {"+forward", 		"walk forward"},
+ {"+back", 			"backpedal"},

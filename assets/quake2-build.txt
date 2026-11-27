@@ -1,1 +1,1 @@
-quake2generic 84f34ed5382323d96b81a44a44f73496791084a3 with signatures.patch, volume.patch, files.patch, menu.patch, video.patch, widescreen.patch and scale.patch: the game, software renderer, and its dedicated server; emsdk 6.0.13
+quake2generic 84f34ed5382323d96b81a44a44f73496791084a3 with signatures.patch, volume.patch, files.patch, menu.patch, video.patch, widescreen.patch, scale.patch and controls.patch: the game, software renderer, and its dedicated server; emsdk 6.0.13

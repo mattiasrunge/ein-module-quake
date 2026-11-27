@@ -50,7 +50,7 @@ archive.
 
 ## Install
 
-It needs EiN's games module (`games`, 0.1.1 or later). As an administrator, open
+It needs EiN's games module (`games`, 0.1.2-dev.5 or later). As an administrator, open
 **Settings → Modules**, choose **Install**, and give
 `https://github.com/mattiasrunge/ein-module-quake` under **From a repository**.
 
@@ -99,11 +99,23 @@ you choose instead, without its demos and menus.
 
 Click the game to give it the mouse and the keyboard: the browser hides the
 pointer and the mouse turns and looks, as players have played since (`+mlook`
-in Quake, free look in Quake II). The left button fires. WASD or the arrows
-move, Space jumps, Shift runs, Alt strafes, Escape opens the game's menu, and
-the key under Escape (`` ` ``) its console. While the game has the mouse or the
-focus it takes its keys before EiN does, Alt+letter included. Quit in the
-game's menu leaves the page as it was before **Play**.
+in Quake, free look in Quake II). The left button fires, and the wheel changes
+weapon, up to the next and down to the one before, in all three games. WASD or
+the arrows move, Space jumps, Shift runs, Alt strafes, Escape opens the game's
+menu, and the key under Escape (`` ` ``) its console. While the game has the
+mouse or the focus it takes its keys before EiN does, Alt+letter included. Quit
+in the game's menu leaves the page as it was before **Play**.
+
+Where a mouse and keyboard play and the page is wide enough, its header shows
+your keys: the ones you move, jump and run with, what the mouse's buttons and
+wheel do, the menu's and the console's keys, and F11, which is also the
+fullscreen button there. **⋮** > **Keys** shows them on any width. They are the
+game's own binds, read from your settings and shown again as the game writes
+them; you change them in the game: **Options** > **Customize controls** in
+Quake and Quake II, **Setup** > **Controls** in Quake III. Each of the three
+has the next and the previous weapon there, and its options turn the crosshair
+on and off (**Options** > **Crosshair** in Quake, **crosshair** in Quake II,
+**Setup** > **Game Options** in Quake III).
 
 In the page, the mouse is yours while the game's menu or console is up, and
 the game's again when you close it. If the browser does not hand the mouse back
@@ -128,7 +140,9 @@ header's other buttons turn the sound off and on.
 A player who has played before starts with their own settings: the game's
 **Options** and the keys bound in its controls menu are kept (below), and the
 WASD keys, free look, always run and the crosshair are only the first settings
-of a player who has none yet. Until you choose a name in the game's
+of a player who has none yet. The wheel is the weapons' too for a player whose
+settings leave it unbound, or bound the other way round, as Quake III's own
+defaults have it. Until you choose a name in the game's
 **Multiplayer** menu, you play under your account's.
 
 The game's frame is 1280 by 720 in Quake and Quake II, and 1920 by 1080 in
@@ -378,6 +392,8 @@ music** turns the music on and off.
 | `ui/quake/files.ts`                                                               | The engines' builds in `assets/`, and a game's paks, read as the engine asks, and the files beside them, fetched whole.                                                                                                           |
 | `ui/quake/engine-worker.ts`, `ui/quake/start.ts`                                  | The worker every engine runs in (`ui.workers` in `mod.json`), on the games module's `serveEngine`: each engine's start call, its frame from WebGL or from its memory, its sound and its input; and what the page starts it with.  |
 | `ui/quake/keys.ts`                                                                | Browser key codes and mouse buttons to Quake's, which are Quake II's too, and to Quake III's, with the characters they type.                                                                                                      |
+| `ui/quake/binds.ts`                                                               | The player's binds in config.cfg and q3config.cfg, and the wheel's binds a player starts with.                                                                                                                                    |
+| `ui/quake/pad.tsx`                                                                | The keys' drawing the games page shows: the player's binds on the keyboard and the mouse.                                                                                                                                         |
 | `bin/quake-games`                                                                 | Lists the games with their titles, engines, title art, paks, maps and music, and the free ones not fetched yet, for the Games page, a game's page and the card's choice of game.                                                  |
 | `lib/games.ts`, `lib/api.ts`                                                      | Where the games are, which engine plays a game, its maps and music, the games known by name, the free games offered, and the shape `quake-games` answers in.                                                                      |
 | `lib/catalog.ts`                                                                  | Reads the games folder: each game's paks, the files beside them, and what `quake-games` says of it.                                                                                                                               |
@@ -396,6 +412,7 @@ music** turns the music on and off.
 | `engine/files.patch`                                                              | Tells the page when Quake has saved a game or written its settings, so it can keep them.                                                                                                                                          |
 | `engine/long-strings.patch`                                                       | Saves strings longer than 256 bytes, as LibreQuake's are, instead of overrunning the buffer they were written into.                                                                                                               |
 | `engine/net_ein.c`, `engine/connect.patch`                                        | Quake's network: the loopback, and id's datagram driver over the page's or the worker's; connecting without waiting in a loop for answers.                                                                                        |
+| `engine/controls.patch`                                                           | Puts the previous weapon (`impulse 12`) beside the next in Customize controls, and a Crosshair line in Options.                                                                                                                   |
 | `engine/menu.patch`                                                               | Makes the main menu's Multiplayer the player's setup, without the menu of joining and starting a game, which the page does.                                                                                                       |
 | `engine/server_ein.c`, `engine/build.sh`                                          | Quake's dedicated server's platform layer, and the build of the game and the server.                                                                                                                                              |
 | `engine/quake2/quake2generic_ein.c`                                               | quake2generic's platform layer for the page: the frame at the video mode's size, keys, mouse, start-up and fullscreen.                                                                                                            |
@@ -408,6 +425,7 @@ music** turns the music on and off.
 | `engine/quake2/menu.patch`                                                        | Makes the main menu's Multiplayer the player setup, without the menus of joining and starting a server, which the page does.                                                                                                      |
 | `engine/quake2/video.patch`                                                       | Leaves the driver and windowed mouse out of the Video menu, which would change nothing in the page; its fullscreen is the page's.                                                                                                 |
 | `engine/quake2/widescreen.patch`                                                  | Adds the widescreen modes up to 1920 by 1200, and a field of view as wide as the frame.                                                                                                                                           |
+| `engine/quake2/controls.patch`                                                    | Puts the previous weapon (`weapprev`) beside the next in the keys' menu.                                                                                                                                                          |
 | `engine/quake2/scale.patch`                                                       | Draws the menus, the HUD and the console at a scale of the frame's height, so they keep their size.                                                                                                                               |
 | `engine/quake2/net_ein.c`, `engine/quake2/server_ein.c`, `engine/quake2/build.sh` | Quake II's network, its dedicated server's platform layer, and the build of the game and the server.                                                                                                                              |
 | `engine/quake3/quake3_ein.c`                                                      | ioquake3's platform layer for the page: start-up, a frame a tick, keys, characters, the mouse, and whether the console is up and the frame fullscreen.                                                                            |
