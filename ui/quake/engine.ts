@@ -1,7 +1,9 @@
 import type { RunningGame, StartOptions } from '@games/adapter';
+import { keyControls, startWorkerGame } from '@games/worker';
 import type { EngineName, InstalledGame } from '../../lib/api.ts';
+import { build, lazyPaks, looseFiles } from './files.ts';
 import { mouseKey, quakeKey, WHEEL } from './keys.ts';
-import { lazyPaks, looseFiles, startInWorker } from './worker-game.ts';
+import type { QuakeStart } from './start.ts';
 
 /** The megabytes Quake's own allocator gets: what LibreQuake's larger maps need, with room to spare. */
 const HEAP = 64;
@@ -59,7 +61,7 @@ const ENGINES: Record<Exclude<EngineName, 'quake3'>, EngineSpec> = {
 };
 
 /**
- * Start the Quake or Quake II game `game` in the module's engine worker (`worker-game.ts`), which
+ * Start the Quake or Quake II game `game` in the module's engine worker (`engine-worker.ts`), which
  * reads its paks from EiN as the engine asks for them, under the names the engine loads them by
  * (`pak0.pak` and on) in its own folder, `/id1` or `/baseq2`, whatever the folder is called here. The
  * files beside them and the player's saves and config.cfg are handed over whole, into the same
@@ -79,35 +81,19 @@ export async function startEngine({ game, sound, log, kept, onKeep, name, map, o
   if (online) commands.push(`connect ${online.address}`);
   const files = [...await looseFiles(game, spec.folder), ...kept.map((file) => ({ path: `${spec.folder}/${file.name}`, data: file.data }))];
 
-  const wheel = WHEEL[family];
-  return await startInWorker(
-    {
+  return await startWorkerGame<QuakeStart>('quake', 'engine', {
+    payload: {
       family,
-      build: spec.build,
-      lazy: lazyPaks(game, spec.folder, game.paks.map((_, i) => `pak${i}.pak`)),
-      files,
+      build: build(spec.build),
       writes: spec.folder,
       args: [...spec.args(!!sound, !config), ...(map ? ['+map', map] : [])],
       commands: commands.join('\n') + '\n',
       ...(family === 'quake' ? { heap: HEAP } : {}),
     },
-    { sound, log, onKeep, online },
+    lazy: lazyPaks(game, spec.folder, game.paks.map((_, i) => `pak${i}.pak`)),
+    files,
     // A game without music of its own is silent when it asks for a track.
-    { folder: game.music?.folder ?? game.path, tracks: game.music?.tracks ?? {} },
-    (post) => {
-      const press = (pressed: boolean, key: number | undefined): boolean => {
-        if (key === undefined) return false;
-        post({ type: 'key', pressed, key });
-        return true;
-      };
-      return {
-        key: (pressed, code) => press(pressed, quakeKey(code)),
-        button: (pressed, button) => press(pressed, mouseKey(button)),
-        wheel(up) {
-          press(true, up ? wheel.up : wheel.down);
-          press(false, up ? wheel.up : wheel.down);
-        },
-      };
-    },
-  );
+    music: { folder: game.music?.folder ?? game.path, tracks: game.music?.tracks ?? {} },
+    controls: (post) => keyControls(post, { key: quakeKey, button: mouseKey, wheel: WHEEL[family] }),
+  }, { sound, log, onKeep, online });
 }
