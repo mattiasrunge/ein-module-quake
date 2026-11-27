@@ -105,6 +105,7 @@ async function readGame(cmd: Command, name: string): Promise<InstalledGame | und
     paks,
     ...(quake3 ? { gamedir: gamedirOf(name, title) } : {}),
     size,
+    sizes,
     files,
     maps,
     hostable: maps.length > 0,

@@ -16,9 +16,11 @@ See the GNU General Public License for more details.
 */
 // glimp_ein.c -- Quake 3's OpenGL for the EiN page, in place of
 // sdl_glimp.c and sdl_gamma.c: a WebGL 2 context, OpenGL ES 3.0 to the
-// OpenGL 2 renderer, on the canvas the page gave the engine (Module.canvas,
-// which Emscripten finds as "!canvas"). The page never shows that canvas: it
-// draws it onto its own after each frame. The frame is the size of the
+// OpenGL 2 renderer, on the canvas the engine was given (Module.canvas, an
+// OffscreenCanvas of the worker it runs in, which Emscripten finds as
+// "!canvas"). After each frame the worker hands what was drawn to the page,
+// which draws it onto its own; ein_frames says whether a frame was drawn
+// since it last looked. The frame is the size of the
 // video mode the player chose (r_mode), or with r_mode -2 the size the page
 // shows the game at (Module.einDisplay), and the canvas takes that size.
 // There is no window to go fullscreen or to minimise: the page shows the
@@ -60,6 +62,9 @@ QGL_EXT_direct_state_access_PROCS;
 // The context, made once: a canvas has one WebGL context, which a video
 // restart keeps.
 static EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context = 0;
+
+// How many frames the renderer has finished.
+static unsigned int frames = 0;
 
 // The canvas the page gave the engine, by the name Emscripten's WebGL and
 // canvas functions find it under.
@@ -223,9 +228,18 @@ void GLimp_Shutdown( void )
 	ri.IN_Shutdown();
 }
 
-// The browser shows what was drawn once the page's frame ends.
+// The worker hands what was drawn to the page once the tick returns.
 void GLimp_EndFrame( void )
 {
+	frames++;
+}
+
+// How many frames the renderer has finished: the worker hands one over
+// when it moves on.
+EMSCRIPTEN_KEEPALIVE
+unsigned int ein_frames( void )
+{
+	return frames;
 }
 
 void GLimp_Minimize( void )

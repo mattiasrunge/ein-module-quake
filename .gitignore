@@ -1,5 +1,7 @@
 # Game data: paks and music live in EiN's tree, never in the repository.
 *.pak
-*.pk3
 *.PAK
+*.pk3
 *.ogg
+# But ioquake3's own game code, which the module builds and ships.
+!assets/quake3-vm.pk3

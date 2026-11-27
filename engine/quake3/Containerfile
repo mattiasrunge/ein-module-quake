@@ -1,6 +1,7 @@
 # Builds Quake 3 (ioquake3) to WebAssembly for the module's page: assets/quake3.js and
-# assets/quake3.wasm, single-threaded, with no SDL and no main loop (quake3_ein.c). It draws with
-# ioquake3's OpenGL 2 renderer on WebGL 2 (glimp_ein.c), into a canvas the page draws onto its own.
+# assets/quake3.wasm, single-threaded, with no SDL and no main loop (quake3_ein.c), run in a worker
+# of the page's (ui/quake/quake3-worker.ts). It draws with ioquake3's OpenGL 2 renderer on WebGL 2
+# (glimp_ein.c), into the worker's canvas, each frame of which the page draws onto its own.
 # The game code is the game's own QVMs, in its pk3s, which the engine's interpreter runs. The sound
 # is Quake 3's own mixer, music included, played by the page (snd_ein.c); the network is the page's
 # too (net_ein.c). Beside it, the same engine as a dedicated server without client, renderer or
@@ -31,10 +32,15 @@ RUN git -C /src apply /src/main.patch
 COPY frame.patch /src/
 RUN git -C /src apply /src/frame.patch
 
-# q3config.cfg written tells the page, which keeps it in the player's home (Sys_Wrote,
-# quake3_ein.c).
+# q3config.cfg, or the CD key in q3key, written tells the page, which keeps it in the player's home
+# (Sys_Wrote, quake3_ein.c).
 COPY config.patch /src/
 RUN git -C /src apply /src/config.patch
+
+# A game played standalone, id's demo or a game of its own as OpenArena is, has no CD key, so its
+# menus do not ask for one; id's whole game asks for the player's own, as Quake III Arena did.
+COPY cdkey.patch /src/
+RUN git -C /src apply /src/cdkey.patch
 
 WORKDIR /src/code
 COPY quake3_ein.c glimp_ein.c snd_ein.c net_ein.c server_ein.c ein/
@@ -43,8 +49,17 @@ COPY build.sh ./
 # The game and its dedicated server (build.sh). Two compilers at a time keep the build's memory small
 # beside a running EiN.
 ENV EMCC_CORES=2
-RUN sh build.sh \
-  && echo "ioquake3 ${IOQ3_COMMIT} with main.patch, frame.patch and config.patch: the game, OpenGL 2 renderer on WebGL 2, and its dedicated server; emsdk 6.0.13" > /out/quake3-build.txt
+RUN sh build.sh
+
+# ioquake3's own game code for Quake III Arena, its cgame, qagame and ui, compiled from its source to
+# QVMs with its own compiler (its CMake, with the image's gcc for the compiler itself) and packed as
+# a pk3, quake3-vm.pk3, its files dated alike so a build makes the same bytes. The demo's own QVMs
+# are older than ioquake3 runs, so a demo is played with these, as ioquake3 says to.
+RUN cmake -S /src -B /qvm -DCMAKE_BUILD_TYPE=Release -DBUILD_CLIENT=OFF -DBUILD_SERVER=OFF -DBUILD_GAME_LIBRARIES=OFF \
+    -DBUILD_GAME_QVMS=ON -DBUILD_RENDERER_GL1=OFF -DBUILD_RENDERER_GL2=OFF > /dev/null \
+  && cmake --build /qvm -j2 > /dev/null \
+  && python3 -c "import zipfile; z = zipfile.ZipFile('/out/quake3-vm.pk3', 'w'); [z.writestr(zipfile.ZipInfo(f'vm/{n}.qvm', (1999, 12, 2, 0, 0, 0)), open(f'/qvm/Release/baseq3/vm/{n}.qvm', 'rb').read(), zipfile.ZIP_DEFLATED) for n in ('cgame', 'qagame', 'ui')]; z.close()" \
+  && echo "ioquake3 ${IOQ3_COMMIT} with main.patch, frame.patch, config.patch and cdkey.patch: the game, OpenGL 2 renderer on WebGL 2, in a worker, and its dedicated server; and its baseq3 game code as QVMs (quake3-vm.pk3); emsdk 6.0.13" > /out/quake3-build.txt
 
 FROM scratch
 COPY --from=build /out/ /

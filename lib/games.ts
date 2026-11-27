@@ -91,6 +91,14 @@ export const OFFERS: OfferedGame[] = [
   },
   { id: 'librequake', title: 'LibreQuake', state: 'offered', family: 'quake', about: "Free game data for Quake's engine, with its music.", download: 55_987_573 },
   {
+    id: 'quake3-demo',
+    title: 'Quake III Arena (demo)',
+    state: 'offered',
+    family: 'quake3',
+    about: "Four arenas of id Software's Quake III Arena, free to play at home under its licence, which comes with it; not for showing in public.",
+    download: 49_289_300,
+  },
+  {
     id: 'openarena',
     title: 'OpenArena',
     state: 'offered',

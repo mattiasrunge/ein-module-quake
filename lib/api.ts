@@ -34,6 +34,8 @@ export type InstalledGame = {
   gamedir?: string;
   /** Bytes, the paks together. */
   size: number;
+  /** Bytes of each of its paks, in the order of `paks`: what a Quake 3 game's worker reads them by. */
+  sizes: number[];
   /**
    * The files beside its paks that the engine reads as if they were in them, by their paths in the
    * folder: Quake II's demo has its players' models and skins in `players/` rather than in its pak,

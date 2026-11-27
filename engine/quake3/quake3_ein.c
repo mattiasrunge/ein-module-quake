@@ -15,19 +15,21 @@ See the GNU General Public License for more details.
 */
 // quake3_ein.c -- ioquake3's platform layer for the EiN page, as
 // quake2generic_ein.c is Quake 2's: no SDL and no loop of its own, and in
-// place of sdl_input.c. The page writes the game's pk3s into Emscripten's
-// in-memory file system, gives the engine a canvas to draw on (glimp_ein.c),
-// calls ein_start once, then ein_tick from requestAnimationFrame and draws
-// the canvas onto its own after each. It hands over keys with ein_key,
-// already in Quake 3's key codes, the characters they type with ein_char,
-// and the mouse's movement with ein_mouse; Quake 3's menus have a pointer of
-// their own, which the mouse moves too. The player's q3config.cfg is a file
-// in the game's folder: the page writes it there before ein_start and hears
-// from ein_wrote when Quake 3 has written it. Sound is snd_ein.c, the
-// network net_ein.c. After each tick the page asks ein_menu whether to give
-// the mouse back, and ein_fullscreen whether to show the frame fullscreen,
-// which the game's options set; ein_set_fullscreen tells the game the
-// browser left fullscreen itself.
+// place of sdl_input.c. It runs in a worker of the page's
+// (ui/quake/quake3-worker.ts), which puts the game's pk3s into Emscripten's
+// file system, gives the engine a canvas to draw on (glimp_ein.c), calls
+// ein_start once, then ein_tick for each of the page's animation frames, and
+// hands the page what was drawn after each. Keys come with ein_key, already
+// in Quake 3's key codes, the characters they type with ein_char, and the
+// mouse's movement with ein_mouse; Quake 3's menus have a pointer of their
+// own, which the mouse moves too. The player's q3config.cfg, and for id's
+// whole game their CD key in q3key, are files in the game's folder of the
+// home folder: the worker writes them there before ein_start and hears from
+// ein_wrote when Quake 3 has written one. Sound is snd_ein.c, the network
+// net_ein.c. After each tick the worker asks ein_menu whether the page is to
+// give the mouse back, and ein_fullscreen whether to show the frame
+// fullscreen, which the game's options set; ein_set_fullscreen tells the
+// game the browser left fullscreen itself.
 
 #include <emscripten.h>
 

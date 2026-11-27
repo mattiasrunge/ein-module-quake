@@ -1,0 +1,16 @@
+diff --git a/code/client/cl_main.c b/code/client/cl_main.c
+index d8c8c669..095f1827 100644
+--- a/code/client/cl_main.c
++++ b/code/client/cl_main.c
+@@ -4705,6 +4705,11 @@ qboolean CL_CDKeyValidate( const char *key, const char *checksum ) {
+ #ifdef STANDALONE
+ 	return qtrue;
+ #else
++#ifdef EIN
++	// A game played standalone, the demo or a game of its own, has no key.
++	if( com_standalone && com_standalone->integer )
++		return qtrue;
++#endif
+ 	char	ch;
+ 	byte	sum;
+ 	char	chs[3];

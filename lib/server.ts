@@ -30,7 +30,16 @@ const NET = '/usr/modules/games/lib/net.ts';
  * the files it is given when it says, or for Quake 3 the only files it reads, its modes, and its
  * command line for a game.
  */
-type ServerSpec = { folder(info: ServerInfo): string; build: string; unread?: RegExp; reads?: RegExp; modes: string[]; args(info: ServerInfo): string[] };
+type ServerSpec = {
+  folder(info: ServerInfo): string;
+  build: string;
+  unread?: RegExp;
+  reads?: RegExp;
+  /** Paks of the module's own the game is played with as well, by the name they load under and their path in EiN's tree. */
+  extra?(info: ServerInfo): { name: string; path: string }[];
+  modes: string[];
+  args(info: ServerInfo): string[];
+};
 
 /** Where Quake 3's server has its game's folder (`fs_basepath`), and its own files (`fs_homepath`). */
 const QUAKE3_BASE = '/q3';
@@ -62,6 +71,9 @@ const SPECS: Record<EngineName, ServerSpec> = {
     // and its configuration; textures, models and sounds are the players'. Its pk3s are not its
     // players' then, so it asks for none of them (sv_pure 0) and each player plays with their own.
     reads: /^(maps\/[^/]+\.(bsp|aas)|vm\/qagame\.qvm|scripts\/.*|botfiles\/.*|[^/]+\.cfg)$/,
+    // id's demo is played with ioquake3's own game code, whose name sorts after the demo's pk3, as
+    // the players' pages play it (`ui/quake/quake3.ts`).
+    extra: (info) => gamedirOf(info.game, info.title) === 'demoq3' ? [{ name: 'zz-ioquake3.pk3', path: `${MODULE}/assets/quake3-vm.pk3` }] : [],
     // Quake 3 has no cooperative game: a deathmatch is its free for all (g_gametype 0). Bots join on
     // the console, as `addbot`.
     modes: ['deathmatch'],
@@ -112,7 +124,7 @@ async function start(cmd: Command, info: ServerInfo, io: ServerIo): Promise<Host
   };
   try {
     const [{ paks, files }, wasm, glue, net, code] = await Promise.all([
-      gameData(cmd, info.game, spec),
+      gameData(cmd, info, spec),
       readWhole(cmd, `${MODULE}/assets/${spec.build}.wasm`),
       blob(`${MODULE}/assets/${spec.build}.js`, 'text/javascript'),
       blob(NET, 'application/typescript'),
@@ -176,13 +188,14 @@ async function start(cmd: Command, info: ServerInfo, io: ServerIo): Promise<Host
 /**
  * The paks of the game in the folder `game` under the names its server loads them by: Quake's and
  * Quake II's as `pak<N>.pak`, each without its files `spec.unread` matches, or whole without it;
- * Quake 3's pk3s under their own names, each with only the files `spec.reads` matches. And the
- * files beside them the server reads, by their paths in the folder.
+ * Quake 3's pk3s under their own names, each with only the files `spec.reads` matches, and the
+ * module's own `spec.extra` gives for the game. And the files beside them the server reads, by
+ * their paths in the folder.
  */
-async function gameData(cmd: Command, game: string, { unread, reads }: ServerSpec): Promise<{ paks: StartServer['paks']; files: StartServer['files'] }> {
-  const folder = `${GAMES}/${game}`;
+async function gameData(cmd: Command, info: ServerInfo, { unread, reads, extra }: ServerSpec): Promise<{ paks: StartServer['paks']; files: StartServer['files'] }> {
+  const folder = `${GAMES}/${info.game}`;
   const found = await gameFiles(cmd, folder);
-  if (found.paks.length === 0) throw new Error(`${game} has no paks`);
+  if (found.paks.length === 0) throw new Error(`${info.game} has no paks`);
   const skipped = (name: string) => reads ? !reads.test(name.toLowerCase()) : !!unread?.test(name.toLowerCase());
   const paks: StartServer['paks'] = [];
   for (const [i, pak] of found.paks.entries()) {
@@ -207,6 +220,7 @@ async function gameData(cmd: Command, game: string, { unread, reads }: ServerSpe
       await reader.close();
     }
   }
+  for (const pak of extra?.(info) ?? []) paks.push({ name: pak.name, data: await readWhole(cmd, pak.path) });
   const read = found.files.filter((name) => !skipped(name));
   const files = await Promise.all(read.map(async (name) => ({ name, data: await readWhole(cmd, `${folder}/${name}`) })));
   return { paks, files };

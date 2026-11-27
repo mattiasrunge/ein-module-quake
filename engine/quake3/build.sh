@@ -61,7 +61,7 @@ link() {
   objects=$2
   shift 2
   emcc -O2 $objects -o "/out/$name.js" \
-    -sMODULARIZE=1 -sEXPORT_ES6=1 -sENVIRONMENT=web \
+    -sMODULARIZE=1 -sEXPORT_ES6=1 \
     -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=5MB \
     -sSUPPORT_LONGJMP=emscripten \
     -sEXPORTED_RUNTIME_METHODS=FS,HEAPU8,HEAP16,HEAPU32,stringToNewUTF8,UTF8ToString \
@@ -79,19 +79,21 @@ case "${1:-all}" in object)
 esac
 
 mkdir -p /out
+# The game runs in a worker of the page's (ui/quake/quake3-worker.ts), which reads the game's pk3s a
+# piece at a time as the engine asks, with synchronous range requests, which only a worker may make.
 case "${1:-all}" in all | client)
   objects=$(compile client $COMMON $CLIENT $LIBRARIES $(shaders))
   link quake3 "$objects" \
-    -sEXPORT_NAME=createQuake3 -sINITIAL_MEMORY=256MB \
+    -sEXPORT_NAME=createQuake3 -sENVIRONMENT=worker -sINITIAL_MEMORY=256MB \
     -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sGL_ENABLE_GET_PROC_ADDRESS=1 \
-    -sEXPORTED_FUNCTIONS=_ein_start,_ein_tick,_ein_key,_ein_char,_ein_mouse,_ein_disconnect,_ein_write_config,_ein_menu,_ein_fullscreen,_ein_set_fullscreen,_ein_audio_rate,_ein_audio_render,_malloc
+    -sEXPORTED_FUNCTIONS=_ein_start,_ein_tick,_ein_key,_ein_char,_ein_mouse,_ein_disconnect,_ein_write_config,_ein_menu,_ein_fullscreen,_ein_set_fullscreen,_ein_frames,_ein_audio_rate,_ein_audio_render,_malloc
   ;;
 esac
 # The server runs in a Deno worker, which Emscripten's web runtime suits once it is handed the wasm.
 case "${1:-all}" in all | server)
   objects=$(compile server $COMMON $SERVER)
   link quake3-server "$objects" \
-    -sEXPORT_NAME=createQuake3Server -sINITIAL_MEMORY=128MB \
+    -sEXPORT_NAME=createQuake3Server -sENVIRONMENT=web -sINITIAL_MEMORY=128MB \
     -sEXPORTED_FUNCTIONS=_ein_start,_ein_tick,_ein_status,_malloc
   ;;
 esac

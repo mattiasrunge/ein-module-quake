@@ -1,12 +1,13 @@
 #!bash
 # quake-fetch — fetches one of the free games quake-games offers into its games folder, when someone
 # chooses Fetch on the Games page or the game's own: Quake's shareware episode, Quake II's demo,
-# LibreQuake with its music, or OpenArena for Quake 3's engine. The release is fetched from where its makers published it, checked
-# against its SHA-256, and unpacked into a game folder of its own; a file already there under the same name is left as it is. It runs
-# as whoever runs it, which has to be the administrator: EiN lets only the administrator fetch URLs.
-arg --desc "Fetch one of the free Quake, Quake II and Quake 3 games the Games page offers into the games folder"
+# LibreQuake with its music, Quake III Arena's demo, or OpenArena for Quake 3's engine. The release
+# is fetched from where its makers published it, checked against its SHA-256, and unpacked into a
+# game folder of its own; a file already there under the same name is left as it is. It runs as
+# whoever runs it, which has to be the administrator: EiN lets only the administrator fetch URLs.
+arg --desc "Fetch one of the free Quake, Quake II and Quake III games the Games page offers into the games folder"
 arg --effect write
-arg '<game>' string "shareware (Quake's shareware episode), quake2-demo (Quake II's demo), librequake (LibreQuake and its music) or openarena (OpenArena, for Quake 3's engine)"
+arg '<game>' string "shareware (Quake's shareware episode), quake2-demo (Quake II's demo), librequake (LibreQuake and its music), quake3-demo (Quake III Arena's demo) or openarena (OpenArena, for Quake 3's engine)"
 arg --example "quake-fetch shareware"
 arg --returns "nothing; the game is in a folder of its own in /groups/users/quake, named as the game."
 arg --export
@@ -33,6 +34,13 @@ case "$GAME" in
     url=https://github.com/lavenderdotpet/LibreQuake/releases/download/v0.09-beta/lite.zip
     sha256=428e736b2f01d953e09a08c60bee975bdc4a0ac2219e97fa095c8af41754da83
     ;;
+  quake3-demo)
+    # The demo of Quake III Arena is id Software's, free to copy and to pass on, free of charge and
+    # not for profit, with its licence beside it; its release for Linux as id published it, a shell
+    # script followed by a gzipped tar, from a mirror of id's FTP site.
+    url=https://ftp.gwdg.de/pub/misc/ftp.idsoftware.com/idstuff/quake3/linux/linuxq3ademo-1.11-6.x86.gz.sh
+    sha256=64dee3f69b6e792d1da4fe0ac98fedc7eb1e37ea1027fb609a9fadd06150a4ec
+    ;;
   openarena)
     # OpenArena 0.8.8 (https://openarena.ws) is a free game for Quake 3's engine, under the GPL; its
     # release for every platform as the Internet Archive keeps it, the same as its makers' mirror
@@ -41,10 +49,16 @@ case "$GAME" in
     sha256=5a8faf7f5b51f351b0a1618c06b6b98a5f1a6758f1d39818de2c87df2a0bac4a
     ;;
   *)
-    echo "quake-fetch: $GAME is not a game it fetches: shareware, quake2-demo, librequake or openarena" >&2
+    echo "quake-fetch: $GAME is not a game it fetches: shareware, quake2-demo, librequake, quake3-demo or openarena" >&2
     exit 2
     ;;
 esac
+# Quake III's demo is a gzipped tar after a shell script, which takes EiN's tar and a tail that cuts
+# bytes, both in EiN since its core 74ec2a05f.
+if [ "$GAME" = quake3-demo ] && ! command -v tar > /dev/null; then
+  echo "quake-fetch: this EiN has no tar to unpack Quake III's demo with; update EiN first" >&2
+  exit 1
+fi
 game=$games/$GAME
 # Fetched and unpacked in a hidden folder of the games folder: on disk, where /tmp would hold a
 # release as large as OpenArena's in EiN's memory, and left alone by EiN's media pipelines, as the
@@ -54,18 +68,27 @@ work=$games/.fetch-$GAME
 mkdir -p "$games"
 # Game data and music, none of it the household's: EiN's media pipelines leave the folder alone.
 attrs -J 'processing=[]' "$games"
-if ! curl -fLs -o "$work.zip" "$url"; then
+release=$work.download
+if ! curl -fLs -o "$release" "$url"; then
   echo "quake-fetch: could not fetch $url" >&2
   exit 1
 fi
-if ! attrs "$work.zip" | grep -q "$sha256"; then
+if ! attrs "$release" | grep -q "$sha256"; then
   echo "quake-fetch: $url is not the release it should be (its SHA-256 is not $sha256)" >&2
-  rm "$work.zip"
+  rm "$release"
   exit 1
 fi
-if ! unzip -o -d "$work" "$work.zip" > /dev/null; then
+# A zip, but Quake III's demo: its installer's shell script is 5468 bytes, and the gzipped tar after
+# it holds the demo's pak and its licence.
+case "$GAME" in
+  quake3-demo) tail -c +5469 "$release" > "$work.tar.gz" && mkdir -p "$work" && tar -xzf "$work.tar.gz" -C "$work" demoq3/pak0.pk3 Help/Q3A_EULA.txt ;;
+  *) unzip -o -d "$work" "$release" > /dev/null ;;
+esac
+unpacked=$?
+[ -e "$work.tar.gz" ] && rm "$work.tar.gz"
+if [ "$unpacked" != 0 ]; then
   echo "quake-fetch: could not unpack $url" >&2
-  rm "$work.zip"
+  rm "$release"
   [ -e "$work" ] && rm -r "$work"
   exit 1
 fi
@@ -91,6 +114,10 @@ case "$GAME" in
       [ -e "$game/music/track$track.ogg" ] || mv "$work/lite/id1/music/track$track.ogg" "$game/music/track$track.ogg"
     done
     ;;
+  quake3-demo)
+    [ -e "$game/pak0.pk3" ] || mv "$work/demoq3/pak0.pk3" "$game/pak0.pk3"
+    mv "$work/Help/Q3A_EULA.txt" "$game/license.txt"
+    ;;
   openarena)
     # Its pk3s but pak2-players-mature, which puts more revealing models of some of its characters in
     # place of pak2-players'; the game is whole without it.
@@ -99,5 +126,5 @@ case "$GAME" in
     done
     ;;
 esac
-rm -r "$work" "$work.zip"
+rm -r "$work" "$release"
 echo "quake-fetch: $GAME is in $game"
