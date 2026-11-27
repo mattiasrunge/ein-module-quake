@@ -55,6 +55,15 @@ RUN git -C /src apply /src/truncate.patch
 COPY graphics.patch /src/
 RUN git -C /src apply /src/graphics.patch
 
+WORKDIR /src/code
+COPY quake3_ein.c glimp_ein.c snd_ein.c net_ein.c server_ein.c ein/
+COPY build.sh ./
+
+# The game and its dedicated server (build.sh). Two compilers at a time keep the build's memory small
+# beside a running EiN.
+ENV EMCC_CORES=2
+RUN sh build.sh
+
 # OpenArena 0.8.8's game code, its menus' source, pinned: the head of its 0.8.8 branch, from which
 # its pak6-patch088.pk3 was built. GPL-2.0-or-later. Its Setup > System is patched as Quake III's,
 # keeping its flares and anisotropy.
@@ -64,15 +73,6 @@ RUN git init -q /oa \
   && git -C /oa checkout -q FETCH_HEAD
 COPY openarena-graphics.patch /oa/
 RUN git -C /oa apply /oa/openarena-graphics.patch
-
-WORKDIR /src/code
-COPY quake3_ein.c glimp_ein.c snd_ein.c net_ein.c server_ein.c ein/
-COPY build.sh ./
-
-# The game and its dedicated server (build.sh). Two compilers at a time keep the build's memory small
-# beside a running EiN.
-ENV EMCC_CORES=2
-RUN sh build.sh
 
 # The game code the module brings, as QVMs (qvms.sh): ioquake3's own for Quake III Arena, compiled
 # from its source with its own compiler (its CMake, with the image's gcc for the compiler itself),
