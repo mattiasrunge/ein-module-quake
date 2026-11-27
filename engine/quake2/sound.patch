@@ -1,0 +1,123 @@
+diff --git a/src/client/sound/sdl.c b/src/client/sound/sdl.c
+index b99fa8d9..7bf4fa91 100644
+--- a/src/client/sound/sdl.c
++++ b/src/client/sound/sdl.c
+@@ -33,12 +33,21 @@
+  * =======================================================================
+  */
+ 
++#ifdef EIN
++/* No SDL: the page plays the sound (ein_audio_render below). Nothing
++   plays it while the game mixes, so there is nothing to lock. */
++#include <emscripten.h>
++typedef unsigned char Uint8;
++#define SDL_LockAudio()
++#define SDL_UnlockAudio()
++#else
+ /* SDL includes */
+ #ifdef USE_SDL3
+ #include <SDL3/SDL.h>
+ #else
+ #include <SDL2/SDL.h>
+ #endif
++#endif
+ 
+ #include <errno.h>
+ 
+@@ -1323,7 +1332,95 @@ SDL_Callback(void *data, Uint8 *stream, int length)
+ 	}
+ }
+ 
+-#ifdef USE_SDL3
++#ifdef EIN
++/* The page's sample rate, which the game mixes at; set before the game
++   starts. */
++static int ein_rate = 48000;
++
++EMSCRIPTEN_KEEPALIVE
++void
++ein_audio_rate(int rate)
++{
++	ein_rate = rate;
++}
++
++/*
++ * The page's Web Audio asks for the next count frames, interleaved
++ * 16-bit stereo, into out: they are taken from the play position on,
++ * which moves past them, and cleared behind it, so if the game falls
++ * behind the page plays silence rather than the ring's last lap.
++ */
++EMSCRIPTEN_KEEPALIVE
++void
++ein_audio_render(short *out, int count)
++{
++	short *ring;
++	int i;
++
++	if (!snd_inited)
++	{
++		memset(out, 0, count * 2 * sizeof(short));
++		return;
++	}
++
++	ring = (short *)backend->buffer;
++
++	for (i = 0; i < count * 2; i++)
++	{
++		out[i] = ring[playpos];
++		ring[playpos] = 0;
++		playpos = (playpos + 1) % backend->samples;
++	}
++}
++
++/*
++ * The sound the page plays: a ring of 16-bit stereo at the page's
++ * rate, 0.7 s at 48 kHz, well over what the game mixes ahead
++ * (s_mixahead).
++ */
++qboolean
++SDL_BackendInit(void)
++{
++	if (snd_inited)
++	{
++		return true;
++	}
++
++	Com_Printf("Starting the page's sound at %d Hz.\n", ein_rate);
++
++	backend = &sound;
++
++	playpos = 0;
++	backend->samplebits = 16;
++	backend->channels = 2;
++	backend->samples = 65536;
++	backend->submission_chunk = 1;
++	backend->speed = ein_rate;
++	samplesize = (backend->samples * (backend->samplebits / 8));
++	backend->buffer = calloc(1, samplesize);
++	s_numchannels = MAX_CHANNELS;
++
++	s_underwater->modified = true;
++	s_underwater_gain_hf->modified = true;
++	lpf_initialize(&lpf_context, lpf_default_gain_hf, backend->speed);
++
++	SDL_UpdateScaletable();
++
++	soundtime = 0;
++	snd_inited = 1;
++
++	return true;
++}
++
++void
++SDL_BackendShutdown(void)
++{
++	free(backend->buffer);
++	backend->buffer = NULL;
++	playpos = samplesize = 0;
++	snd_inited = 0;
++}
++#elif defined(USE_SDL3)
+ /* Global stream handle. */
+ static SDL_AudioStream *stream;
+ 

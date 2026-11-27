@@ -1,9 +1,11 @@
-# Builds Quake 2 (quake2generic) to WebAssembly for the module's page: assets/quake2.js and
-# assets/quake2.wasm, single-threaded, with no SDL and no main loop (quake2generic_ein.c). The game
-# code, id's baseq2, is linked in, and the software renderer draws the frame. The sound is Quake 2's
-# own mixer, played by the page (snd_ein.c); the music is the page's (cd_ein.c); the network is the
-# page's too (net_ein.c). Beside it, the same engine as a dedicated server without client, renderer
-# or sound (server_ein.c), which the quake-server service runs: assets/quake2-server.js and
+# Builds Quake II (Yamagi Quake II) to WebAssembly for the module's page: assets/quake2.js and
+# assets/quake2.wasm, single-threaded, with no SDL and no main loop (quake2_ein.c), run in a worker
+# of the module's (ui/quake/engine-worker.ts). It draws with Yamagi's OpenGL ES 3 renderer on WebGL 2,
+# into the worker's canvas, or with its software renderer, as the Video menu chooses; both are linked
+# in (glimp_ein.c), and so is the game code, Yamagi's baseq2. The sound is the game's own mixer,
+# played by the page; the music is the page's (ogg_ein.c); the network is the page's too
+# (net_ein.c). Beside it, Yamagi's dedicated server, its DEDICATED_ONLY build with the same game code
+# (server_ein.c), which the quake-server service runs: assets/quake2-server.js and
 # assets/quake2-server.wasm.
 #
 #   docker buildx build --file engine/quake2/Containerfile --output type=local,dest=assets engine/quake2
@@ -14,66 +16,69 @@
 # emsdk 6.0.13, the multi-platform index (linux/amd64 and linux/arm64), as Quake's build.
 FROM docker.io/emscripten/emsdk:6.0.13@sha256:fb7864e398acfda863dfcea78b8bc8adad359fa60c6a0bbeb845931de64aa68a AS build
 
-# quake2generic, pinned: id Software's Quake 2 with the game and the renderer linked in.
-# GPL-2.0-or-later, like this module.
-ARG QUAKE2GENERIC_COMMIT=84f34ed5382323d96b81a44a44f73496791084a3
+# Yamagi Quake II 8.70, pinned (its tag QUAKE2_8_70). GPL-2.0-or-later, like this module.
+ARG YQ2_COMMIT=76e81f9f3fc3ed859006d81904bfeb6cb33fb525
 RUN git init -q /src \
-  && git -C /src fetch -q --depth 1 https://github.com/ozkl/quake2generic.git ${QUAKE2GENERIC_COMMIT} \
+  && git -C /src fetch -q --depth 1 https://github.com/yquake2/yquake2.git ${YQ2_COMMIT} \
   && git -C /src checkout -q FETCH_HEAD
 
-# Two of the game code's functions were defined with other parameters than they are called with,
-# which WebAssembly stops the game on: the intermission spot's spawn function, and the turret
-# driver's death calling the infantry's.
-COPY signatures.patch /src/
-RUN git -C /src apply /src/signatures.patch
+# The page starts the game and runs each of its frames (Qcommon_Tick), so the game sets itself up
+# and returns rather than looping.
+COPY main.patch /src/
+RUN git -C /src apply /src/main.patch
 
-# The mixer looked up an 8-bit sound's volume with the wrong shift, which made every one silent;
-# id's own source has the right one.
-COPY volume.patch /src/
-RUN git -C /src apply /src/volume.patch
+# The game code is linked in, so Sys_GetGameAPI calls it rather than loading game.so; the server's
+# worker has no terminal for console input; and there is no binary beside the game's files.
+COPY system.patch /src/
+RUN git -C /src apply /src/system.patch
 
-# Saving a game copies its levels' files, which takes listing them (id's Sys_FindFirst for
-# Linux); and a save slot or config.cfg written tells the page, which keeps them in the player's
-# home (ein_wrote, quake2generic_ein.c).
+# The renderers are linked in, so the client starts them from a table rather than loading
+# ref_*.so: gles3, the default, when the browser has WebGL 2, else soft. Fullscreen is the page's,
+# which takes no video restart.
+COPY renderers.patch /src/
+RUN git -C /src apply /src/renderers.patch
+
+# The software renderer hands its frame to the platform layer (GLimp_SoftFrame) rather than to an
+# SDL texture.
+COPY soft.patch /src/
+RUN git -C /src apply /src/soft.patch
+
+# The game mixes its sound into a ring the page plays (ein_audio_render), at the page's rate,
+# rather than one SDL plays.
+COPY sound.patch /src/
+RUN git -C /src apply /src/sound.patch
+
+# A save slot or config.cfg written tells the page, which keeps it in the player's home
+# (ein_wrote, quake2_ein.c).
 COPY files.patch /src/
 RUN git -C /src apply /src/files.patch
 
-# Games are joined and started from EiN's page, so the main menu's Multiplayer opens the player's
-# setup, name and skin, and Escape there goes back to the main menu; the menus of joining and
-# starting a server are not shown, nor opened by a console command.
+# Games are joined and hosted from EiN's page, so the Multiplayer menu has the player's setup and
+# keys, not the menus of joining and starting a server, which no console command opens either; the
+# Options menu's music is the page's, without shuffle or a sound backend to choose.
 COPY menu.patch /src/
 RUN git -C /src apply /src/menu.patch
 
-# The page draws the game with the software renderer alone, in its own frame, which it hands the
-# mouse: so the Video menu offers the video mode, screen size, brightness, fullscreen, which the page
-# follows, and stipple alpha, without the driver and windowed mouse, which would change nothing.
+# The Video menu offers the two renderers linked in, WebGL 2 and software, modes up to 1920 by
+# 1200, and fullscreen yes or no, which the page follows; no vertical sync or multisampling, which
+# the page's frames have none of to choose.
 COPY video.patch /src/
 RUN git -C /src apply /src/video.patch
 
-# Widescreen modes, 16:9 and 16:10 up to 1920 by 1200, beside the 4:3 ones: the renderer's largest
-# frame is 1920 wide, its turbulence tables as long as a row of it (they were 1280, too short for a
-# frame wider than 1152 under water), and a wider frame sees more at its sides (fov is for 4:3).
-COPY widescreen.patch /src/
-RUN git -C /src apply /src/widescreen.patch
-
-# The menus, the HUD and the console keep their size on any frame: they are laid out on a 2D screen
-# of the frame divided by a whole number, the frame's height in 480s unless vid_scale sets it, and
-# the renderer draws each of their pixels as a block of the frame's.
-COPY scale.patch /src/
-RUN git -C /src apply /src/scale.patch
-
-# The keys' menu has the previous weapon (weapprev) beside the next.
-COPY controls.patch /src/
-RUN git -C /src apply /src/controls.patch
+# A function declared with another return type than it is defined with, which WebAssembly stops
+# the game on: the speed meter's GetPlayerSpeed.
+COPY signatures.patch /src/
+RUN git -C /src apply /src/signatures.patch
 
 WORKDIR /src
-COPY quake2generic_ein.c menu_ein.c snd_ein.c cd_ein.c net_ein.c server_ein.c build.sh ./
+COPY quake2_ein.c glimp_ein.c gl3_ein.c input_ein.c ogg_ein.c net_ein.c hunk_ein.c server_ein.c ein/
+COPY build.sh ./
 
 # The game and its dedicated server (build.sh). Two compilers at a time keep the build's memory small
 # beside a running EiN.
 ENV EMCC_CORES=2
 RUN sh build.sh \
-  && echo "quake2generic ${QUAKE2GENERIC_COMMIT} with signatures.patch, volume.patch, files.patch, menu.patch, video.patch, widescreen.patch, scale.patch and controls.patch: the game, software renderer, and its dedicated server; emsdk 6.0.13" > /out/quake2-build.txt
+  && echo "Yamagi Quake II ${YQ2_COMMIT} (8.70) with main.patch, system.patch, renderers.patch, soft.patch, sound.patch, files.patch, menu.patch, video.patch and signatures.patch: the game, its OpenGL ES 3 renderer on WebGL 2 and its software renderer, and its dedicated server; emsdk 6.0.13" > /out/quake2-build.txt
 
 FROM scratch
 COPY --from=build /out/ /

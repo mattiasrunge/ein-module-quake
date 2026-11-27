@@ -1,0 +1,52 @@
+diff --git a/src/common/frame.c b/src/common/frame.c
+index 8db34929..1fd43458 100644
+--- a/src/common/frame.c
++++ b/src/common/frame.c
+@@ -164,6 +164,25 @@ Qcommon_Buildstring(void)
+ 	printf("Architecture: %s\n", YQ2ARCH);
+ }
+ 
++#ifdef EIN
++/* The page runs the game a frame at a time (Qcommon_Tick), so the game
++   has no loop of its own: when the last frame ran, in microseconds. */
++static long long ein_oldtime;
++
++/* Runs the game for the time since the last call, as an iteration of the
++   main loop does, without waiting first: a frame not due yet does nothing. */
++void
++Qcommon_Tick(void)
++{
++	long long newtime = Sys_Microseconds();
++
++	// Save global time for network- und input code.
++	curtime = (int)(newtime / 1000ll);
++
++	Qcommon_Frame(newtime - ein_oldtime);
++	ein_oldtime = newtime;
++}
++#else
+ static void
+ Qcommon_Mainloop(void)
+ {
+@@ -214,6 +233,7 @@ Qcommon_Mainloop(void)
+ 		oldtime = newtime;
+ 	}
+ }
++#endif
+ 
+ void Qcommon_ExecConfigs(qboolean gameStartUp)
+ {
+@@ -425,8 +445,13 @@ Qcommon_Init(int argc, char **argv)
+ 	Com_Printf("==== Yamagi Quake II Initialized ====\n\n");
+ 	Com_Printf("*************************************\n\n");
+ 
++#ifdef EIN
++	// The page calls Qcommon_Tick for each frame.
++	ein_oldtime = Sys_Microseconds();
++#else
+ 	// Call the main loop
+ 	Qcommon_Mainloop();
++#endif
+ }
+ 
+ #ifndef DEDICATED_ONLY

@@ -14,7 +14,7 @@ See the GNU General Public License for more details.
 
 */
 // quake3_ein.c -- ioquake3's platform layer for the EiN page, as
-// quake2generic_ein.c is Quake 2's: no SDL and no loop of its own, and in
+// quake2/quake2_ein.c is Quake 2's: no SDL and no loop of its own, and in
 // place of sdl_input.c. It runs in a worker of the page's
 // (ui/quake/engine-worker.ts), which puts the game's pk3s into Emscripten's
 // file system, gives the engine a canvas to draw on (glimp_ein.c), calls

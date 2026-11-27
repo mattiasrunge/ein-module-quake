@@ -1,1 +1,1 @@
-quake2generic 84f34ed5382323d96b81a44a44f73496791084a3 with signatures.patch, volume.patch, files.patch, menu.patch, video.patch, widescreen.patch, scale.patch and controls.patch: the game, software renderer, and its dedicated server; emsdk 6.0.13
+Yamagi Quake II 76e81f9f3fc3ed859006d81904bfeb6cb33fb525 (8.70) with main.patch, system.patch, renderers.patch, soft.patch, sound.patch, files.patch, menu.patch, video.patch and signatures.patch: the game, its OpenGL ES 3 renderer on WebGL 2 and its software renderer, and its dedicated server; emsdk 6.0.13

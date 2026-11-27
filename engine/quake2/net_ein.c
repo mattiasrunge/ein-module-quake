@@ -14,10 +14,10 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See the GNU General Public License for more details.
 
 */
-// net_ein.c -- Quake 2's network for EiN: quake2generic's loopback, for
-// a game on its own, and IP datagrams handed to the page or the server's
-// worker (Module.einNet, lib/net.ts), which carries them over EiN's
-// stream nodes. Nothing here opens a real socket: an address is the fake
+// net_ein.c -- Yamagi Quake II's network for EiN, in place of
+// backends/unix/network.c: the loopback, for a game on its own, and IP
+// datagrams handed to the page or the server's worker (Module.einNet,
+// lib/net.ts), which carries them over EiN's stream nodes. Nothing here opens a real socket: an address is the fake
 // one the network layer gives each end, 10.66.x.y, and a port says which
 // of an end's sockets a datagram is for. The server listens on
 // PORT_SERVER, a client on PORT_CLIENT; netchan's qport tells clients
@@ -27,7 +27,7 @@ See the GNU General Public License for more details.
 
 #include <emscripten.h>
 
-#include "qcommon/qcommon.h"
+#include "../src/common/header/common.h"
 
 /*
 =============================================================================
@@ -238,7 +238,7 @@ char* NET_AdrToString(netadr_t a)
 
 // "localhost", or an address as numbers, a.b.c.d with :port or without:
 // the network has no names to look up.
-qboolean NET_StringToAdr(char* s, netadr_t* a)
+qboolean NET_StringToAdr(const char* s, netadr_t* a)
 {
 	unsigned int ip[4], port = 0;
 	char rest;

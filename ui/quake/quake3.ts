@@ -1,10 +1,11 @@
 import type { RunningGame, StartOptions } from '@games/adapter';
-import { fetchFile, keyControls, startWorkerGame, type WholeFile } from '@games/worker';
+import { fetchFile, startWorkerGame, type WholeFile } from '@games/worker';
 import type { InstalledGame } from '../../lib/api.ts';
 import { wheelBinds } from './binds.ts';
 import { ASSETS, build, lazyPaks, looseFiles } from './files.ts';
-import { quake3Character, quake3Key, quake3MouseKey, WHEEL } from './keys.ts';
+import { quake3Key, quake3MouseKey, WHEEL } from './keys.ts';
 import type { QuakeStart } from './start.ts';
+import { typingControls } from './typing.ts';
 
 /** Where the engine has the game's folder (`fs_basepath`), and the player's files of it (`fs_homepath`). */
 const BASE = '/q3';
@@ -97,19 +98,6 @@ export async function startQuake3({ game, sound, log, kept, onKeep, name, map, o
     lazy: lazyPaks(game, folder, game.paks),
     files: [...files, ...mine],
     // Quake 3's keys, and the characters they type for its text fields and console.
-    controls(post) {
-      const keys = keyControls(post, { key: quake3Key, button: quake3MouseKey, wheel: WHEEL.quake3 });
-      let shift = false;
-      return {
-        ...keys,
-        key(pressed, code) {
-          if (code === 'ShiftLeft' || code === 'ShiftRight') shift = pressed;
-          const taken = keys.key(pressed, code);
-          const character = pressed ? quake3Character(code, shift) : undefined;
-          if (character) post({ type: 'char', character: character.charCodeAt(0) });
-          return taken;
-        },
-      };
-    },
+    controls: (post) => typingControls(post, { key: quake3Key, button: quake3MouseKey, wheel: WHEEL.quake3 }),
   }, { sound, log, onKeep, online });
 }

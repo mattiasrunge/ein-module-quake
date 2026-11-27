@@ -18,7 +18,7 @@ import { bindsOf, CONFIG, wheelBinds } from './binds.ts';
 /** The binds of a player who has not played the game yet: the game's default.cfg, with the module's WASD (`engine.ts`, `quake3.ts`). */
 const DEFAULTS: Record<EngineName, Record<string, string>> = {
   quake: { W: '+forward', S: '+back', A: '+moveleft', D: '+moveright', SPACE: '+jump', SHIFT: '+speed', MOUSE1: '+attack', MOUSE2: '+forward', MOUSE3: '+mlook' },
-  quake2: { W: '+forward', S: '+back', A: '+moveleft', D: '+moveright', SPACE: '+moveup', SHIFT: '+speed', MOUSE1: '+attack', MOUSE2: '+forward', MOUSE3: '+mlook' },
+  quake2: { W: '+forward', S: '+back', A: '+moveleft', D: '+moveright', SPACE: '+moveup', SHIFT: '+speed', MOUSE1: '+attack', MOUSE2: '+strafe', MOUSE3: '+forward' },
   quake3: { W: '+forward', S: '+back', A: '+moveleft', D: '+moveright', SPACE: '+moveup', SHIFT: '+speed', MOUSE1: '+attack', MOUSE2: '+strafe', MOUSE3: '+zoom' },
 };
 

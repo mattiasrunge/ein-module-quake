@@ -30,10 +30,10 @@ const K_MOUSE1 = 200;
 const K_MOUSE2 = 201;
 const K_MOUSE3 = 202;
 
-/** The mouse wheel turned up and down, which Quake II numbers the other way round from Quake (`keys.h`), and Quake 3 as it numbers its keys (`keycodes.h`). */
+/** The mouse wheel turned up and down, as Quake numbers its keys, and as Yamagi Quake II (`keyboard.h`) and Quake 3 (`keycodes.h`) number theirs. */
 export const WHEEL: Record<EngineName, { up: number; down: number }> = {
   quake: { up: 239, down: 240 },
-  quake2: { up: 240, down: 239 },
+  quake2: { up: 184, down: 183 },
   quake3: { up: 184, down: 183 },
 };
 
@@ -150,7 +150,17 @@ export function quake3Key(code: string): number | undefined {
   return quakeKey(code);
 }
 
-/** The Quake 3 key for a mouse button: left, right and middle, then the two side buttons. */
+/**
+ * The Yamagi Quake II key for a physical key: Yamagi numbers its keys as Quake 3 does
+ * (`keyboard.h`), but the console's key, which comes as '`' and opens the console whatever it is
+ * bound to (`quake2_ein.c`).
+ */
+export function quake2Key(code: string): number | undefined {
+  if (code === 'Backquote' || code === 'IntlBackslash') return '`'.charCodeAt(0);
+  return quake3Key(code);
+}
+
+/** The Quake 3 key for a mouse button, and Yamagi Quake II's: left, right and middle, then the two side buttons. */
 export function quake3MouseKey(button: number): number | undefined {
   return [178, 180, 179, 181, 182][button];
 }
@@ -180,9 +190,9 @@ const SHIFTED: Record<string, string> = {
 };
 
 /**
- * The character a physical key types into Quake 3's console and its menus' fields, on a US keyboard
- * as the keys are read, with Shift held or not; Backspace is Ctrl+H, as Quake 3 takes it. Undefined
- * for a key that types nothing, the console's key among them.
+ * The character a physical key types into Quake 3's and Yamagi Quake II's console and their menus'
+ * fields, on a US keyboard as the keys are read, with Shift held or not; Backspace is Ctrl+H, as
+ * Quake 3 takes it. Undefined for a key that types nothing, the console's key among them.
  */
 export function quake3Character(code: string, shift: boolean): string | undefined {
   if (code === 'Backspace') return '\b';

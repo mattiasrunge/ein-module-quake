@@ -3,8 +3,9 @@ import { keyControls, startWorkerGame } from '@games/worker';
 import type { EngineName, InstalledGame } from '../../lib/api.ts';
 import { wheelBinds } from './binds.ts';
 import { build, lazyPaks, looseFiles } from './files.ts';
-import { mouseKey, quakeKey, WHEEL } from './keys.ts';
+import { mouseKey, quake2Key, quake3MouseKey, quakeKey, WHEEL } from './keys.ts';
 import type { QuakeStart } from './start.ts';
+import { typingControls } from './typing.ts';
 
 /** The megabytes Quake's own allocator gets: what LibreQuake's larger maps need, with room to spare. */
 const HEAP = 64;
@@ -44,18 +45,10 @@ const ENGINES: Record<Exclude<EngineName, 'quake3'>, EngineSpec> = {
   quake2: {
     build: 'quake2',
     folder: '/baseq2',
-    // 1280 by 720 (sw_mode 11, one of the Video menu's modes), as Quake's frame, for a player without a
-    // config.cfg, which keeps the mode the Video menu sets; a mode on the command line would be set
-    // again after config.cfg. And without the frame rate quake2generic draws in the corner
-    // (cg_drawfps, which no config.cfg keeps).
-    args: (sound, first) => [
-      'quake2',
-      ...(first ? ['+set', 'sw_mode', '11'] : []),
-      '+set',
-      'cg_drawfps',
-      '0',
-      ...(sound ? [] : ['+set', 's_initsound', '0']),
-    ],
+    // 1280 by 720 (r_mode 14, one of the Video menu's modes), as Quake's frame, for a player without a
+    // config.cfg, which keeps the mode and the renderer the Video menu sets; a mode on the command
+    // line would be set again after config.cfg.
+    args: (sound, first) => ['quake2', ...(first ? ['+set', 'r_mode', '14'] : []), ...(sound ? [] : ['+set', 's_initsound', '0'])],
     // Free look is Quake 2's mouse look, and config.cfg keeps it.
     commands: (first) => first ? [...WASD, 'set freelook 1', 'set cl_run 1', 'set crosshair 1'] : [],
     // "unnamed" is what everyone starts with, or "Player", which the game's default.cfg sets.
@@ -99,6 +92,10 @@ export async function startEngine({ game, sound, log, kept, onKeep, name, map, o
     files,
     // A game without music of its own is silent when it asks for a track.
     music: { folder: game.music?.folder ?? game.path, tracks: game.music?.tracks ?? {} },
-    controls: (post) => keyControls(post, { key: quakeKey, button: mouseKey, wheel: WHEEL[family] }),
+    // Yamagi Quake II numbers its keys as Quake 3 does, and takes the characters they type apart.
+    controls: (post) =>
+      family === 'quake2'
+        ? typingControls(post, { key: quake2Key, button: quake3MouseKey, wheel: WHEEL.quake2 })
+        : keyControls(post, { key: quakeKey, button: mouseKey, wheel: WHEEL[family] }),
   }, { sound, log, onKeep, online });
 }

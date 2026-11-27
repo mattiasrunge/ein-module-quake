@@ -1,0 +1,253 @@
+diff --git a/src/client/refresh/soft/header/local.h b/src/client/refresh/soft/header/local.h
+index 0d23b12b..826fa977 100644
+--- a/src/client/refresh/soft/header/local.h
++++ b/src/client/refresh/soft/header/local.h
+@@ -33,6 +33,18 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ 
+ #define REF_VERSION	"SOFT 0.01"
+ 
++#ifdef EIN
++/* No SDL: the frame is 32-bit pixels, B, G, R and A bytes as SDL's
++   ARGB8888 texture had them, which the platform layer hands the page
++   (GLimp_SoftFrame, glimp_ein.c), and the time comes from the browser. */
++#include <stdint.h>
++#include <emscripten.h>
++typedef uint32_t Uint32;
++typedef struct { int x, y, w, h; } SDL_Rect;
++#define SDL_GetTicks() ((Uint32)emscripten_get_now())
++void GLimp_SoftFrame(const Uint32 *pixels, int width, int height);
++#endif
++
+ // up / down
+ #define PITCH	0
+ 
+diff --git a/src/client/refresh/soft/sw_main.c b/src/client/refresh/soft/sw_main.c
+index dae0ac2e..bb1ef37b 100644
+--- a/src/client/refresh/soft/sw_main.c
++++ b/src/client/refresh/soft/sw_main.c
+@@ -20,12 +20,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ 
+ #include <limits.h>
+ 
++#ifndef EIN
+ #ifdef USE_SDL3
+ #include <SDL3/SDL.h>
+ #else
+ #include <SDL2/SDL.h>
+ #include <SDL2/SDL_video.h>
+ #endif
++#endif
+ 
+ #include "header/local.h"
+ 
+@@ -1771,9 +1773,15 @@ R_DrawBeam(const entity_t *e)
+  * is only one software renderer.
+  */
+ 
++#ifdef EIN
++/* The frame the page is handed, kept between frames as SDL's texture
++   was, since only what changed is copied into it. */
++static Uint32		*texture = NULL;
++#else
+ static SDL_Window	*window = NULL;
+ static SDL_Texture	*texture = NULL;
+ static SDL_Renderer	*renderer = NULL;
++#endif
+ 
+ /*
+ ============
+@@ -1877,6 +1885,10 @@ RE_Draw_StretchRawColor(int x, int y, int w, int h, int cols, int rows,
+ 	}
+ 
+ 	/* Full screen update should be faster */
++#ifdef EIN
++	pixels = texture;
++	pitch = vid_buffer_width * sizeof(Uint32);
++#else
+ #ifdef USE_SDL3
+ 	if (!SDL_LockTexture(texture, NULL, (void**)&pixels, &pitch))
+ #else
+@@ -1886,10 +1898,13 @@ RE_Draw_StretchRawColor(int x, int y, int w, int h, int cols, int rows,
+ 		Com_Printf("Can't lock texture: %s\n", SDL_GetError());
+ 		return;
+ 	}
++#endif
+ 
+ 	if ((pitch / sizeof(Uint32)) != vid_buffer_width)
+ 	{
++#ifndef EIN
+ 		SDL_UnlockTexture(texture);
++#endif
+ 		Com_Printf("Different pitch in texture %d != %d\n",
+ 			pitch, vid_buffer_width);
+ 		return;
+@@ -1897,7 +1912,7 @@ RE_Draw_StretchRawColor(int x, int y, int w, int h, int cols, int rows,
+ 
+ 	for (i = 0; i < vid_buffer_width * vid_buffer_height; i ++)
+ 	{
+-#if SDL_BYTEORDER == SDL_BIG_ENDIAN
++#if !defined(EIN) && SDL_BYTEORDER == SDL_BIG_ENDIAN
+ 		/* SDL_PIXELFORMAT_BGRA8888 */
+ 		((byte*)pixels)[i * 4 + 0] = 255;
+ 		((byte*)pixels)[i * 4 + 1] = data[i * 4 + 0]; /* Red */
+@@ -1912,7 +1927,9 @@ RE_Draw_StretchRawColor(int x, int y, int w, int h, int cols, int rows,
+ #endif
+ 	}
+ 
++#ifndef EIN
+ 	SDL_UnlockTexture(texture);
++#endif
+ 
+ 	texture_high_color = true;
+ }
+@@ -1930,7 +1947,10 @@ GetRefAPI(refimport_t imp)
+ 	refexport_t	refexport;
+ 
+ 	// Need to communicate the SDL major version to the client.
+-#ifdef USE_SDL3
++#ifdef EIN
++	// None: EiN's platform layer has no SDL (GLimp_GetFrameworkVersion).
++	int version = 0;
++#elif defined(USE_SDL3)
+ 	int version = SDL_VERSIONNUM_MAJOR(SDL_GetVersion());
+ #else
+ 	SDL_version ver;
+@@ -2001,6 +2021,18 @@ RE_InitContext(void *win)
+ 		return false;
+ 	}
+ 
++#ifdef EIN
++	/* The page's frame, at the size of the video mode. */
++	vid_buffer_height = vid.height;
++	vid_buffer_width = vid.width;
++	texture = calloc(vid_buffer_width * vid_buffer_height, sizeof(Uint32));
++
++	if (!texture)
++	{
++		Com_Printf("Can't allocate the frame\n");
++		return false;
++	}
++#else
+ 	window = (SDL_Window *)win;
+ 
+ 	/* Window title - set here so we can display renderer name in it */
+@@ -2087,6 +2119,7 @@ RE_InitContext(void *win)
+ 		Com_Printf("Can't create texture: %s\n", SDL_GetError());
+ 		return false;
+ 	}
++#endif
+ 
+ 	R_InitGraphics(vid_buffer_width, vid_buffer_height);
+ 	SWimp_CreateRender(vid_buffer_width, vid_buffer_height);
+@@ -2099,7 +2132,10 @@ RE_InitContext(void *win)
+  */
+ void RE_GetDrawableSize(int* width, int* height)
+ {
+-#ifdef USE_SDL3
++#ifdef EIN
++	*width = vid_buffer_width;
++	*height = vid_buffer_height;
++#elif defined(USE_SDL3)
+ 	SDL_GetCurrentRenderOutputSize(renderer, width, height);
+ #else
+ 	SDL_GetRendererOutputSize(renderer, width, height);
+@@ -2210,6 +2246,10 @@ RE_ShutdownContext(void)
+ 	}
+ 	r_warpbuffer = NULL;
+ 
++#ifdef EIN
++	free(texture);
++	texture = NULL;
++#else
+ 	if (texture)
+ 	{
+ 		SDL_DestroyTexture(texture);
+@@ -2221,6 +2261,7 @@ RE_ShutdownContext(void)
+ 		SDL_DestroyRenderer(renderer);
+ 	}
+ 	renderer = NULL;
++#endif
+ }
+ 
+ /*
+@@ -2331,6 +2372,10 @@ RE_CleanFrame(void)
+ 	memset(swap_buffers, 0,
+ 		vid_buffer_height * vid_buffer_width * sizeof(pixel_t) * 2);
+ 
++#ifdef EIN
++	pixels = texture;
++	pitch = vid_buffer_width * sizeof(Uint32);
++#else
+ #ifdef USE_SDL3
+ 	if (!SDL_LockTexture(texture, NULL, (void**)&pixels, &pitch))
+ #else
+@@ -2340,10 +2385,13 @@ RE_CleanFrame(void)
+ 		Com_Printf("Can't lock texture: %s\n", SDL_GetError());
+ 		return;
+ 	}
++#endif
+ 
+ 	// only cleanup texture without flush texture to screen
+ 	memset(pixels, 0, pitch * vid_buffer_height);
++#ifndef EIN
+ 	SDL_UnlockTexture(texture);
++#endif
+ 
+ 	// All changes flushed
+ 	VID_NoDamageBuffer();
+@@ -2387,6 +2435,10 @@ RE_FlushFrame(int vmin, int vmax)
+ 		rect.w = vid_buffer_width;
+ 		rect.h = vmax - vmin;
+ 
++#ifdef EIN
++		pixels = texture + rect.y * vid_buffer_width;
++		pitch = vid_buffer_width * sizeof(Uint32);
++#else
+ #ifdef USE_SDL3
+ 		if (!SDL_LockTexture(texture, &rect, (void**)&pixels, &pitch))
+ #else
+@@ -2396,12 +2448,18 @@ RE_FlushFrame(int vmin, int vmax)
+ 			Com_Printf("Can't lock texture: %s\n", SDL_GetError());
+ 			return;
+ 		}
++#endif
+ 
+ 		RE_CopyFrame(pixels, pitch / sizeof(Uint32), &rect);
+ 
++#ifndef EIN
+ 		SDL_UnlockTexture(texture);
++#endif
+ 	}
+ 
++#ifdef EIN
++	GLimp_SoftFrame(texture, vid_buffer_width, vid_buffer_height);
++#else
+ #ifdef USE_SDL3
+ 	SDL_RenderTexture(renderer, texture, NULL, NULL);
+ #else
+@@ -2409,6 +2467,7 @@ RE_FlushFrame(int vmin, int vmax)
+ #endif
+ 
+ 	SDL_RenderPresent(renderer);
++#endif
+ 
+ 	// replace use next buffer
+ 	swap_current ++;
+diff --git a/src/client/refresh/soft/sw_misc.c b/src/client/refresh/soft/sw_misc.c
+index 6164ac0e..fe9cf789 100644
+--- a/src/client/refresh/soft/sw_misc.c
++++ b/src/client/refresh/soft/sw_misc.c
+@@ -17,11 +17,13 @@ along with this program; if not, write to the Free Software
+ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ 
+ */
++#ifndef EIN
+ #ifdef USE_SDL3
+ #include <SDL3/SDL.h>
+ #else
+ #include <SDL2/SDL.h>
+ #endif
++#endif
+ 
+ #include "header/local.h"
+ 

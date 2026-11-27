@@ -1,0 +1,136 @@
+diff --git a/src/client/vid/vid.c b/src/client/vid/vid.c
+index 6768cef4..29a26ee8 100644
+--- a/src/client/vid/vid.c
++++ b/src/client/vid/vid.c
+@@ -313,6 +313,49 @@ const char* lib_ext = "dll";
+ const char* lib_ext = "so";
+ #endif
+ 
++#ifdef EIN
++/* The renderers are linked in (build.sh names their GetRefAPI so): the
++   OpenGL ES 3 one, which draws with WebGL 2, and the software one. */
++refexport_t gles3_GetRefAPI(refimport_t imp);
++refexport_t soft_GetRefAPI(refimport_t imp);
++
++/* Whether the page's worker can draw with WebGL 2 (glimp_ein.c). */
++qboolean GLimp_HasWebGL2(void);
++
++static const struct
++{
++	const char *name;
++	GetRefAPI_t GetRefAPI;
++} renderers[] = {
++	{"gles3", gles3_GetRefAPI},
++	{"soft", soft_GetRefAPI}
++};
++
++static GetRefAPI_t
++VID_LinkedRenderer(const char *renderer)
++{
++	for (int i = 0; i < ARRLEN(renderers); i++)
++	{
++		if (strcmp(renderer, renderers[i].name) == 0)
++		{
++			if (renderers[i].GetRefAPI == gles3_GetRefAPI && !GLimp_HasWebGL2())
++			{
++				return NULL;
++			}
++
++			return renderers[i].GetRefAPI;
++		}
++	}
++
++	return NULL;
++}
++
++qboolean
++VID_HasRenderer(const char *renderer)
++{
++	return VID_LinkedRenderer(renderer) != NULL;
++}
++#else
+ /*
+  * Returns platform specific path to a renderer lib.
+  */
+@@ -338,6 +381,7 @@ VID_HasRenderer(const char *renderer)
+ 
+ 	return false;
+ }
++#endif
+ 
+ /*
+  * Called by the renderer to request a restart.
+@@ -373,7 +417,9 @@ VID_ShutdownRenderer(void)
+ 		/* Shut down the renderer */
+ 		re.Shutdown();
+ 		GLimp_ShutdownGraphics();
++#ifndef EIN
+ 		Sys_FreeLibrary(reflib_handle);
++#endif
+ 		reflib_handle = NULL;
+ 		memset(&re, 0, sizeof(re));
+ 
+@@ -403,6 +449,11 @@ VID_LoadRenderer(void)
+ 	// Log what we're doing.
+ 	Com_Printf("----- refresher initialization -----\n");
+ 
++#ifdef EIN
++	snprintf(reflib_name, sizeof(reflib_name), "ref_%s", vid_renderer->string);
++	Com_Printf("Starting renderer: %s\n", reflib_name);
++	GetRefAPI = VID_LinkedRenderer(vid_renderer->string);
++#else
+ 	snprintf(reflib_name, sizeof(reflib_name), "ref_%s.%s", vid_renderer->string, lib_ext);
+ 	VID_GetRendererLibPath(vid_renderer->string, reflib_path, sizeof(reflib_path));
+ 	Com_Printf("Loading library: %s\n", reflib_name);
+@@ -417,6 +468,7 @@ VID_LoadRenderer(void)
+ 
+ 	// Mkay, let's load the requested renderer.
+ 	GetRefAPI = (GetRefAPI_t)Sys_LoadLibrary(reflib_path, "GetRefAPI", &reflib_handle);
++#endif
+ 
+ 	// Okay, we couldn't load it. It's up to the
+ 	// caller to recover from this.
+@@ -506,6 +558,14 @@ VID_CheckChanges(void)
+ 
+ 	if (restart_state == RESTART_UNDEF)
+ 	{
++#ifdef EIN
++		/* The page shows the frame fullscreen, which takes no restart
++		   once a renderer runs. */
++		if (ref_active)
++		{
++			vid_fullscreen->modified = false;
++		}
++#endif
+ 		if (vid_fullscreen->modified)
+ 		{
+ 			rs = RESTART_FULL;
+@@ -535,6 +595,16 @@ VID_CheckChanges(void)
+ 		// Mkay, let's try our luck.
+ 		while (!VID_LoadRenderer())
+ 		{
++#ifdef EIN
++			/* Without WebGL 2 the game draws with the software
++			   renderer, the one that always works. */
++			if (strcmp(vid_renderer->string, "soft") != 0)
++			{
++				Com_Printf("Retrying with soft...\n");
++				Cvar_Set("vid_renderer", "soft");
++				continue;
++			}
++#endif
+ 			// We try: custom -> gl3 -> gles3 -> gl1 -> gles1 -> soft.
+ 			if ((strcmp(vid_renderer->string, "gl3") != 0) &&
+ 				(strcmp(vid_renderer->string, "gles3") != 0) &&
+@@ -591,7 +661,11 @@ VID_Init(void)
+ 	// Console variables
+ 	vid_gamma = Cvar_Get("vid_gamma", "1.0", CVAR_ARCHIVE);
+ 	vid_fullscreen = Cvar_Get("vid_fullscreen", "0", CVAR_ARCHIVE);
++#ifdef EIN
++	vid_renderer = Cvar_Get("vid_renderer", "gles3", CVAR_ARCHIVE);
++#else
+ 	vid_renderer = Cvar_Get("vid_renderer", "gl3", CVAR_ARCHIVE);
++#endif
+ 
+ 	// Commands
+ 	Cmd_AddCommand("vid_restart", VID_Restart_f);

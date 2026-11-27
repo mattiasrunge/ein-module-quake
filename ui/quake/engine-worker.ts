@@ -1,19 +1,21 @@
 /**
  * The module's engine worker, run by the games module's kit (`serveEngine`): Quake's, Quake II's or
  * Quake 3's engine, Emscripten's builds in `assets/`, with the game's paks read from EiN a piece at
- * a time as it asks for them. Quake 3 draws on the worker's canvas with WebGL; Quake and Quake II
- * leave a frame of R, G, B, A bytes in their memory, which is put on it.
+ * a time as it asks for them. Quake 3 draws on the worker's canvas with WebGL; Quake leaves a frame
+ * of R, G, B, A bytes in its memory, which is put on it; Quake II does either, as its Video menu
+ * chooses its renderer, the software one's frame put on a canvas of its own.
  */
 import { argv, type EmscriptenModule, type Engine, FrameCanvas, heapSound, keptPath, serveEngine, startEmscripten } from '@games/engine';
 import type { QuakeStart } from './start.ts';
 
-/** The widest frame Quake 3 draws at the screen's size, whatever the screen: wider takes more of the GPU than it shows. */
+/** The widest frame Quake II and Quake 3 draw at the screen's size, whatever the screen: wider takes more of the GPU than it shows. */
 const MAX_WIDTH = 1920;
 
 /**
  * What the engines' platform layers export (`engine/`), beside Emscripten's own: `_ein_start` takes
  * the command line, then Quake's heap's megabytes and its commands, Quake II's commands, or nothing
- * more; Quake 3 takes characters and draws with WebGL, the others leave their frame in `_ein_screen`.
+ * more; Quake II and Quake 3 take characters; Quake 3 draws with WebGL, Quake leaves its frame in
+ * `_ein_screen`, and Quake II either, as `_ein_gl` says of its last frame.
  */
 type QuakeModule = EmscriptenModule & {
   _ein_start(argc: number, argv: number, ...rest: number[]): void;
@@ -27,6 +29,7 @@ type QuakeModule = EmscriptenModule & {
   _ein_fullscreen(): number;
   _ein_set_fullscreen(on: number): void;
   _ein_frames(): number;
+  _ein_gl?(): number;
   _ein_screen?(): number;
   _ein_width?(): number;
   _ein_height?(): number;
@@ -37,11 +40,13 @@ type QuakeModule = EmscriptenModule & {
 let quake: QuakeModule;
 let frames: FrameCanvas;
 let webgl = false;
+/** Quake II's software renderer's frames, beside its WebGL ones on `frames`: a canvas has one kind of context. */
+let soft: FrameCanvas | undefined;
 let drawn = 0;
 let sound: ((count: number) => Int16Array<ArrayBuffer>) | undefined;
 
 /**
- * The size Quake 3 draws at with r_mode -2 (`Module.einDisplay` in `glimp_ein.c`): the screen's, in
+ * The size Quake II and Quake 3 draw at with r_mode -2 (`Module.einDisplay` in their `glimp_ein.c`): the screen's, in
  * its pixels, as the game is shown fullscreen, but no wider than `MAX_WIDTH`.
  */
 function display(screen: { width: number; height: number }): { width: number; height: number } {
@@ -55,8 +60,9 @@ const engine: Engine<QuakeStart> = {
     const size = display(boot.screen);
     webgl = family === 'quake3';
     frames = new FrameCanvas(size.width, size.height);
+    if (family === 'quake2') soft = new FrameCanvas(size.width, size.height);
     quake = await startEmscripten<QuakeModule>(boot, build, {
-      ...(webgl ? { canvas: frames.canvas } : {}),
+      ...(webgl || soft ? { canvas: frames.canvas } : {}),
       // A path the game wrote is its own folder first (`./id1/s0.sav`, `./baseq2/save/s1`,
       // `baseoa/q3config.cfg`), which is `writes` in the engine's file system.
       written: (path) => ({ path: `${writes}/${keptPath(path, 1)}`, name: keptPath(path, 1) }),
@@ -76,8 +82,8 @@ const engine: Engine<QuakeStart> = {
   frame() {
     if (quake._ein_frames() === drawn) return undefined;
     drawn = quake._ein_frames();
-    if (webgl) return frames.take();
-    return frames.rgba(new Uint8Array(quake.HEAPU8.buffer, quake._ein_screen!()), quake._ein_width!(), quake._ein_height!());
+    if (webgl || quake._ein_gl?.()) return frames.take();
+    return (soft ?? frames).rgba(new Uint8Array(quake.HEAPU8.buffer, quake._ein_screen!()), quake._ein_width!(), quake._ein_height!());
   },
   sound: (count) => sound?.(count),
   key: (pressed, key) => quake._ein_key(pressed ? 1 : 0, key),

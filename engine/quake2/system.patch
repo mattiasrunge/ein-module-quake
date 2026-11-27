@@ -1,0 +1,66 @@
+diff --git a/src/backends/generic/misc.c b/src/backends/generic/misc.c
+index d9acea5a..5b6216ae 100644
+--- a/src/backends/generic/misc.c
++++ b/src/backends/generic/misc.c
+@@ -29,7 +29,7 @@
+ 
+ #include "../../common/header/shared.h"
+ 
+-#if defined(__linux) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__sun) || defined(__APPLE__)
++#if defined(__linux) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__sun) || defined(__APPLE__) || defined(__EMSCRIPTEN__)
+ #include <unistd.h> // readlink(), amongst others
+ #endif
+ 
+@@ -176,6 +176,11 @@ const char *Sys_GetBinaryDir(void)
+ {
+ 	static char exeDir[PATH_MAX] = {0};
+ 
++#ifdef EIN
++	/* No binary beside the game's files: they are all in the data dir. */
++	return exeDir;
++#endif
++
+ 	if(exeDir[0] != '\0') {
+ 		return exeDir;
+ 	}
+diff --git a/src/backends/unix/system.c b/src/backends/unix/system.c
+index afb0e32f..b852e739 100644
+--- a/src/backends/unix/system.c
++++ b/src/backends/unix/system.c
+@@ -175,6 +175,11 @@ Sys_ConsoleInput(void)
+ 		return NULL;
+ 	}
+ 
++#ifdef EIN
++	/* The server's worker has no terminal to type commands into. */
++	return NULL;
++#endif
++
+ 	if (!stdin_active)
+ 	{
+ 		return NULL;
+@@ -417,6 +422,16 @@ Sys_UnloadGame(void)
+ 	game_library = NULL;
+ }
+ 
++#ifdef EIN
++/* The game code is linked in (build.sh names its GetGameAPI so). */
++void *game_GetGameAPI(void *parms);
++
++void *
++Sys_GetGameAPI(void *parms)
++{
++	return game_GetGameAPI(parms);
++}
++#else
+ void *
+ Sys_GetGameAPI(void *parms)
+ {
+@@ -508,6 +523,7 @@ Sys_GetGameAPI(void *parms)
+ 
+ 	return GetGameAPI(parms);
+ }
++#endif
+ 
+ /* ================================================================ */
+ 

@@ -15,10 +15,13 @@ single-threaded, with a platform layer of its own and no SDL:
   Software's WinQuake made easy to port (`engine/quakegeneric_ein.c`). It draws
   with Quake's software renderer at 1280 by 720, or the video mode the player
   chooses.
-- Quake II's is [quake2generic](https://github.com/ozkl/quake2generic), id
-  Software's Quake II made easy to port, its game code linked in
-  (`engine/quake2/quake2generic_ein.c`). It draws with Quake II's software
-  renderer at 1280 by 720, or the video mode the player chooses.
+- Quake II's is [Yamagi Quake II](https://github.com/yquake2/yquake2), the
+  community's continuation of id Software's Quake II, with its game code and
+  two of its renderers linked in (`engine/quake2/quake2_ein.c`). It draws with
+  Yamagi's OpenGL ES 3 renderer on the browser's WebGL 2
+  (`engine/quake2/glimp_ein.c`), or with its software renderer, as the player
+  chooses in its **Video** menu, at 1280 by 720, or the video mode the player
+  chooses. A browser without WebGL 2 plays it with the software renderer.
 - Quake 3's is [ioquake3](https://github.com/ioquake/ioq3), the community's
   continuation of id Software's Quake III Arena (`engine/quake3/quake3_ein.c`).
   Quake 3 has no software renderer: it draws with ioquake3's OpenGL 2 renderer
@@ -41,8 +44,9 @@ The module tells the games apart by what their paks hold: a folder of pk3s is a
 Quake 3 game. Its adapter (`ui/adapter.ts`) starts the game's engine, from the
 module's `assets/` directory, in the worker, and hands it to the games module's
 page, which ticks it from `requestAnimationFrame` and draws on a canvas each
-frame the worker hands back as a picture: Quake 3 draws its own with WebGL on
-the worker's canvas, and the worker puts Quake's and Quake II's pixels on one.
+frame the worker hands back as a picture: Quake 3, and Quake II with WebGL 2,
+draw their own with WebGL on the worker's canvas, and the worker puts Quake's
+pixels, and Quake II's software renderer's, on one.
 The sound the engine mixes, and its music, are played by the page.
 
 It is not one of EiN's own modules and has nothing to do with a family's
@@ -151,9 +155,17 @@ played before keeps the size they had. In Quake, **Options** > **Video Options**
 lists the modes, from 320 by 240 up to 1920 by 1200, 4:3 and widescreen (16:9
 and 16:10); **Enter** sets the one under the cursor. A wider frame sees more at
 its sides, not less above and below. The console's `vid_width` and `vid_height`
-set any size up to 1920 by 1200. In Quake II, **Video** sets the frame's size,
-from the same modes, once you choose **apply**. The page shows the frame at its
-shape. A larger frame takes more of the computer to draw.
+set any size up to 1920 by 1200. In Quake II, **Video** > **video mode** sets the
+frame's size, from 320 by 240 up to 1920 by 1200, or **auto**, the screen's, in
+its pixels, but no wider than 1920, once you choose **apply**. The page shows
+the frame at its shape. A larger frame takes more of the computer to draw.
+
+Quake II draws with WebGL 2, the browser's 3D graphics, until you choose
+otherwise: **Video** > **renderer** chooses **WebGL 2** or **Software**, Quake II's
+own renderer, which draws as it did in 1997, and **apply** starts the game's
+video again with it, where you are in the game; the game keeps your choice. A
+browser that has no WebGL 2 draws with the software renderer, and its menu
+offers only that.
 
 In Quake III, **Setup** > **System** lists the modes by their shape: **Aspect
 Ratio** chooses 4:3, 16:9 or 16:10, **Resolution** one of its sizes, from 640 by
@@ -175,11 +187,13 @@ to **Setup** > **System**; the rest of each game's code is its own. id's whole
 game's menus are the same as its 1.32 point release's, whose source id published
 and ioquake3 carries on.
 
-In Quake and Quake II, the menus, the status bar and the console keep about the
+In Quake, the menus, the status bar and the console keep about the
 size they have at 640 by 480 on any frame: each of their pixels is a block of the frame's, 2 by 2 at
 720 to 1080 lines, 3 by 3 at 1200, so they stay sharp. The console's `vid_scale`
 sets the block's size instead (`vid_scale 3` makes them larger at 1080 lines);
-`vid_scale 0` goes back to the frame's.
+`vid_scale 0` goes back to the frame's. In Quake II they are drawn alike, at
+**auto** of **Video** > **ui scale**, 2 by 2 at 720 lines and 3 by 3 at 1080,
+which sets another size too.
 
 ## Play together
 
@@ -195,8 +209,9 @@ administrator, has **Stop server**, which drops everyone in it. A server nobody
 has played on for five minutes stops by itself.
 
 The game's own **Multiplayer** menu sets who you are in a game: your name, and
-your colours in Quake or your model and skin in Quake II. Joining and starting a
-game are the page's, so that menu no longer offers them. In Quake III, **Setup**
+your colours in Quake or your model and skin in Quake II (**player setup**,
+beside the keys you play together with). Joining and starting a game are the
+page's, so that menu no longer offers them. In Quake III, **Setup**
 
 > **Player** sets your name and model; its own **Multiplayer** menu finds no
 > servers, since the page joins them, and a server started there runs in your
@@ -376,8 +391,8 @@ from the CD's audio tracks; here the page plays the game's file for the track
 the game asks for. Quake III's mixer mixes its music too, from the Ogg Vorbis
 files in its pk3s, into the same ring. The browser plays the files itself (Ogg in Safari from 18.4).
 In Quake, **Options → Sound Volume** and **CD Music Volume** set the effects and
-the music; in Quake II, **Options → effects volume** sets the effects and **CD
-music** turns the music on and off.
+the music; in Quake II, **Options → effects volume** and **music volume** set
+them, and **music** turns the music on and off.
 
 ## Layout
 
@@ -389,9 +404,10 @@ music** turns the music on and off.
 | `ui/cards/demo.tsx`                                                               | The dashboard card, offered in `etc/dashboard.d/cards.json`: the games module's demo card, a game running its demos.                                                                                                              |
 | `ui/adapter.ts`                                                                   | The adapter the games module plays the games with: lists them, starts one, maps the keys, the mouse and the wheel, and names the saves kept.                                                                                      |
 | `ui/quake/engine.ts`, `ui/quake/quake3.ts`                                        | Start Quake and Quake II, and Quake III, in the engine worker with the games module's `startWorkerGame`: what each is given, its command line and its keys; Quake III's the characters they type too, and the household's CD key. |
+| `ui/quake/typing.ts`                                                              | The keys of Yamagi Quake II and Quake III, with the characters they type for the console and the menus' fields.                                                                                                                   |
 | `ui/quake/files.ts`                                                               | The engines' builds in `assets/`, and a game's paks, read as the engine asks, and the files beside them, fetched whole.                                                                                                           |
 | `ui/quake/engine-worker.ts`, `ui/quake/start.ts`                                  | The worker every engine runs in (`ui.workers` in `mod.json`), on the games module's `serveEngine`: each engine's start call, its frame from WebGL or from its memory, its sound and its input; and what the page starts it with.  |
-| `ui/quake/keys.ts`                                                                | Browser key codes and mouse buttons to Quake's, which are Quake II's too, and to Quake III's, with the characters they type.                                                                                                      |
+| `ui/quake/keys.ts`                                                                | Browser key codes and mouse buttons to Quake's, and to Quake III's, which are Yamagi Quake II's too, with the characters they type.                                                                                               |
 | `ui/quake/binds.ts`                                                               | The player's binds in config.cfg and q3config.cfg, and the wheel's binds a player starts with.                                                                                                                                    |
 | `ui/quake/pad.tsx`                                                                | The keys' drawing the games page shows: the player's binds on the keyboard and the mouse.                                                                                                                                         |
 | `bin/quake-games`                                                                 | Lists the games with their titles, engines, title art, paks, maps and music, and the free ones not fetched yet, for the Games page, a game's page and the card's choice of game.                                                  |
@@ -415,19 +431,22 @@ music** turns the music on and off.
 | `engine/controls.patch`                                                           | Puts the previous weapon (`impulse 12`) beside the next in Customize controls, and a Crosshair line in Options.                                                                                                                   |
 | `engine/menu.patch`                                                               | Makes the main menu's Multiplayer the player's setup, without the menu of joining and starting a game, which the page does.                                                                                                       |
 | `engine/server_ein.c`, `engine/build.sh`                                          | Quake's dedicated server's platform layer, and the build of the game and the server.                                                                                                                                              |
-| `engine/quake2/quake2generic_ein.c`                                               | quake2generic's platform layer for the page: the frame at the video mode's size, keys, mouse, start-up and fullscreen.                                                                                                            |
-| `engine/quake2/menu_ein.c`                                                        | Tells the page whether a menu or the console is up, which it gives the mouse back for.                                                                                                                                            |
-| `engine/quake2/snd_ein.c`, `engine/quake2/cd_ein.c`                               | Quake II's sound card and CD player, as Quake's.                                                                                                                                                                                  |
-| `engine/quake2/Containerfile`                                                     | Quake II's build: pinned emsdk image and quake2generic commit.                                                                                                                                                                    |
-| `engine/quake2/signatures.patch`                                                  | Gives two of the game code's functions the parameters they are called with, which WebAssembly holds them to.                                                                                                                      |
-| `engine/quake2/volume.patch`                                                      | The mixer's volume of an 8-bit sound, which quake2generic had made silent.                                                                                                                                                        |
-| `engine/quake2/files.patch`                                                       | Lists a folder's files, which saving a game needs, and tells the page when Quake II has saved a game or written its settings.                                                                                                     |
-| `engine/quake2/menu.patch`                                                        | Makes the main menu's Multiplayer the player setup, without the menus of joining and starting a server, which the page does.                                                                                                      |
-| `engine/quake2/video.patch`                                                       | Leaves the driver and windowed mouse out of the Video menu, which would change nothing in the page; its fullscreen is the page's.                                                                                                 |
-| `engine/quake2/widescreen.patch`                                                  | Adds the widescreen modes up to 1920 by 1200, and a field of view as wide as the frame.                                                                                                                                           |
-| `engine/quake2/controls.patch`                                                    | Puts the previous weapon (`weapprev`) beside the next in the keys' menu.                                                                                                                                                          |
-| `engine/quake2/scale.patch`                                                       | Draws the menus, the HUD and the console at a scale of the frame's height, so they keep their size.                                                                                                                               |
-| `engine/quake2/net_ein.c`, `engine/quake2/server_ein.c`, `engine/quake2/build.sh` | Quake II's network, its dedicated server's platform layer, and the build of the game and the server.                                                                                                                              |
+| `engine/quake2/quake2_ein.c`                                                      | Yamagi Quake II's entry for the page: start-up, a frame a tick, keys and the characters they type, and whether a menu is up and the frame fullscreen.                                                                             |
+| `engine/quake2/glimp_ein.c`, `engine/quake2/gl3_ein.c`                            | Quake II's video: the WebGL 2 context its OpenGL ES 3 renderer draws with, the software renderer's frame, the mode's size or the screen's.                                                                                        |
+| `engine/quake2/input_ein.c`                                                       | The mouse's movement, which looks as the game's own input makes it; no gamepad.                                                                                                                                                   |
+| `engine/quake2/ogg_ein.c`                                                         | The music: tracks and their volume, handed to the page; sound effects kept as Ogg Vorbis, decoded.                                                                                                                                |
+| `engine/quake2/hunk_ein.c`                                                        | The renderers' model memory, without the mmap WebAssembly has no use for.                                                                                                                                                         |
+| `engine/quake2/Containerfile`                                                     | Quake II's build: pinned emsdk image and Yamagi Quake II commit.                                                                                                                                                                  |
+| `engine/quake2/main.patch`                                                        | Sets the game up and returns, and runs a frame each time the page asks (`Qcommon_Tick`), rather than looping.                                                                                                                     |
+| `engine/quake2/system.patch`                                                      | Calls the game code linked in rather than loading `game.so`, without a server's console input or a binary's folder.                                                                                                               |
+| `engine/quake2/renderers.patch`                                                   | Starts the renderers linked in, WebGL 2 by default and software without it, rather than loading `ref_*.so`; fullscreen takes no video restart.                                                                                    |
+| `engine/quake2/soft.patch`                                                        | Hands the software renderer's frame to the platform layer rather than to SDL.                                                                                                                                                     |
+| `engine/quake2/sound.patch`                                                       | Mixes the sound into a ring the page plays, at the page's rate, rather than one SDL plays.                                                                                                                                        |
+| `engine/quake2/files.patch`                                                       | Tells the page when Quake II has saved a game or written its settings, so it can keep them.                                                                                                                                       |
+| `engine/quake2/menu.patch`                                                        | Makes the Multiplayer menu the player's setup and keys, without the menus of joining and starting a server, which the page does; the Options menu's music is the page's.                                                          |
+| `engine/quake2/video.patch`                                                       | Makes the Video menu the page's: the two renderers, modes up to 1920 by 1200, fullscreen yes or no, no vertical sync or multisampling.                                                                                            |
+| `engine/quake2/signatures.patch`                                                  | Declares the speed meter's `GetPlayerSpeed` as it is defined, which WebAssembly holds it to.                                                                                                                                      |
+| `engine/quake2/net_ein.c`, `engine/quake2/server_ein.c`, `engine/quake2/build.sh` | Quake II's network, its dedicated server's platform layer, and the build of the game, with its game code and two renderers, and the server.                                                                                       |
 | `engine/quake3/quake3_ein.c`                                                      | ioquake3's platform layer for the page: start-up, a frame a tick, keys, characters, the mouse, and whether the console is up and the frame fullscreen.                                                                            |
 | `engine/quake3/glimp_ein.c`                                                       | Quake III's OpenGL: a WebGL 2 context on the page's canvas for the OpenGL 2 renderer, at the video mode's size or the screen's, and the modes the menus list.                                                                     |
 | `engine/quake3/snd_ein.c`, `engine/quake3/net_ein.c`                              | Quake III's sound card, as Quake's, and its network over the page's or the worker's.                                                                                                                                              |
@@ -467,12 +486,20 @@ with `engine/resolution.patch`, `engine/scale.patch`, `engine/files.patch` and
 `snd_mix.c` and `net_dgrm.c` from WinQuake at the commit it pins, with
 `engine/connect.patch` and `engine/menu.patch` applied, and the `engine/` files
 added.
-The source of `assets/quake2.wasm` is quake2generic at the commit
-`engine/quake2/Containerfile` pins, with `engine/quake2/signatures.patch`,
-`engine/quake2/volume.patch`, `engine/quake2/files.patch`,
-`engine/quake2/menu.patch`, `engine/quake2/video.patch`,
-`engine/quake2/widescreen.patch` and `engine/quake2/scale.patch` applied and the
-`engine/quake2/` files added.
+The source of `assets/quake2.wasm` is Yamagi Quake II at the commit
+`engine/quake2/Containerfile` pins, its 8.70 release, with
+`engine/quake2/main.patch`, `engine/quake2/system.patch`,
+`engine/quake2/renderers.patch`, `engine/quake2/soft.patch`,
+`engine/quake2/sound.patch`, `engine/quake2/files.patch`,
+`engine/quake2/menu.patch`, `engine/quake2/video.patch` and
+`engine/quake2/signatures.patch` applied and the `engine/quake2/` files added;
+it builds Yamagi's sources itself (`engine/quake2/build.sh`) rather than with
+Yamagi's Makefile, which links SDL and loads the game code and the renderers as
+libraries. Here they are linked in, the game code with its server, the OpenGL ES
+3 and the software renderer with the game: each is compiled with every name it
+defines prefixed (`game_`, `gles3_`, `soft_`), so their copies of the code they
+share stay apart. `assets/quake2-server.wasm` is Yamagi's dedicated server from
+the same source, with the same game code.
 The source of `assets/quake3.wasm` is ioquake3 at the commit
 `engine/quake3/Containerfile` pins, with `engine/quake3/main.patch`,
 `engine/quake3/frame.patch`, `engine/quake3/config.patch`,
@@ -508,9 +535,9 @@ Node 22 or later:
 
 ## Licence
 
-GPL-2.0-or-later, as quakegeneric, quake2generic, ioquake3 and id's source are:
+GPL-2.0-or-later, as quakegeneric, Yamagi Quake II, ioquake3 and id's source are:
 see `LICENSE`. Quake's, Quake II's and Quake III's source is © id Software and
-the quakegeneric, quake2generic and ioquake3 authors; their notices are in the
+the quakegeneric, Yamagi Quake II and ioquake3 authors; their notices are in the
 source the builds fetch. `assets/quake.js`, `assets/quake2.js`,
 `assets/quake3.js` and the servers' `.js` are Emscripten's runtime, under the MIT
 licence. `assets/icon.svg` is the module's own drawing of Quake's Q, which is id
