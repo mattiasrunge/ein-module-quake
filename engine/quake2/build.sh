@@ -8,7 +8,7 @@ set -eu
 # The game's sources: quake2generic's makefile's list for the software renderer, without its null CD
 # and sound drivers, its Unix network and its SDL start-up, and this build's in their place: the
 # network the page carries (net_ein.c), with the loopback a game on its own needs.
-CLIENT="client/cl_cin client/cl_ents client/cl_fx client/cl_newfx client/cl_input client/cl_inv client/cl_main client/cl_parse client/cl_pred client/cl_tent client/cl_scrn client/cl_view client/console client/keys client/menu client/snd_dma client/snd_mem client/snd_mix client/qmenu other/vid_menu other/vid_lib ref_soft/r_aclip ref_soft/r_alias ref_soft/r_bsp ref_soft/r_draw ref_soft/r_edge ref_soft/r_image ref_soft/r_light ref_soft/r_main ref_soft/r_misc ref_soft/r_model ref_soft/r_part ref_soft/r_poly ref_soft/r_polyse ref_soft/r_rast ref_soft/r_scan ref_soft/r_sprite ref_soft/r_surf quake2generic_ein snd_ein cd_ein"
+CLIENT="client/cl_cin client/cl_ents client/cl_fx client/cl_newfx client/cl_input client/cl_inv client/cl_main client/cl_parse client/cl_pred client/cl_tent client/cl_scrn client/cl_view client/console client/keys client/menu client/snd_dma client/snd_mem client/snd_mix client/qmenu other/vid_menu other/vid_lib ref_soft/r_aclip ref_soft/r_alias ref_soft/r_bsp ref_soft/r_draw ref_soft/r_edge ref_soft/r_image ref_soft/r_light ref_soft/r_main ref_soft/r_misc ref_soft/r_model ref_soft/r_part ref_soft/r_poly ref_soft/r_polyse ref_soft/r_rast ref_soft/r_scan ref_soft/r_sprite ref_soft/r_surf quake2generic_ein menu_ein snd_ein cd_ein"
 # What the game and the server share: the engine's core, the server, and id's game code linked in.
 COMMON="qcommon/cmd qcommon/cmodel qcommon/common qcommon/crc qcommon/cvar qcommon/files qcommon/md4 qcommon/net_chan qcommon/pmove server/sv_ccmds server/sv_ents server/sv_game server/sv_init server/sv_main server/sv_send server/sv_user server/sv_world other/q_hunk other/q_system other/glob net_ein game/g_ai game/p_client game/g_cmds game/g_svcmds game/g_combat game/g_func game/g_items game/g_main game/g_misc game/g_monster game/g_phys game/g_save game/g_spawn game/g_target game/g_trigger game/g_turret game/g_utils game/g_weapon game/m_actor game/m_berserk game/m_boss2 game/m_boss3 game/m_boss31 game/m_boss32 game/m_brain game/m_chick game/m_flipper game/m_float game/m_flyer game/m_gladiator game/m_gunner game/m_hover game/m_infantry game/m_insane game/m_medic game/m_move game/m_mutant game/m_parasite game/m_soldier game/m_supertank game/m_tank game/p_hud game/p_trail game/p_view game/p_weapon game/q_shared game/g_chase game/m_flash"
 # The dedicated server's: the client stubbed out (quake2generic's null/cl_null.c) and its platform layer.
@@ -38,7 +38,7 @@ mkdir -p /out
 case "${1:-all}" in all | client)
   link quake2 $(sources $CLIENT $COMMON) \
     -sEXPORT_NAME=createQuake2 -sENVIRONMENT=web -sINITIAL_MEMORY=128MB \
-    -sEXPORTED_FUNCTIONS=_ein_start,_ein_tick,_ein_key,_ein_mouse,_ein_disconnect,_ein_write_config,_ein_screen,_ein_width,_ein_height,_ein_frames,_ein_audio_rate,_ein_audio_render,_malloc
+    -sEXPORTED_FUNCTIONS=_ein_start,_ein_tick,_ein_key,_ein_mouse,_ein_disconnect,_ein_write_config,_ein_screen,_ein_width,_ein_height,_ein_frames,_ein_menu,_ein_fullscreen,_ein_set_fullscreen,_ein_audio_rate,_ein_audio_render,_malloc
   ;;
 esac
 # The server runs in a Deno worker, which Emscripten's web runtime suits once it is handed the wasm.

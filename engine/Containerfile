@@ -32,7 +32,8 @@ RUN git init -q /quake \
   && for file in net_dgrm.c net_dgrm.h; do tr -d '\r' < /quake/WinQuake/$file > /src/source/$file; done
 
 # The frame's size is the mode the player chooses in Video Options, up to the build's largest, not
-# quakegeneric's fixed 320 by 240; a wider frame sees more at its sides (fov is for 4:3). The buffer
+# quakegeneric's fixed 320 by 240; a wider frame sees more at its sides (fov is for 4:3). Video
+# Options also turns fullscreen on and off, which the page follows. The buffer
 # the view is drawn into under water is the largest frame's, which was 320 by 200 on the stack while
 # quakegeneric let the view be as large as the frame.
 COPY resolution.patch /src/

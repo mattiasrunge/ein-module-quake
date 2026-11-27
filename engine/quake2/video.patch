@@ -1,8 +1,8 @@
 diff --git a/other/vid_menu.c b/other/vid_menu.c
-index c186d59..1ee6e2e 100644
+index c186d59..60bc616 100644
 --- a/other/vid_menu.c
 +++ b/other/vid_menu.c
-@@ -1,26 +1,17 @@
+@@ -1,26 +1,19 @@
  #include "../client/client.h"
  #include "../client/qmenu.h"
  
@@ -11,12 +11,13 @@ index c186d59..1ee6e2e 100644
 -#define REF_OPENGL	2
 -#define REF_SOFTSDL	3
 +// The page draws Quake 2 with its software renderer alone, in the page's
-+// own frame, which the page puts in fullscreen and hands the mouse: so the
-+// menu offers what changes the picture, and not the driver, fullscreen or
++// own frame, which it hands the mouse: so the menu offers what changes the
++// picture, and fullscreen, which the page puts the frame in while
++// vid_fullscreen is set (quake2generic_ein.c), but not the driver or
 +// windowed mouse, which would change nothing.
  
 -extern cvar_t *vid_ref;
--extern cvar_t *vid_fullscreen;
+ extern cvar_t *vid_fullscreen;
  extern cvar_t *vid_gamma;
  extern cvar_t *scr_viewsize;
  
@@ -33,7 +34,7 @@ index c186d59..1ee6e2e 100644
  extern void M_ForceMenuOff( void );
  
  /*
-@@ -30,42 +21,15 @@ MENU INTERACTION
+@@ -30,42 +23,16 @@ MENU INTERACTION
  
  ====================================================================
  */
@@ -76,13 +77,14 @@ index c186d59..1ee6e2e 100644
 +static menulist_s		s_mode_list;
 +static menuslider_s		s_screensize_slider;
 +static menuslider_s		s_brightness_slider;
++static menulist_s  		s_fs_box;
 +static menulist_s  		s_stipple_box;
 +static menuaction_s		s_apply_action;
 +static menuaction_s		s_defaults_action;
  
  static void ScreenSizeCallback( void *s )
  {
-@@ -77,20 +41,9 @@ static void ScreenSizeCallback( void *s )
+@@ -77,20 +44,9 @@ static void ScreenSizeCallback( void *s )
  static void BrightnessCallback( void *s )
  {
  	menuslider_s *slider = ( menuslider_s * ) s;
@@ -105,7 +107,7 @@ index c186d59..1ee6e2e 100644
  }
  
  static void ResetDefaults( void *unused )
-@@ -102,70 +55,14 @@ static void ApplyChanges( void *unused )
+@@ -102,70 +58,15 @@ static void ApplyChanges( void *unused )
  {
  	float gamma;
  
@@ -123,6 +125,7 @@ index c186d59..1ee6e2e 100644
 +	gamma = ( 0.8 - ( s_brightness_slider.curvalue/10.0 - 0.5 ) ) + 0.5;
  
  	Cvar_SetValue( "vid_gamma", gamma );
++	Cvar_SetValue( "vid_fullscreen", s_fs_box.curvalue );
  	Cvar_SetValue( "sw_stipplealpha", s_stipple_box.curvalue );
 -	Cvar_SetValue( "gl_picmip", 3 - s_tq_slider.curvalue );
 -	Cvar_SetValue( "vid_fullscreen", s_fs_box[s_current_menu_index].curvalue );
@@ -178,7 +181,7 @@ index c186d59..1ee6e2e 100644
  
  	M_ForceMenuOff();
  }
-@@ -189,189 +86,77 @@ void VID_MenuInit( void )
+@@ -189,189 +90,85 @@ void VID_MenuInit( void )
  		"[1600 1200]",
  		0
  	};
@@ -336,6 +339,13 @@ index c186d59..1ee6e2e 100644
 +	s_brightness_slider.minvalue = 5;
 +	s_brightness_slider.maxvalue = 13;
 +	s_brightness_slider.curvalue = ( 1.3 - vid_gamma->value + 0.5 ) * 10;
++
++	s_fs_box.generic.type = MTYPE_SPINCONTROL;
++	s_fs_box.generic.x	= 0;
++	s_fs_box.generic.y	= 30;
++	s_fs_box.generic.name	= "fullscreen";
++	s_fs_box.itemnames = yesno_names;
++	s_fs_box.curvalue = vid_fullscreen->value;
  
  	s_stipple_box.generic.type = MTYPE_SPINCONTROL;
  	s_stipple_box.generic.x	= 0;
@@ -387,6 +397,7 @@ index c186d59..1ee6e2e 100644
 +	Menu_AddItem( &s_software_menu, ( void * ) &s_mode_list );
 +	Menu_AddItem( &s_software_menu, ( void * ) &s_screensize_slider );
 +	Menu_AddItem( &s_software_menu, ( void * ) &s_brightness_slider );
++	Menu_AddItem( &s_software_menu, ( void * ) &s_fs_box );
  	Menu_AddItem( &s_software_menu, ( void * ) &s_stipple_box );
 -	Menu_AddItem( &s_software_menu, ( void * ) &s_windowed_mouse );
 -
@@ -411,7 +422,7 @@ index c186d59..1ee6e2e 100644
  	s_software_menu.x -= 8;
  }
  
-@@ -384,11 +169,6 @@ void VID_MenuDraw (void)
+@@ -384,11 +181,6 @@ void VID_MenuDraw (void)
  {
  	int w, h;
  
@@ -423,7 +434,7 @@ index c186d59..1ee6e2e 100644
  	/*
  	** draw the banner
  	*/
-@@ -398,12 +178,12 @@ void VID_MenuDraw (void)
+@@ -398,12 +190,12 @@ void VID_MenuDraw (void)
  	/*
  	** move cursor to a reasonable starting position
  	*/
@@ -438,7 +449,7 @@ index c186d59..1ee6e2e 100644
  }
  
  /*
-@@ -415,7 +195,7 @@ const char *VID_MenuKey( int key )
+@@ -415,7 +207,7 @@ const char *VID_MenuKey( int key )
  {
  	extern void M_PopMenu( void );
  
@@ -447,7 +458,7 @@ index c186d59..1ee6e2e 100644
  	static const char *sound = "misc/menu1.wav";
  
  	switch ( key )
-@@ -444,5 +224,3 @@ const char *VID_MenuKey( int key )
+@@ -444,5 +236,3 @@ const char *VID_MenuKey( int key )
  
  	return sound;
  }

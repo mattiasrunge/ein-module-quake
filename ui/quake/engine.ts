@@ -38,6 +38,9 @@ type EngineModule = {
   _ein_width(): number;
   _ein_height(): number;
   _ein_frames(): number;
+  _ein_menu(): number;
+  _ein_fullscreen(): number;
+  _ein_set_fullscreen(on: number): void;
   _ein_audio_rate(rate: number): void;
   _ein_audio_render(buffer: number, frames: number): void;
 };
@@ -112,6 +115,11 @@ type Engine = {
   writeConfig(): void;
   /** Leave the server the game plays on, telling it so. */
   disconnect(): void;
+  /** Whether a menu or the console is up, which the player works without the mouse. */
+  menu(): boolean;
+  /** Whether the player wants the frame fullscreen, which the game's Video menu sets. */
+  fullscreen(): boolean;
+  setFullscreen(on: boolean): void;
 };
 
 /** Fetch a file as bytes; `/file/` needs the session's cookie, which a same-origin fetch sends. */
@@ -225,5 +233,8 @@ export async function startEngine({ game, sound, log, kept, onKeep, name, map, o
     mouse: (dx, dy) => engine._ein_mouse(dx, dy),
     writeConfig: () => engine._ein_write_config(),
     disconnect: () => engine._ein_disconnect(),
+    menu: () => engine._ein_menu() !== 0,
+    fullscreen: () => engine._ein_fullscreen() !== 0,
+    setFullscreen: (on) => engine._ein_set_fullscreen(on ? 1 : 0),
   };
 }

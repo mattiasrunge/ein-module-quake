@@ -42,7 +42,7 @@ link() {
 mkdir -p /out
 case "${1:-all}" in all | client)
   link quake $(sources $COMMON $CLIENT) -sEXPORT_NAME=createQuake \
-    -sEXPORTED_FUNCTIONS=_ein_start,_ein_tick,_ein_key,_ein_mouse,_ein_disconnect,_ein_write_config,_ein_screen,_ein_width,_ein_height,_ein_frames,_ein_audio_rate,_ein_audio_render,_malloc
+    -sEXPORTED_FUNCTIONS=_ein_start,_ein_tick,_ein_key,_ein_mouse,_ein_disconnect,_ein_write_config,_ein_screen,_ein_width,_ein_height,_ein_frames,_ein_menu,_ein_fullscreen,_ein_set_fullscreen,_ein_audio_rate,_ein_audio_render,_malloc
   ;;
 esac
 # The server runs in a Deno worker, which Emscripten's web runtime suits once it is handed the wasm.

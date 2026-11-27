@@ -56,10 +56,10 @@ index 0e18242..47f8813 100644
  
  qboolean VID_GetModeInfo( int *width, int *height, int mode )
 diff --git a/other/vid_menu.c b/other/vid_menu.c
-index 1ee6e2e..45d1107 100644
+index 60bc616..4dd72e2 100644
 --- a/other/vid_menu.c
 +++ b/other/vid_menu.c
-@@ -84,6 +84,13 @@ void VID_MenuInit( void )
+@@ -88,6 +88,13 @@ void VID_MenuInit( void )
  		"[1152 864 ]",
  		"[1280 1024]",
  		"[1600 1200]",

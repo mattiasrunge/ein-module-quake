@@ -43,6 +43,10 @@ export const adapter: GameAdapter<Game> = {
       },
       keep: engine.writeConfig,
       disconnect: engine.disconnect,
+      // The menus and the console are worked with the keys; Video Options or the Video menu sets fullscreen.
+      menu: engine.menu,
+      fullscreen: engine.fullscreen,
+      setFullscreen: engine.setFullscreen,
     };
   },
   help: 'The mouse looks and fires, WASD or the arrows move, Space jumps, Shift runs, Escape is the menu, ` the console.',

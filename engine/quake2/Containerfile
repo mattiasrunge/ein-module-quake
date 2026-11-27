@@ -44,9 +44,9 @@ RUN git -C /src apply /src/files.patch
 COPY menu.patch /src/
 RUN git -C /src apply /src/menu.patch
 
-# The page draws the game with the software renderer alone, in its own frame, which it puts in
-# fullscreen and hands the mouse: so the Video menu offers the video mode, screen size, brightness and
-# stipple alpha, without the driver, fullscreen and windowed mouse, which would change nothing.
+# The page draws the game with the software renderer alone, in its own frame, which it hands the
+# mouse: so the Video menu offers the video mode, screen size, brightness, fullscreen, which the page
+# follows, and stipple alpha, without the driver and windowed mouse, which would change nothing.
 COPY video.patch /src/
 RUN git -C /src apply /src/video.patch
 
@@ -63,7 +63,7 @@ COPY scale.patch /src/
 RUN git -C /src apply /src/scale.patch
 
 WORKDIR /src
-COPY quake2generic_ein.c snd_ein.c cd_ein.c net_ein.c server_ein.c build.sh ./
+COPY quake2generic_ein.c menu_ein.c snd_ein.c cd_ein.c net_ein.c server_ein.c build.sh ./
 
 # The game and its dedicated server (build.sh). Two compilers at a time keep the build's memory small
 # beside a running EiN.

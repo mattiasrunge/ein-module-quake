@@ -25,7 +25,10 @@ See the GNU General Public License for more details.
 // frames. The game's saves and config.cfg are files in /baseq2 too: the
 // page writes the player's there before ein_start and hears from ein_wrote
 // when Quake 2 has written a save slot or config.cfg. Sound is snd_ein.c,
-// the music cd_ein.c.
+// the music cd_ein.c. After each tick the page asks ein_menu (menu_ein.c)
+// whether to give the mouse back, and ein_fullscreen whether to show the
+// frame fullscreen, which the Video menu sets; ein_set_fullscreen tells the
+// game the browser left fullscreen itself.
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -41,6 +44,11 @@ See the GNU General Public License for more details.
 void CL_WriteConfiguration(void);
 void Cbuf_AddText(char *text);
 void CL_Disconnect(void);
+cvar_t *Cvar_FullSet(char *var_name, char *value, int flags);
+void Cvar_SetValue(char *var_name, float value);
+
+// vid_lib.c's: whether the frame is shown fullscreen.
+extern cvar_t *vid_fullscreen;
 
 // The frame: the renderer's palette indexes, and the same as 0xAABBGGRR
 // words, R first in memory, as a canvas's ImageData has its bytes.
@@ -161,6 +169,9 @@ EMSCRIPTEN_KEEPALIVE
 void ein_start(int argc, char **argv, const char *commands)
 {
 	Quake2_Init(argc, argv);
+	// Not kept in config.cfg: a browser goes fullscreen only on a key or a
+	// click, so a game starts in the page.
+	Cvar_FullSet("vid_fullscreen", "0", 0);
 	Cbuf_AddText((char *) commands);
 	last_tick = Quake2_Milliseconds();
 }
@@ -208,6 +219,21 @@ EMSCRIPTEN_KEEPALIVE
 void ein_write_config(void)
 {
 	CL_WriteConfiguration();
+}
+
+// Whether the player wants the frame shown fullscreen.
+EMSCRIPTEN_KEEPALIVE
+int ein_fullscreen(void)
+{
+	return vid_fullscreen->value != 0;
+}
+
+// Fullscreen on (1) or off (0): what the page does when the browser
+// leaves fullscreen without the game, or on F11.
+EMSCRIPTEN_KEEPALIVE
+void ein_set_fullscreen(int on)
+{
+	Cvar_SetValue("vid_fullscreen", on ? 1 : 0);
 }
 
 EMSCRIPTEN_KEEPALIVE
