@@ -49,6 +49,8 @@ export type InstalledGame = {
   files: string[];
   /** Its maps, in its paks and in its `maps/` folder (but Quake's shareware episode's), by the name a game is started on (`q2dm1`, `e1m1`). */
   maps: string[];
+  /** The titles of its maps the game shows, by their names (`e1m1`: `the Slipgate Complex`): Quake's and Quake II's from each map, Quake 3's from its arena scripts. */
+  mapTitles?: Record<string, string>;
   /** Whether it can be hosted: it has maps. */
   hostable: boolean;
   /** The game's music, when it has any: its `music` folder, and the file of each track the game asks for by number. */

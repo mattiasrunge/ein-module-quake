@@ -1,7 +1,7 @@
 import type { RunningGame, StartOptions } from '@games/adapter';
 import { keyControls, startWorkerGame } from '@games/worker';
 import type { EngineName, InstalledGame } from '../../lib/api.ts';
-import { wheelBinds } from './binds.ts';
+import { sharedBinds } from './binds.ts';
 import { build, lazyPaks, looseFiles } from './files.ts';
 import { mouseKey, quakeKey, WHEEL } from './keys.ts';
 import type { QuakeStart } from './start.ts';
@@ -80,8 +80,8 @@ export async function startEngine({ game, sound, log, kept, onKeep, name, map, o
   const spec = ENGINES[family];
   const config = kept.find((file) => file.name === 'config.cfg');
   const text = config ? new TextDecoder().decode(config.data) : undefined;
-  // The wheel changes weapon, up to the next, in every game.
-  const commands = [...spec.commands(!config), ...wheelBinds(family, text)];
+  // The wheel changes weapon, up to the next, and the right button walks forward, in every game.
+  const commands = [...spec.commands(!config), ...sharedBinds(family, text)];
   if (name && !spec.playerName(text ?? '')) commands.push(`name "${name.replace(/"/g, '')}"`);
   if (online) commands.push(`connect ${online.address}`);
   const files = [...await looseFiles(game, spec.folder), ...kept.map((file) => ({ path: `${spec.folder}/${file.name}`, data: file.data }))];

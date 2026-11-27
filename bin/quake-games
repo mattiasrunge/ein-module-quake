@@ -30,7 +30,7 @@ quakeGames.spec = {
   flags: [],
   examples: ['quake-games'],
   returns:
-    "One entry per game. An installed one: its id (the folder's name), title, state installed, family (the engine that plays it, quake or quake2, from the files in its paks), path, detail, cover (its title art as a PNG data: URL), paks in load order, their size in bytes, the files beside them it reads, its maps in its paks and its maps folder, hostable, and its music: the folder it is played from and the file of each track by number. An offered one: its id, title, state offered, family, about and download (bytes).",
+    "One entry per game. An installed one: its id (the folder's name), title, state installed, family (the engine that plays it, quake or quake2, from the files in its paks), path, detail, cover (its title art as a PNG data: URL), paks in load order, their size in bytes, the files beside them it reads, its maps in its paks and its maps folder, their titles as the game shows them (mapTitles, by map), hostable, and its music: the folder it is played from and the file of each track by number. An offered one: its id, title, state offered, family, about and download (bytes).",
 };
 
 export default quakeGames;

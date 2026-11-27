@@ -5,7 +5,7 @@ import { currentUser } from '@ein/ui/signals';
 import type { Kept, Written } from '@games/adapter';
 import { useEffect, useSyncExternalStore } from 'react';
 import type { EngineName, Game } from '../../lib/api.ts';
-import { bindsOf, CONFIG, wheelBinds } from './binds.ts';
+import { bindsOf, CONFIG, sharedBinds } from './binds.ts';
 
 /**
  * The keyboard and the mouse a Quake game is played with, drawn with the player's binds on them:
@@ -15,11 +15,11 @@ import { bindsOf, CONFIG, wheelBinds } from './binds.ts';
  * game writes it.
  */
 
-/** The binds of a player who has not played the game yet: the game's default.cfg, with the module's WASD (`engine.ts`, `quake3.ts`). */
+/** The binds of a player who has not played the game yet: the game's default.cfg, with the module's WASD (`engine.ts`, `quake3.ts`) and the binds all games share (`sharedBinds`). */
 const DEFAULTS: Record<EngineName, Record<string, string>> = {
   quake: { W: '+forward', S: '+back', A: '+moveleft', D: '+moveright', SPACE: '+jump', SHIFT: '+speed', MOUSE1: '+attack', MOUSE2: '+forward', MOUSE3: '+mlook' },
   quake2: { W: '+forward', S: '+back', A: '+moveleft', D: '+moveright', SPACE: '+moveup', SHIFT: '+speed', MOUSE1: '+attack', MOUSE2: '+forward', MOUSE3: '+mlook' },
-  quake3: { W: '+forward', S: '+back', A: '+moveleft', D: '+moveright', SPACE: '+moveup', SHIFT: '+speed', MOUSE1: '+attack', MOUSE2: '+strafe', MOUSE3: '+zoom' },
+  quake3: { W: '+forward', S: '+back', A: '+moveleft', D: '+moveright', SPACE: '+moveup', SHIFT: '+speed', MOUSE1: '+attack', MOUSE2: '+forward', MOUSE3: '+zoom' },
 };
 
 /** Where each game's menu has its keys, which the player changes them in. */
@@ -93,10 +93,10 @@ function useConfig(game: Game): string | null | undefined {
   return useSyncExternalStore((listener) => (listeners.add(listener), () => listeners.delete(listener)), () => configs.get(game.id));
 }
 
-/** The command of each key the game plays with: the player's configuration's, or the defaults without one, and the wheel as the game is started with it (`wheelBinds`). */
+/** The command of each key the game plays with: the player's configuration's, or the defaults without one, and the binds all games share as the game is started with them (`sharedBinds`). */
 function bindsFor(family: EngineName, config: string | null | undefined): Map<string, string> {
   const binds = config ? bindsOf(config) : new Map(Object.entries(DEFAULTS[family]));
-  for (const [key, command] of bindsOf(wheelBinds(family, config ?? undefined).join('\n'))) binds.set(key, command);
+  for (const [key, command] of bindsOf(sharedBinds(family, config ?? undefined).join('\n'))) binds.set(key, command);
   return binds;
 }
 

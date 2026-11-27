@@ -99,8 +99,9 @@ you choose instead, without its demos and menus.
 
 Click the game to give it the mouse and the keyboard: the browser hides the
 pointer and the mouse turns and looks, as players have played since (`+mlook`
-in Quake, free look in Quake II). The left button fires, and the wheel changes
-weapon, up to the next and down to the one before, in all three games. WASD or
+in Quake, free look in Quake II). The left button fires, the right button walks
+forward, and the wheel changes weapon, up to the next and down to the one before,
+in all three games. WASD or
 the arrows move, Space jumps, Shift runs, Alt strafes, Escape opens the game's
 menu, and the key under Escape (`` ` ``) its console. While the game has the
 mouse or the focus it takes its keys before EiN does, Alt+letter included. Quit
@@ -142,7 +143,8 @@ A player who has played before starts with their own settings: the game's
 WASD keys, free look, always run and the crosshair are only the first settings
 of a player who has none yet. The wheel is the weapons' too for a player whose
 settings leave it unbound, or bound the other way round, as Quake III's own
-defaults have it. Until you choose a name in the game's
+defaults have it, and the right button walks forward for a player whose settings
+leave it unbound or strafing, as Quake III's own defaults have it. Until you choose a name in the game's
 **Multiplayer** menu, you play under your account's.
 
 The game's frame is 1280 by 720 in Quake and Quake II, and 1920 by 1080 in
@@ -392,7 +394,7 @@ music** turns the music on and off.
 | `ui/quake/files.ts`                                                               | The engines' builds in `assets/`, and a game's paks, read as the engine asks, and the files beside them, fetched whole.                                                                                                           |
 | `ui/quake/engine-worker.ts`, `ui/quake/start.ts`                                  | The worker every engine runs in (`ui.workers` in `mod.json`), on the games module's `serveEngine`: each engine's start call, its frame from WebGL or from its memory, its sound and its input; and what the page starts it with.  |
 | `ui/quake/keys.ts`                                                                | Browser key codes and mouse buttons to Quake's, which are Quake II's too, and to Quake III's, with the characters they type.                                                                                                      |
-| `ui/quake/binds.ts`                                                               | The player's binds in config.cfg and q3config.cfg, and the wheel's binds a player starts with.                                                                                                                                    |
+| `ui/quake/binds.ts`                                                               | The player's binds in config.cfg and q3config.cfg, and the binds every game shares: the wheel's and the right button's.                                                                                                           |
 | `ui/quake/pad.tsx`                                                                | The keys' drawing the games page shows: the player's binds on the keyboard and the mouse.                                                                                                                                         |
 | `bin/quake-games`                                                                 | Lists the games with their titles, engines, title art, paks, maps and music, and the free ones not fetched yet, for the Games page, a game's page and the card's choice of game.                                                  |
 | `lib/games.ts`, `lib/api.ts`                                                      | Where the games are, which engine plays a game, its maps and music, the games known by name, the free games offered, and the shape `quake-games` answers in.                                                                      |

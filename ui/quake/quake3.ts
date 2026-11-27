@@ -1,7 +1,7 @@
 import type { RunningGame, StartOptions } from '@games/adapter';
 import { fetchFile, keyControls, startWorkerGame, type WholeFile } from '@games/worker';
 import type { InstalledGame } from '../../lib/api.ts';
-import { wheelBinds } from './binds.ts';
+import { sharedBinds } from './binds.ts';
 import { ASSETS, build, lazyPaks, looseFiles } from './files.ts';
 import { quake3Character, quake3Key, quake3MouseKey, WHEEL } from './keys.ts';
 import type { QuakeStart } from './start.ts';
@@ -66,11 +66,12 @@ export async function startQuake3({ game, sound, log, kept, onKeep, name, map, o
   // split a command line's binds at their `+`). A browser goes fullscreen only on a key or a click,
   // so a game starts in the page; a player without a q3config.cfg draws at 1920 by 1080, one of the
   // modes the game's menu lists (`glimp_ein.c`), and moves with WASD; the wheel changes weapon, up
-  // to the next, the other way round from Quake 3's own default.cfg.
+  // to the next, the other way round from Quake 3's own default.cfg, and the right button walks
+  // forward, as in Quake and Quake II, where Quake 3's strafes.
   const config = kept.find((file) => file.name === 'q3config.cfg');
   const text = config ? new TextDecoder().decode(config.data) : undefined;
   const named = /^seta name "(.+)"/m.test(text ?? '');
-  const commands = [...(config ? [] : WASD), ...wheelBinds('quake3', text), ...(name && !named ? [`set name "${name.replace(/"/g, '')}"`] : [])];
+  const commands = [...(config ? [] : WASD), ...sharedBinds('quake3', text), ...(name && !named ? [`set name "${name.replace(/"/g, '')}"`] : [])];
   const set = (cvar: string, value: string) => ['+set', cvar, value];
   const args = [
     'quake3',
