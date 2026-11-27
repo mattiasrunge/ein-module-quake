@@ -1,0 +1,148 @@
+diff --git a/client/cl_view.c b/client/cl_view.c
+index 4b75809..2606219 100644
+--- a/client/cl_view.c
++++ b/client/cl_view.c
+@@ -355,6 +355,24 @@ void CL_PrepRefresh (void)
+ 	CDAudio_Play (atoi(cl.configstrings[CS_CDTRACK]), true);
+ }
+ 
++/*
++====================
++AdaptFovx
++
++The horizontal field of view that shows as much from top to bottom as fov_x
++does on a 4:3 frame: a wider frame sees more at its sides, not less above
++and below.
++====================
++*/
++static float AdaptFovx (float fov_x, float width, float height)
++{
++	float	a;
++
++	a = atan (0.75 * width / height * tan (fov_x / 360 * M_PI));
++
++	return a * 360 / M_PI;
++}
++
+ /*
+ ====================
+ CalcFov
+@@ -503,6 +521,7 @@ void V_RenderView( float stereo_separation )
+ 		cl.refdef.y = scr_vrect.y;
+ 		cl.refdef.width = scr_vrect.width;
+ 		cl.refdef.height = scr_vrect.height;
++		cl.refdef.fov_x = AdaptFovx (cl.refdef.fov_x, viddef.width, viddef.height);
+ 		cl.refdef.fov_y = CalcFov (cl.refdef.fov_x, cl.refdef.width, cl.refdef.height);
+ 		cl.refdef.time = cl.time*0.001;
+ 
+diff --git a/other/vid_lib.c b/other/vid_lib.c
+index 0e18242..47f8813 100644
+--- a/other/vid_lib.c
++++ b/other/vid_lib.c
+@@ -129,7 +129,14 @@ vidmode_t vid_modes[] =
+ 	{ "Mode 6: 1024x768",  1024, 768,  6 },
+ 	{ "Mode 7: 1152x864",  1152, 864,  7 },
+ 	{ "Mode 8: 1280x1024",  1280, 1024, 8 },
+-	{ "Mode 9: 1600x1200", 1600, 1200, 9 }
++	{ "Mode 9: 1600x1200", 1600, 1200, 9 },
++	{ "Mode 10: 848x480",  848, 480,   10 },
++	{ "Mode 11: 1280x720", 1280, 720,  11 },
++	{ "Mode 12: 1600x900", 1600, 900,  12 },
++	{ "Mode 13: 1920x1080", 1920, 1080, 13 },
++	{ "Mode 14: 1280x800", 1280, 800,  14 },
++	{ "Mode 15: 1680x1050", 1680, 1050, 15 },
++	{ "Mode 16: 1920x1200", 1920, 1200, 16 }
+ };
+ 
+ qboolean VID_GetModeInfo( int *width, int *height, int mode )
+diff --git a/other/vid_menu.c b/other/vid_menu.c
+index 1ee6e2e..45d1107 100644
+--- a/other/vid_menu.c
++++ b/other/vid_menu.c
+@@ -84,6 +84,13 @@ void VID_MenuInit( void )
+ 		"[1152 864 ]",
+ 		"[1280 1024]",
+ 		"[1600 1200]",
++		"[848 480  ]",
++		"[1280 720 ]",
++		"[1600 900 ]",
++		"[1920 1080]",
++		"[1280 800 ]",
++		"[1680 1050]",
++		"[1920 1200]",
+ 		0
+ 	};
+ 	static const char *yesno_names[] =
+diff --git a/ref_soft/r_local.h b/ref_soft/r_local.h
+index 28f5b8f..5eccc99 100644
+--- a/ref_soft/r_local.h
++++ b/ref_soft/r_local.h
+@@ -160,7 +160,7 @@ extern oldrefdef_t      r_refdef;
+ 										//  polygon (while processing)
+ // !!! if this is changed, it must be changed in d_ifacea.h too !!!
+ #define MAXHEIGHT       1200
+-#define MAXWIDTH        1600
++#define MAXWIDTH        1920
+ 
+ #define INFINITE_DISTANCE       0x10000         // distance that's always guaranteed to
+ 										//  be farther away than anything in
+@@ -512,9 +512,11 @@ extern int              r_screenwidth;
+ 
+ extern int              r_drawnpolycount;
+ 
+-extern int      sintable[1280];
+-extern int      intsintable[1280];
+-extern int		blanktable[1280];		// PGM
++// Turbulence, read along a whole row of the frame from any point of its cycle.
++#define SIN_BUFFER_SIZE (MAXWIDTH+CYCLE)
++extern int      sintable[SIN_BUFFER_SIZE];
++extern int      intsintable[SIN_BUFFER_SIZE];
++extern int		blanktable[SIN_BUFFER_SIZE];		// PGM
+ 
+ extern  vec3_t  vup, base_vup;
+ extern  vec3_t  vpn, base_vpn;
+diff --git a/ref_soft/r_main.c b/ref_soft/r_main.c
+index a45a694..c051e1c 100644
+--- a/ref_soft/r_main.c
++++ b/ref_soft/r_main.c
+@@ -235,7 +235,7 @@ void R_InitTurb (void)
+ {
+ 	int		i;
+ 	
+-	for (i=0 ; i<1280 ; i++)
++	for (i=0 ; i<SIN_BUFFER_SIZE ; i++)
+ 	{
+ 		sintable[i] = AMP + sin(i*3.14159*2/CYCLE)*AMP;
+ 		intsintable[i] = AMP2 + sin(i*3.14159*2/CYCLE)*AMP2;	// AMP2, not 20
+diff --git a/ref_soft/r_rast.c b/ref_soft/r_rast.c
+index 3745348..8960566 100644
+--- a/ref_soft/r_rast.c
++++ b/ref_soft/r_rast.c
+@@ -44,9 +44,9 @@ qboolean		r_leftclipped, r_rightclipped;
+ static qboolean	makeleftedge, makerightedge;
+ qboolean		r_nearzionly;
+ 
+-int		sintable[1280];
+-int		intsintable[1280];
+-int		blanktable[1280];		// PGM
++int		sintable[SIN_BUFFER_SIZE];
++int		intsintable[SIN_BUFFER_SIZE];
++int		blanktable[SIN_BUFFER_SIZE];		// PGM
+ 
+ mvertex_t	r_leftenter, r_leftexit;
+ mvertex_t	r_rightenter, r_rightexit;
+diff --git a/ref_soft/r_scan.c b/ref_soft/r_scan.c
+index b9d5190..6d16525 100644
+--- a/ref_soft/r_scan.c
++++ b/ref_soft/r_scan.c
+@@ -49,8 +49,8 @@ void D_WarpScreen (void)
+ 	byte	**row;
+ 
+ 	static int	cached_width, cached_height;
+-	static byte	*rowptr[1200+AMP2*2];
+-	static int	column[1600+AMP2*2];
++	static byte	*rowptr[MAXHEIGHT+AMP2*2];
++	static int	column[MAXWIDTH+AMP2*2];
+ 
+ 	//
+ 	// these are constant over resolutions, and can be saved
