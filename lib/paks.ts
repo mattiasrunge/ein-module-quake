@@ -55,7 +55,7 @@ export function packPak(files: { name: string; data: Uint8Array }[]): Uint8Array
 const SEEK_START = 0;
 
 /** A file open to read pieces of: `read` answers `length` bytes from `at` on, fewer when the file ends sooner. */
-export type Reader = { read(at: number, length: number): Promise<Uint8Array>; close(): Promise<void> };
+type Reader = { read(at: number, length: number): Promise<Uint8Array>; close(): Promise<void> };
 
 /** Open the file at `path` to read pieces of it. */
 export async function openReader(cmd: Command, path: string): Promise<Reader> {
@@ -78,7 +78,7 @@ export async function openReader(cmd: Command, path: string): Promise<Reader> {
 }
 
 /** `length` bytes of the file at `path` from `at` on, fewer when it ends sooner. */
-export async function readRange(cmd: Command, path: string, at: number, length: number): Promise<Uint8Array> {
+async function readRange(cmd: Command, path: string, at: number, length: number): Promise<Uint8Array> {
   const reader = await openReader(cmd, path);
   try {
     return await reader.read(at, length);

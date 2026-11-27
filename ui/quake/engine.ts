@@ -96,7 +96,7 @@ const ENGINES: Record<EngineName, EngineSpec> = {
 };
 
 /** A running game: tick it, read its frame, hand it keys and the mouse. */
-export type Engine = {
+type Engine = {
   /** The frame's size, which the player changes with the video mode. */
   width(): number;
   height(): number;

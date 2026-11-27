@@ -26,9 +26,9 @@ const K_PGUP = 150;
 const K_HOME = 151;
 const K_END = 152;
 const K_PAUSE = 255;
-export const K_MOUSE1 = 200;
-export const K_MOUSE2 = 201;
-export const K_MOUSE3 = 202;
+const K_MOUSE1 = 200;
+const K_MOUSE2 = 201;
+const K_MOUSE3 = 202;
 
 /** The mouse wheel turned up and down, which Quake II numbers the other way round from Quake (`keys.h`). */
 export const WHEEL: Record<EngineName, { up: number; down: number }> = {
