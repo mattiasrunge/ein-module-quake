@@ -103,8 +103,8 @@ function bindsFor(family: EngineName, config: string | null | undefined): Map<st
 /** Whether a key's name is the mouse's or a joystick's, not the keyboard's. */
 const pointing = (key: string): boolean => /^(MOUSE|MWHEEL|JOY|AUX)/.test(key);
 
-/** How usual a key is for an action, the most usual first: a letter, Space or a modifier before an arrow, an arrow before the rest (Quake's Enter jumps as Space does). */
-const usual = (key: string): number => key.length === 1 || /^(SPACE|SHIFT|CTRL|ALT)$/.test(key) ? 0 : key.endsWith('ARROW') ? 1 : 2;
+/** How usual a key is for an action, the most usual first: a letter, Space or a modifier, then another character's key (Quake's `,` and `.` step), an arrow, the rest (Quake's Enter jumps as Space does). */
+const usual = (key: string): number => /^([A-Z0-9]|SPACE|SHIFT|CTRL|ALT)$/.test(key) ? 0 : key.length === 1 ? 1 : key.endsWith('ARROW') ? 2 : 3;
 
 /** The keyboard's keys bound to `commands`, the most usual first: Quake's jump is `+jump`, Quake II's and Quake 3's `+moveup`. */
 function keysOf(binds: Map<string, string>, commands: string[]): string[] {
