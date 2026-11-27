@@ -25,15 +25,21 @@ export function bindsOf(config: string): Map<string, string> {
 }
 
 /**
- * The binds that give the wheel the weapons, up the next and down the one before, unless the
- * player's configuration `config` has given it something else: a wheel bound to nothing, or the
- * other way round as Quake 3's own default.cfg binds it, is no player's choice.
+ * The binds every game is played with alike, unless the player's configuration `config` has chosen
+ * otherwise: the wheel the weapons, up the next and down the one before, and the right button
+ * forward. A wheel bound to nothing, or the other way round as Quake 3's own default.cfg binds it,
+ * is no player's choice, nor is a right button bound to nothing or to Quake 3's strafe.
  */
-export function wheelBinds(family: EngineName, config: string | undefined): string[] {
+export function sharedBinds(family: EngineName, config: string | undefined): string[] {
   const { next, prev } = WEAPONS[family];
   const binds = bindsOf(config ?? '');
   const up = binds.get('MWHEELUP');
   const down = binds.get('MWHEELDOWN');
-  const chosen = (up || down) && !(up === prev && down === next);
-  return chosen ? [] : [`bind mwheelup "${next}"`, `bind mwheeldown "${prev}"`];
+  const right = binds.get('MOUSE2');
+  const wheelChosen = (up || down) && !(up === prev && down === next);
+  const rightChosen = right && !(family === 'quake3' && right === '+strafe');
+  return [
+    ...(wheelChosen ? [] : [`bind mwheelup "${next}"`, `bind mwheeldown "${prev}"`]),
+    ...(rightChosen ? [] : ['bind mouse2 "+forward"']),
+  ];
 }

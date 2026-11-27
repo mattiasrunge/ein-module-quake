@@ -55,7 +55,7 @@ archive.
 
 ## Install
 
-It needs EiN's games module (`games`, 0.1.2-dev.5 or later). As an administrator, open
+It needs EiN's games module (`games`, 0.1.2-dev.8 or later). As an administrator, open
 **Settings → Modules**, choose **Install**, and give
 `https://github.com/mattiasrunge/ein-module-quake` under **From a repository**.
 
@@ -104,8 +104,9 @@ you choose instead, without its demos and menus.
 
 Click the game to give it the mouse and the keyboard: the browser hides the
 pointer and the mouse turns and looks, as players have played since (`+mlook`
-in Quake, free look in Quake II). The left button fires, and the wheel changes
-weapon, up to the next and down to the one before, in all three games. WASD or
+in Quake, free look in Quake II). The left button fires, the right button walks
+forward, and the wheel changes weapon, up to the next and down to the one before,
+in all three games. WASD or
 the arrows move, Space jumps, Shift runs, Alt strafes, Escape opens the game's
 menu, and the key under Escape (`` ` ``) its console. While the game has the
 mouse or the focus it takes its keys before EiN does, Alt+letter included. Quit
@@ -147,7 +148,8 @@ A player who has played before starts with their own settings: the game's
 WASD keys, free look, always run and the crosshair are only the first settings
 of a player who has none yet. The wheel is the weapons' too for a player whose
 settings leave it unbound, or bound the other way round, as Quake III's own
-defaults have it. Until you choose a name in the game's
+defaults have it, and the right button walks forward for a player whose settings
+leave it unbound or strafing, as Quake III's own defaults have it. Until you choose a name in the game's
 **Multiplayer** menu, you play under your account's.
 
 The game's frame is 1280 by 720 in Quake and Quake II, and 1920 by 1080 in
@@ -327,6 +329,9 @@ A game is a folder of paks, as Quake's `id1` and Quake II's `baseq2` are:
 computer and drop it anywhere on the Games page; it is uploaded, paks and all,
 and appears as a card under the folder's name.
 
+The Games page's **?** (**How to add games**) says the same in short: which
+folders, files and music the module takes (`etc/games.d/help.md`).
+
 The Games page knows what else of a game's is dropped on it, and asks which game
 it goes into when more than one could take it:
 
@@ -422,6 +427,7 @@ them, and **music** turns the music on and off.
 | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `mod.json`                                                                        | The manifest: the games module it needs, and the routes of a game's page and the dashboard card.                                                                                                                                  |
 | `etc/games.d/games.json`                                                          | What the games module knows of the module: its title, icon and route, its list and fetch commands, its games folder, the files it takes when dropped, and how its games are played together.                                      |
+| `etc/games.d/help.md`                                                             | How to add games, their music and maps, which the Games page's **?** shows.                                                                                                                                                       |
 | `ui/pages/game.tsx`                                                               | A game's page, `/games/quake/<game>`: the games module's page for a game, with the module's adapter.                                                                                                                              |
 | `ui/cards/demo.tsx`                                                               | The dashboard card, offered in `etc/dashboard.d/cards.json`: the games module's demo card, a game running its demos.                                                                                                              |
 | `ui/adapter.ts`                                                                   | The adapter the games module plays the games with: lists them, starts one, maps the keys, the mouse and the wheel, and names the saves kept.                                                                                      |
@@ -430,7 +436,7 @@ them, and **music** turns the music on and off.
 | `ui/quake/files.ts`                                                               | The engines' builds in `assets/`, and a game's paks, read as the engine asks, and the files beside them, fetched whole.                                                                                                           |
 | `ui/quake/engine-worker.ts`, `ui/quake/start.ts`                                  | The worker every engine runs in (`ui.workers` in `mod.json`), on the games module's `serveEngine`: each engine's start call, its frame from WebGL or from its memory, its sound and its input; and what the page starts it with.  |
 | `ui/quake/keys.ts`                                                                | Browser key codes and mouse buttons to Quake's, and to Quake III's, which are Yamagi Quake II's too, with the characters they type.                                                                                               |
-| `ui/quake/binds.ts`                                                               | The player's binds in config.cfg and q3config.cfg, and the wheel's binds a player starts with.                                                                                                                                    |
+| `ui/quake/binds.ts`                                                               | The player's binds in config.cfg and q3config.cfg, and the binds every game shares: the wheel's and the right button's.                                                                                                           |
 | `ui/quake/pad.tsx`                                                                | The keys' drawing the games page shows: the player's binds on the keyboard and the mouse.                                                                                                                                         |
 | `bin/quake-games`                                                                 | Lists the games with their titles, engines, title art, paks, maps and music, and the free ones not fetched yet, for the Games page, a game's page and the card's choice of game.                                                  |
 | `lib/games.ts`, `lib/api.ts`                                                      | Where the games are, which engine plays a game, its maps and music, the games known by name, the free games offered, and the shape `quake-games` answers in.                                                                      |

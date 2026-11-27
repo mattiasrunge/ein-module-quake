@@ -18,6 +18,7 @@ import {
   titleOf,
   tracksOf,
 } from './games.ts';
+import { arenaTitles, bspTitles } from './maps.ts';
 import { type PakEntry, pakFiles } from './paks.ts';
 import { type Pk3Entry, pk3Files } from './pk3.ts';
 
@@ -92,6 +93,8 @@ async function readGame(cmd: Command, name: string): Promise<InstalledGame | und
   // paks have `gfx/pop.lmp`), so its own maps are those of its paks alone.
   const loose = engine !== 'quake' || inPaks.has('gfx/pop.lmp');
   const maps = mapsOf(loose ? [...inPaks, ...files] : inPaks);
+  const titled = await (quake3 ? arenaTitles(cmd, zipped) : bspTitles(cmd, read, path, loose ? files : [])).catch(() => ({} as Record<string, string>));
+  const mapTitles = Object.fromEntries(maps.filter((map) => titled[map.toLowerCase()]).map((map) => [map, titled[map.toLowerCase()]]));
   const title = titleOf(name, engine, sizes, inPaks);
   const cover = await (quake3 ? quake3CoverOf(cmd, zipped, maps) : coverOf(cmd, engine, read)).catch(() => undefined);
   const description = descriptionOf(title);
@@ -111,6 +114,7 @@ async function readGame(cmd: Command, name: string): Promise<InstalledGame | und
     sizes,
     files,
     maps,
+    ...(Object.keys(mapTitles).length > 0 ? { mapTitles } : {}),
     hostable: maps.length > 0,
     // A map dropped for the shareware episode could never be played.
     ...(loose ? {} : { sealed: true }),
