@@ -1,7 +1,7 @@
 {
   "name": "quake",
   "version": "0.17.0",
-  "description": "Quake, Quake II and Quake III in EiN: quakegeneric, quake2generic and ioquake3 built to WebAssembly, played on the Games page",
+  "description": "Quake, Quake II and Quake III in EiN: quakegeneric (with a WebGL 2 renderer beside its software one), quake2generic and ioquake3 built to WebAssembly, played on the Games page",
   "license": "GPL-2.0-or-later",
   "coreApi": "^0.15.77",
   "dependencies": {

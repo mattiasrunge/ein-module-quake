@@ -9,10 +9,11 @@ set -eu
 # drivers, its network of the loopback alone and its own start-up; this build's network in its place
 # (net_ein.c, with id's datagram driver, net_dgrm.c).
 COMMON="chase cl_demo cl_input cl_main cl_parse cl_tent cmd common console crc cvar d_edge d_fill d_init d_modech d_part d_polyse d_scan d_sky d_sprite d_surf d_vars d_zpoint draw host_cmd host in_null keys mathlib menu model net_loop net_main net_dgrm net_ein net_vcr nonintel pr_cmds pr_edict pr_exec r_aclip r_alias r_bsp r_draw r_edge r_efrag r_light r_main r_misc r_part r_sky r_sprite r_surf r_vars sbar screen sv_main sv_move sv_phys sv_user vid_null view wad world zone sys_ein"
-# The game's: the page's frame, keys and mouse, id's mixer with the page's sound card, and the page's CD.
-CLIENT="snd_dma snd_mem snd_mix quakegeneric_ein snd_ein cd_ein"
-# The dedicated server's: no frame and no sound (quakegeneric's null sound and CD).
-SERVER="snd_null cd_null server_ein"
+# The game's: the page's frame, keys and mouse, id's mixer with the page's sound card, the page's CD,
+# and the WebGL 2 renderer beside the software one.
+CLIENT="snd_dma snd_mem snd_mix quakegeneric_ein snd_ein cd_ein gl_main gl_world gl_models gl_shaders"
+# The dedicated server's: no frame and no sound (quakegeneric's null sound and CD), and no WebGL.
+SERVER="snd_null cd_null server_ein gl_null"
 
 # The largest frame the software renderer draws, the 16:10 one of full HD's width: the player
 # chooses the mode up to it in Video Options (vid_null.c), 640 by 480 until they do.
@@ -44,7 +45,8 @@ mkdir -p /out
 # piece at a time as the engine asks, with synchronous range requests, which only a worker may make.
 case "${1:-all}" in all | client)
   link quake $(sources $COMMON $CLIENT) -sEXPORT_NAME=createQuake -sENVIRONMENT=worker \
-    -sEXPORTED_FUNCTIONS=_ein_start,_ein_tick,_ein_key,_ein_mouse,_ein_disconnect,_ein_write_config,_ein_screen,_ein_width,_ein_height,_ein_frames,_ein_menu,_ein_fullscreen,_ein_set_fullscreen,_ein_audio_rate,_ein_audio_render,_malloc
+    -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 \
+    -sEXPORTED_FUNCTIONS=_ein_start,_ein_tick,_ein_key,_ein_mouse,_ein_disconnect,_ein_write_config,_ein_screen,_ein_width,_ein_height,_ein_frames,_ein_gl,_ein_menu,_ein_fullscreen,_ein_set_fullscreen,_ein_audio_rate,_ein_audio_render,_malloc
   ;;
 esac
 # The server runs in a Deno worker, which Emscripten's web runtime suits once it is handed the wasm.

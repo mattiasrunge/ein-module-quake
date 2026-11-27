@@ -2,7 +2,8 @@
  * The module's engine worker, run by the games module's kit (`serveEngine`): Quake's, Quake II's or
  * Quake 3's engine, Emscripten's builds in `assets/`, with the game's paks read from EiN a piece at
  * a time as it asks for them. Quake 3 draws on the worker's canvas with WebGL; Quake and Quake II
- * leave a frame of R, G, B, A bytes in their memory, which is put on it.
+ * leave a frame of R, G, B, A bytes in their memory, which is put on it. Quake draws with WebGL too, on
+ * a canvas of its own, unless the player chose its software renderer (`_ein_gl` says which).
  */
 import { argv, type EmscriptenModule, type Engine, FrameCanvas, heapSound, keptPath, serveEngine, startEmscripten } from '@games/engine';
 import type { QuakeStart } from './start.ts';
@@ -30,6 +31,7 @@ type QuakeModule = EmscriptenModule & {
   _ein_screen?(): number;
   _ein_width?(): number;
   _ein_height?(): number;
+  _ein_gl?(): number;
   _ein_audio_rate(rate: number): void;
   _ein_audio_render(at: number, frames: number): void;
 };
@@ -37,6 +39,7 @@ type QuakeModule = EmscriptenModule & {
 let quake: QuakeModule;
 let frames: FrameCanvas;
 let webgl = false;
+let gl: FrameCanvas | undefined;
 let drawn = 0;
 let sound: ((count: number) => Int16Array<ArrayBuffer>) | undefined;
 
@@ -55,8 +58,11 @@ const engine: Engine<QuakeStart> = {
     const size = display(boot.screen);
     webgl = family === 'quake3';
     frames = new FrameCanvas(size.width, size.height);
+    // A canvas holds one kind of context: Quake's WebGL gets one beside the software frames'.
+    gl = family === 'quake' ? new FrameCanvas(size.width, size.height) : undefined;
     quake = await startEmscripten<QuakeModule>(boot, build, {
       ...(webgl ? { canvas: frames.canvas } : {}),
+      ...(gl ? { canvas: gl.canvas } : {}),
       // A path the game wrote is its own folder first (`./id1/s0.sav`, `./baseq2/save/s1`,
       // `baseoa/q3config.cfg`), which is `writes` in the engine's file system.
       written: (path) => ({ path: `${writes}/${keptPath(path, 1)}`, name: keptPath(path, 1) }),
@@ -77,6 +83,7 @@ const engine: Engine<QuakeStart> = {
     if (quake._ein_frames() === drawn) return undefined;
     drawn = quake._ein_frames();
     if (webgl) return frames.take();
+    if (gl && quake._ein_gl?.()) return gl.take();
     return frames.rgba(new Uint8Array(quake.HEAPU8.buffer, quake._ein_screen!()), quake._ein_width!(), quake._ein_height!());
   },
   sound: (count) => sound?.(count),

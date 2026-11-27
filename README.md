@@ -13,8 +13,9 @@ single-threaded, with a platform layer of its own and no SDL:
 
 - Quake's is [quakegeneric](https://github.com/erysdren/quakegeneric), id
   Software's WinQuake made easy to port (`engine/quakegeneric_ein.c`). It draws
-  with Quake's software renderer at 1280 by 720, or the video mode the player
-  chooses.
+  with a WebGL 2 renderer of the module's own (`engine/gl_main.c`), made to
+  look as Quake's software renderer looks, or with that software renderer, as
+  the player chooses, at 1280 by 720, or the video mode the player chooses.
 - Quake II's is [quake2generic](https://github.com/ozkl/quake2generic), id
   Software's Quake II made easy to port, its game code linked in
   (`engine/quake2/quake2generic_ein.c`). It draws with Quake II's software
@@ -42,7 +43,8 @@ Quake 3 game. Its adapter (`ui/adapter.ts`) starts the game's engine, from the
 module's `assets/` directory, in the worker, and hands it to the games module's
 page, which ticks it from `requestAnimationFrame` and draws on a canvas each
 frame the worker hands back as a picture: Quake 3 draws its own with WebGL on
-the worker's canvas, and the worker puts Quake's and Quake II's pixels on one.
+the worker's canvas, Quake on one of its own unless the player chose its
+software renderer, and the worker puts the software renderers' pixels on one.
 The sound the engine mixes, and its music, are played by the page.
 
 It is not one of EiN's own modules and has nothing to do with a family's
@@ -154,6 +156,27 @@ its sides, not less above and below. The console's `vid_width` and `vid_height`
 set any size up to 1920 by 1200. In Quake II, **Video** sets the frame's size,
 from the same modes, once you choose **apply**. The page shows the frame at its
 shape. A larger frame takes more of the computer to draw.
+
+Quake draws with WebGL 2 unless the player chooses otherwise: **Options** >
+**Video Options** > **Renderer** switches between **WebGL** and **Software**,
+the original software renderer, at once and without leaving the game (the
+console's `vid_renderer gl` or `soft`). The WebGL renderer draws as the
+software renderer does, through Quake's palette and colormap, so the light falls
+in its bands, the fullbright parts of the textures glow and the light reaches
+twice a texture's own brightness, as it did on the software renderer and not
+on GLQuake; the water, the slime, the lava and the sky move as they did there,
+the view under water sways as it did there, at the frame's size, and the
+particles are its squares. It draws more of the computer's graphics card and
+less of its processor, each pixel in perspective, and its textures' smaller
+mip levels farther than the software renderer chose them, per pixel rather than
+per surface. **Filtering**, below it, chooses **Nearest**, the software
+renderer's look, or **Linear**, smoothed and mipmapped textures and smooth
+light as GLQuake drew them (`gl_filter nearest` or `linear`). The console's
+`r_wateralpha` makes the water translucent, 0.5 half, in WebGL only; Quake's
+maps were made for opaque water, so one that is not built for it shows what is
+behind its water only where its visibility reaches. A browser without WebGL 2
+draws with the software renderer, and the menu says **no WebGL**. The settings
+are kept with the others.
 
 In Quake III, **Setup** > **System** lists the modes by their shape: **Aspect
 Ratio** chooses 4:3, 16:9 or 16:10, **Resolution** one of its sizes, from 640 by
@@ -403,6 +426,10 @@ music** turns the music on and off.
 | `bin/quake-fetch`                                                                 | Fetches one of the free games into the games folder, checked against its release's SHA-256.                                                                                                                                       |
 | `bin/quake-server`, `services/quake-server/`                                      | The service that runs the hosted games with the games module's `GameServers`: `lib/server.ts` runs each server in a worker (`lib/server-worker.ts`).                                                                              |
 | `engine/quakegeneric_ein.c`                                                       | quakegeneric's platform layer for the page: the frame, keys, mouse, start-up, and whether a menu is up and the frame fullscreen.                                                                                                  |
+| `engine/gl_main.c`                                                                | Quake's WebGL 2 renderer: the context on the worker's canvas, the view, and the last pass with the 2D, the shifts and the gamma.                                                                                                  |
+| `engine/gl_world.c`                                                               | The WebGL renderer's world and brush models: their surfaces, lightmaps, water and sky.                                                                                                                                            |
+| `engine/gl_models.c`                                                              | The WebGL renderer's alias models, sprites and particles.                                                                                                                                                                         |
+| `engine/gl_shaders.c`                                                             | The WebGL renderer's GLSL ES 3.00 shaders. `engine/gl_null.c` is the dedicated server's, which draws nothing.                                                                                                                     |
 | `engine/sys_ein.c`                                                                | The system driver: files, the clock, and Quit and errors that end the game.                                                                                                                                                       |
 | `engine/snd_ein.c`                                                                | The sound card: the ring Quake's mixer paints, handed to the page.                                                                                                                                                                |
 | `engine/cd_ein.c`                                                                 | The CD player: tracks and their volume, handed to the page.                                                                                                                                                                       |
@@ -410,6 +437,7 @@ music** turns the music on and off.
 | `engine/resolution.patch`                                                         | Makes the frame's size the mode the player chooses, up to the build's, with Video Options, which also sets fullscreen, and a field of view as wide as the frame.                                                                  |
 | `engine/scale.patch`                                                              | Draws the menus, the status bar and the console at a scale of the frame's height, so they keep their size.                                                                                                                        |
 | `engine/files.patch`                                                              | Tells the page when Quake has saved a game or written its settings, so it can keep them.                                                                                                                                          |
+| `engine/webgl.patch`                                                              | Hands the view, a new map and the particles to the WebGL renderer while it draws, and puts the renderer and its filtering in Video Options.                                                                                       |
 | `engine/long-strings.patch`                                                       | Saves strings longer than 256 bytes, as LibreQuake's are, instead of overrunning the buffer they were written into.                                                                                                               |
 | `engine/net_ein.c`, `engine/connect.patch`                                        | Quake's network: the loopback, and id's datagram driver over the page's or the worker's; connecting without waiting in a loop for answers.                                                                                        |
 | `engine/controls.patch`                                                           | Puts the previous weapon (`impulse 12`) beside the next in Customize controls, and a Crosshair line in Options.                                                                                                                   |
@@ -465,8 +493,8 @@ local exporter: each engine twice, the game and its dedicated server
 with `engine/resolution.patch`, `engine/scale.patch`, `engine/files.patch` and
 `engine/long-strings.patch` applied, id Software's `snd_dma.c`, `snd_mem.c`,
 `snd_mix.c` and `net_dgrm.c` from WinQuake at the commit it pins, with
-`engine/connect.patch` and `engine/menu.patch` applied, and the `engine/` files
-added.
+`engine/connect.patch`, `engine/menu.patch`, `engine/controls.patch` and
+`engine/webgl.patch` applied, and the `engine/` files added.
 The source of `assets/quake2.wasm` is quake2generic at the commit
 `engine/quake2/Containerfile` pins, with `engine/quake2/signatures.patch`,
 `engine/quake2/volume.patch`, `engine/quake2/files.patch`,
