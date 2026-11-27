@@ -22,6 +22,9 @@ export const PAK_FILE = /^pak(\d+)\.pak$/i;
 /** A pk3 file, Quake 3's pak, by any name: the engine loads every one in its folder. */
 export const PK3_FILE = /\.pk3$/i;
 
+/** A Quake 3 game's CD key beside its pk3s: `q3key`, as Quake III Arena's own folder has it, or `key.txt`. */
+export const KEY_FILE = /^(q3key|key\.txt)$/i;
+
 /**
  * A track of the music: a file the browser plays, its name starting with the track's number, after
  * `track` or not: `track02.ogg`, `02 - Quake.mp3`, `Track 2.mp3`.

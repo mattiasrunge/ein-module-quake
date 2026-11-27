@@ -260,6 +260,7 @@ it goes into when more than one could take it:
 - another pak, `pak1.pak` and on, into a game's folder.
 - a pk3 into a Quake III game's folder: a map someone made comes as one, with
   its textures and levelshot, and Quake III loads every pk3 in the folder.
+- a `q3key` or `key.txt` into a Quake III game's folder, its CD key.
 - a folder called `music` into a game's folder (below).
 
 Which engine plays it, the paks say: a folder of pk3s and no `pak0.pak` is a
@@ -279,8 +280,12 @@ game, and any other a Quake one.
 - id's whole Quake III Arena: drop the `baseq3` folder of your Quake III Arena,
   with `pak0.pk3` and the 1.32 point release's `pak1.pk3` to `pak8.pk3`. The
   list calls a Quake III game with the arena `q3dm0` **Quake III Arena**. Its
-  menus ask for your CD key the first time, as Quake III Arena did; it is kept
-  with your settings (below). Its mission pack, Team Arena, is not played yet.
+  CD key can come with it: a `q3key` file in the folder, as Quake III Arena
+  writes it, or a `key.txt` with the key on a line of its own (`ABCD-EFGH-…`,
+  with dashes or spaces or without); everyone here then plays with it. Without
+  one, its menus ask each player for a key the first time, as Quake III Arena
+  did, and keep it with their settings (below); a player's own key comes before
+  the folder's. Its mission pack, Team Arena, is not played yet.
 - A game of its own for Quake 3's engine, as OpenArena is: drop the folder of
   its pk3s. It is played in a folder named as its own, as ioquake3 plays a game
   that is not id's.

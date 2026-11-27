@@ -25,6 +25,18 @@ const COMMANDS = 'ein.cfg';
 const DEMO = 'demoq3';
 const DEMO_VM = { asset: `${ASSETS}/quake3-vm.pk3`, name: 'zz-ioquake3.pk3' };
 
+/**
+ * The CD key in a key file's text: its first line that has one, the 16 letters and digits of it, as
+ * it is printed (`ABCD-EFGH-…`) or as Quake III writes it in `q3key`, followed by its comments.
+ */
+function cdKeyOf(text: string): string | undefined {
+  for (const line of text.split(/\r?\n/)) {
+    const key = line.replace(/[\s-]/g, '');
+    if (/^[a-z0-9]{16}$/i.test(key)) return key.toLowerCase();
+  }
+  return undefined;
+}
+
 /** The sound kept waiting to be played, at most, in seconds: more is late, and the oldest is dropped. */
 const MAX_QUEUED = 0.2;
 
@@ -65,6 +77,10 @@ export async function startQuake3({ game, sound, log, kept, onKeep, name, map, o
   const gamedir = game.gamedir ?? 'baseq3';
   const files = await Promise.all(game.files.map(async (file) => ({ name: file, data: await fetchFile(`${game.path}/${file}`) })));
   if (gamedir === DEMO) files.push({ name: DEMO_VM.name, data: await fetchFile(DEMO_VM.asset) });
+  // The household's CD key, in the game's folder, where Quake 3 looks for q3key after the player's
+  // own home: a key the player typed in the game's menu comes first.
+  const key = game.cdkey ? cdKeyOf(new TextDecoder().decode(await fetchFile(`${game.path}/${game.cdkey}`))) : undefined;
+  if (key) files.push({ name: 'q3key', data: new TextEncoder().encode(`${key}\n`) });
 
   // The command line: the folders and the video and sound, which Quake 3 sets before it starts
   // drawing, then what runs once it has, which the page writes into a file of its own (Quake 3 would
