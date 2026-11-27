@@ -72,6 +72,8 @@ async function readGame(cmd: Command, name: string): Promise<InstalledGame | und
     files,
     maps,
     hostable: maps.length > 0,
+    // A map dropped for the shareware episode could never be played.
+    ...(loose ? {} : { sealed: true }),
     ...(music ? { music } : {}),
   };
 }
