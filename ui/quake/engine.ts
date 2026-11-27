@@ -64,7 +64,8 @@ type EngineSpec = {
 /** WASD beside the arrows, as players have moved since: what a player without a config.cfg starts with. */
 const WASD = ['bind w +forward', 'bind s +back', 'bind a +moveleft', 'bind d +moveright'];
 
-const ENGINES: Record<EngineName, EngineSpec> = {
+/** Quake 3's is started by `startQuake3` (`quake3.ts`), which draws with WebGL. */
+const ENGINES: Record<Exclude<EngineName, 'quake3'>, EngineSpec> = {
   quake: {
     name: 'quake',
     folder: '/id1',
@@ -144,7 +145,9 @@ async function fetchFile(path: string): Promise<Uint8Array> {
  * `/file/` labels a `.wasm` does not matter.
  */
 export async function startEngine({ game, sound, log, kept, onKeep, name, map, online }: Omit<StartOptions<InstalledGame>, 'demo'>): Promise<Engine> {
-  const spec = ENGINES[game.family];
+  const family = game.family;
+  if (family === 'quake3') throw new Error(`${game.title} is a Quake 3 game, which startQuake3 starts`);
+  const spec = ENGINES[family];
   const glueUrl = fileUrl(`${ASSETS}/${spec.name}.js`);
   const [glue, wasmBinary, paks, files] = await Promise.all([
     import(glueUrl) as Promise<{ default: (options: object) => Promise<EngineModule> }>,

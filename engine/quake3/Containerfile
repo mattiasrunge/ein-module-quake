@@ -1,0 +1,50 @@
+# Builds Quake 3 (ioquake3) to WebAssembly for the module's page: assets/quake3.js and
+# assets/quake3.wasm, single-threaded, with no SDL and no main loop (quake3_ein.c). It draws with
+# ioquake3's OpenGL 2 renderer on WebGL 2 (glimp_ein.c), into a canvas the page draws onto its own.
+# The game code is the game's own QVMs, in its pk3s, which the engine's interpreter runs. The sound
+# is Quake 3's own mixer, music included, played by the page (snd_ein.c); the network is the page's
+# too (net_ein.c). Beside it, the same engine as a dedicated server without client, renderer or
+# sound (server_ein.c), which the quake-server service runs: assets/quake3-server.js and
+# assets/quake3-server.wasm.
+#
+#   docker buildx build --file engine/quake3/Containerfile --output type=local,dest=assets engine/quake3
+#
+# The local exporter writes the files on the host, so no bind mount needs to be writable.
+# Run from the repository's root directory; scripts/build-engine.sh does exactly this.
+
+# emsdk 6.0.13, the multi-platform index (linux/amd64 and linux/arm64), as Quake's build.
+FROM docker.io/emscripten/emsdk:6.0.13@sha256:fb7864e398acfda863dfcea78b8bc8adad359fa60c6a0bbeb845931de64aa68a AS build
+
+# ioquake3, pinned. GPL-2.0-or-later, like this module.
+ARG IOQ3_COMMIT=52088b9eae247d8e321c8dc1fb49a879652854f9
+RUN git init -q /src \
+  && git -C /src fetch -q --depth 1 https://github.com/ioquake/ioq3.git ${IOQ3_COMMIT} \
+  && git -C /src checkout -q FETCH_HEAD
+
+# The page starts the game and runs each of its frames, so the system layer's main is Sys_Main,
+# which sets the game up and returns, without SDL, which is not linked.
+COPY main.patch /src/
+RUN git -C /src apply /src/main.patch
+
+# A frame that is not due yet returns at once rather than waiting for its time, which would hold up
+# the browser, or a server's worker, until then.
+COPY frame.patch /src/
+RUN git -C /src apply /src/frame.patch
+
+# q3config.cfg written tells the page, which keeps it in the player's home (Sys_Wrote,
+# quake3_ein.c).
+COPY config.patch /src/
+RUN git -C /src apply /src/config.patch
+
+WORKDIR /src/code
+COPY quake3_ein.c glimp_ein.c snd_ein.c net_ein.c server_ein.c ein/
+COPY build.sh ./
+
+# The game and its dedicated server (build.sh). Two compilers at a time keep the build's memory small
+# beside a running EiN.
+ENV EMCC_CORES=2
+RUN sh build.sh \
+  && echo "ioquake3 ${IOQ3_COMMIT} with main.patch, frame.patch and config.patch: the game, OpenGL 2 renderer on WebGL 2, and its dedicated server; emsdk 6.0.13" > /out/quake3-build.txt
+
+FROM scratch
+COPY --from=build /out/ /

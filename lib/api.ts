@@ -1,5 +1,5 @@
-/** Which engine plays a game: Quake's, or Quake II's. A game's `family` on the Games page. */
-export type EngineName = 'quake' | 'quake2';
+/** Which engine plays a game: Quake's, Quake II's or Quake 3's. A game's `family` on the Games page. */
+export type EngineName = 'quake' | 'quake2' | 'quake3';
 
 /**
  * A game in the games folder, as `quake-games` answers it: what the Games page reads of it (its
@@ -22,8 +22,16 @@ export type InstalledGame = {
   description?: string;
   /** Its title art, its console background read out of its paks, as a PNG `data:` URL; none when its paks have none. */
   cover?: string;
-  /** The folder's paks, in the order the engine loads them: `pak0.pak`, `pak1.pak` and on, as named in the folder. */
+  /**
+   * The folder's paks, in the order the engine loads them: `pak0.pak`, `pak1.pak` and on, as named
+   * in the folder; a Quake 3 game's are its pk3s, by name.
+   */
   paks: string[];
+  /**
+   * The folder a Quake 3 game is played in, as its engine names it: `baseq3` for id's game, a folder
+   * of its own for any other (`baseoa`), which ioquake3 then plays as a game of its own.
+   */
+  gamedir?: string;
   /** Bytes, the paks together. */
   size: number;
   /**

@@ -10,8 +10,8 @@
 
 /**
  * Start the server: the engine's glue and the network as URLs, its wasm, the paks for its game
- * folder and the files beside them by their paths in it, its command line, and the `Ring` the
- * players' bytes come through.
+ * folder by the names it loads them under and the files beside them by their paths in it, its
+ * command line, and the `Ring` the players' bytes come through.
  */
 export type StartServer = {
   type: 'start';
@@ -19,7 +19,7 @@ export type StartServer = {
   net: string;
   wasm: Uint8Array;
   folder: string;
-  paks: Uint8Array[];
+  paks: { name: string; data: Uint8Array }[];
   files: { name: string; data: Uint8Array }[];
   args: string[];
   ring: SharedArrayBuffer;
@@ -46,7 +46,7 @@ const TICK_MS = 5;
 /** How often the worker says who plays. */
 const STATUS_MS = 2000;
 
-/** The dedicated server's exports (`engine/quake2/server_ein.c`, `engine/server_ein.c`). */
+/** The dedicated server's exports (`engine/server_ein.c`, `engine/quake2/server_ein.c`, `engine/quake3/server_ein.c`). */
 type ServerModule = {
   FS: { mkdirTree(path: string): void; writeFile(path: string, data: Uint8Array): void };
   HEAPU32: Uint32Array;
@@ -87,7 +87,7 @@ async function start({ glue, net, wasm, folder, paks, files, args, ring: shared 
   };
   const engine = await create({ instantiateWasm, print: log, printErr: log, einNet: network });
   engine.FS.mkdirTree(folder);
-  paks.forEach((bytes, i) => engine.FS.writeFile(`${folder}/pak${i}.pak`, bytes));
+  for (const pak of paks) engine.FS.writeFile(`${folder}/${pak.name}`, pak.data);
   for (const file of files) {
     const at = `${folder}/${file.name}`;
     engine.FS.mkdirTree(at.slice(0, at.lastIndexOf('/')));

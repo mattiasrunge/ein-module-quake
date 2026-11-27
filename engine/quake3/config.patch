@@ -1,0 +1,30 @@
+diff --git a/code/qcommon/common.c b/code/qcommon/common.c
+index 76e7b908..1db9abd9 100644
+--- a/code/qcommon/common.c
++++ b/code/qcommon/common.c
+@@ -2937,6 +2937,9 @@ void Com_WriteConfigToFile( const char *filename ) {
+ 	Key_WriteBindings (f);
+ 	Cvar_WriteVariables (f);
+ 	FS_FCloseFile( f );
++#ifdef EIN
++	Sys_Wrote( va( "%s/%s", FS_GetCurrentGameDir(), filename ) );
++#endif
+ }
+ 
+ 
+diff --git a/code/qcommon/qcommon.h b/code/qcommon/qcommon.h
+index 1d9b61a9..eaffa4da 100644
+--- a/code/qcommon/qcommon.h
++++ b/code/qcommon/qcommon.h
+@@ -1105,6 +1105,11 @@ cpuFeatures_t Sys_GetProcessorFeatures( void );
+ void	Sys_SetErrorText( const char *text );
+ 
+ void	Sys_SendPacket( int length, const void *data, netadr_t to );
++#ifdef EIN
++// The file at `path` in the home directory, a game folder's, was written:
++// the page keeps it for the player.
++void	Sys_Wrote( const char *path );
++#endif
+ 
+ qboolean	Sys_StringToAdr( const char *s, netadr_t *a, netadrtype_t family );
+ //Does NOT parse port numbers, only base addresses.

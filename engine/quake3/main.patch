@@ -1,0 +1,101 @@
+diff --git a/code/sys/sys_main.c b/code/sys/sys_main.c
+index e3b63cb5..e2952347 100644
+--- a/code/sys/sys_main.c
++++ b/code/sys/sys_main.c
+@@ -35,7 +35,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ #include <emscripten/emscripten.h>
+ #endif
+ 
+-#ifndef DEDICATED
++#if !defined(DEDICATED) && !defined(EIN)
+ #ifdef USE_INTERNAL_SDL_HEADERS
+ #	include "SDL.h"
+ #	include "SDL_cpuinfo.h"
+@@ -116,7 +116,7 @@ Restart the input subsystem
+ */
+ void Sys_In_Restart_f( void )
+ {
+-#ifndef DEDICATED
++#if !defined(DEDICATED) && !defined(EIN)
+ 	if( !SDL_WasInit( SDL_INIT_VIDEO ) )
+ 	{
+ 		Com_Printf( "in_restart: Cannot restart input while video is shutdown\n" );
+@@ -146,7 +146,7 @@ Sys_GetClipboardData
+ */
+ char *Sys_GetClipboardData(void)
+ {
+-#ifdef DEDICATED
++#if defined(DEDICATED) || defined(EIN)
+ 	return NULL;
+ #else
+ 	char *data = NULL;
+@@ -304,7 +304,7 @@ static Q_NO_RETURN void Sys_Exit( int exitCode )
+ {
+ 	CON_Shutdown( );
+ 
+-#ifndef DEDICATED
++#if !defined(DEDICATED) && !defined(EIN)
+ 	SDL_Quit( );
+ #endif
+ 
+@@ -340,7 +340,7 @@ cpuFeatures_t Sys_GetProcessorFeatures( void )
+ {
+ 	cpuFeatures_t features = 0;
+ 
+-#ifndef DEDICATED
++#if !defined(DEDICATED) && !defined(EIN)
+ 	if( SDL_HasRDTSC( ) )      features |= CF_RDTSC;
+ 	if( SDL_Has3DNow( ) )      features |= CF_3DNOW;
+ 	if( SDL_HasMMX( ) )        features |= CF_MMX;
+@@ -782,7 +782,13 @@ void Sys_SigHandler( int signal )
+ main
+ =================
+ */
++#ifdef EIN
++// The page, or the worker of a server, starts the game with Sys_Main and
++// then runs each of its frames itself (Com_Frame), so there is no loop here.
++int Sys_Main( int argc, char **argv )
++#else
+ int main( int argc, char **argv )
++#endif
+ {
+ 	int   i;
+ 	char  commandLine[ MAX_STRING_CHARS ] = { 0 };
+@@ -794,7 +800,7 @@ int main( int argc, char **argv )
+ 	Sys_LaunchAutoupdater(argc, argv);
+ #endif
+ 
+-#ifndef DEDICATED
++#if !defined(DEDICATED) && !defined(EIN)
+ 	// SDL version check
+ 
+ 	// Compile time
+@@ -887,6 +893,7 @@ int main( int argc, char **argv )
+ 	signal( SIGTERM, Sys_SigHandler );
+ 	signal( SIGINT, Sys_SigHandler );
+ 
++#ifndef EIN
+ #ifdef __EMSCRIPTEN__
+ 	emscripten_set_main_loop( Com_Frame, 0, 1 );
+ #else
+@@ -894,6 +901,7 @@ int main( int argc, char **argv )
+ 	{
+ 		Com_Frame( );
+ 	}
++#endif
+ #endif
+ 
+ 	return 0;
+diff --git a/code/sys/sys_loadlib.h b/code/sys/sys_loadlib.h
+index eac0f2c7..abd6c0bb 100644
+--- a/code/sys/sys_loadlib.h
++++ b/code/sys/sys_loadlib.h
+@@ -20,7 +20,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ ===========================================================================
+ */
+ 
+-#ifdef DEDICATED
++#if defined(DEDICATED) || defined(EIN)
+ #	ifdef _WIN32
+ #		include <windows.h>
+ #		define Sys_LoadLibrary(f) (void*)LoadLibrary(f)

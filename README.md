@@ -1,7 +1,8 @@
 # quake
 
-A module for [EiN](https://einhq.eu) that plays Quake and Quake II in the
-browser, with sound and music, alone or together: a game someone hosts runs on
+A module for [EiN](https://einhq.eu) that plays Quake, Quake II and Quake III
+Arena, and the games made for their engines, in the browser, with sound and
+music, alone or together: a game someone hosts runs on
 EiN, and others here, or on another EiN they are invited from, join it. Its games
 are on EiN's **Games** page, which the games module gives: the module brings the
 engines and its games, and the games module the page each is played on, the
@@ -17,11 +18,19 @@ single-threaded, with a platform layer of its own and no SDL:
   Software's Quake II made easy to port, its game code linked in
   (`engine/quake2/quake2generic_ein.c`). It draws with Quake II's software
   renderer at 640 by 480, or the video mode the player chooses.
+- Quake 3's is [ioquake3](https://github.com/ioquake/ioq3), the community's
+  continuation of id Software's Quake III Arena (`engine/quake3/quake3_ein.c`).
+  Quake 3 has no software renderer: it draws with ioquake3's OpenGL 2 renderer
+  on the browser's WebGL 2 (`engine/quake3/glimp_ein.c`), at the screen's size
+  or the video mode the player chooses. Its game code is the game's own QVMs,
+  in its pk3s, which ioquake3's interpreter runs.
 
-The module tells the games apart by what their paks hold. Its adapter
-(`ui/adapter.ts`) loads the game's engine at runtime from the module's
-`assets/` directory and hands it to the games module's page, which drives it
-from `requestAnimationFrame` and draws its frames on a canvas.
+The module tells the games apart by what their paks hold: a folder of pk3s is a
+Quake 3 game. Its adapter (`ui/adapter.ts`) loads the game's engine at runtime
+from the module's `assets/` directory and hands it to the games module's page,
+which drives it from `requestAnimationFrame` and draws its frames on a canvas.
+Quake 3 draws on a canvas of its own, which the page never shows: its frame is
+read back from WebGL into the page's each time.
 
 It is not one of EiN's own modules and has nothing to do with a family's
 archive.
@@ -34,7 +43,7 @@ It needs EiN's games module (`games`, 0.1 or later). As an administrator, open
 
 The games are on the **Games** page, under Browse in the sidebar, a card each.
 The module comes with no games. Until they are there, the Games page offers
-three free ones under **Free to fetch**, each with a **Fetch** button for an
+four free ones under **Free to fetch**, each with a **Fetch** button for an
 administrator (EiN lets only the administrator fetch from the internet) that
 downloads it from where its makers published it, checks it against the
 release's SHA-256 and puts it in a folder of its own:
@@ -51,12 +60,20 @@ release's SHA-256 and puts it in a folder of its own:
 - **LibreQuake**: [LibreQuake](https://github.com/lavenderdotpet/LibreQuake)'s
   free game data for Quake's engine, its lite release, the one made for the
   original engine. With it comes its music.
+- **OpenArena**: [OpenArena](https://openarena.ws) 0.8.8, a free arena shooter
+  for Quake 3's engine, under the GPL: its own arenas, characters, weapons, bots
+  and music. Its release is 425 MB, for every platform; only its game data is
+  kept, its pk3s (390 MB) but `pak2-players-mature.pk3`, which puts more
+  revealing models of some of its characters in place of its own. A browser
+  loads all of it to play, so it takes a while to start the first time.
 
 ## Play
 
 Each game's card on the Games page has its title art, read out of its paks, and
-under its title whether it is a Quake or a Quake II game, its size and whether
-it has music. Choose one to open its page, `/games/quake/<game>`, and **Play**
+under its title whether it is a Quake, a Quake II or a Quake III game, its size
+and whether it has music (a Quake III game's music is in its pk3s, so its card
+says how many arenas it has instead). A Quake III game's title art is the
+picture its menus show of one of its arenas. Choose one to open its page, `/games/quake/<game>`, and **Play**
 to play it. **Play on a map**, in the page's header, starts the game on the map
 you choose instead, without its demos and menus.
 
@@ -70,10 +87,14 @@ game's menu leaves the page as it was before **Play**.
 
 In the page, the mouse is yours while the game's menu or console is up, and
 the game's again when you close it. If the browser does not hand the mouse back
-then (Chrome does not after you let it go with Escape), click the game.
+then (Chrome does not after you let it go with Escape), click the game. Quake
+III's menus have a pointer of their own, which the mouse moves, so there the
+game keeps the mouse in its menus too; only its console, and a map loading,
+give it back.
 
 Fullscreen is in the game's video menu: **Options** > **Video Options** >
-**Fullscreen** in Quake, **Video** > **fullscreen** and **apply** in Quake II.
+**Fullscreen** in Quake, **Video** > **fullscreen** and **apply** in Quake II,
+**Setup** > **System** > **Fullscreen** and **Accept** in Quake III.
 F11, or the button in the page's header, turns it on and off as well. In
 fullscreen the game keeps the mouse, and Escape only opens and closes its menu;
 turn fullscreen off in the menu, press F11, or quit the game to leave. A game
@@ -99,8 +120,14 @@ Quake II, **Video** sets the frame's size, from the same modes, once you choose
 **apply**. The page shows the frame at its shape. A larger frame takes more of
 the computer to draw.
 
-The menus, the status bar and the console keep about the size they have at 640
-by 480 on any frame: each of their pixels is a block of the frame's, 2 by 2 at
+A Quake III game starts at the size of the screen, in its pixels, but no wider
+than 1920, so it is sharp fullscreen; **Setup** > **System** sets another video
+mode, and the console's `r_mode -1` with `r_customwidth` and `r_customheight`
+any size. Its menus and status bar are drawn to the frame's size, as Quake III
+draws them.
+
+In Quake and Quake II, the menus, the status bar and the console keep about the
+size they have at 640 by 480 on any frame: each of their pixels is a block of the frame's, 2 by 2 at
 720 to 1080 lines, 3 by 3 at 1200, so they stay sharp. The console's `vid_scale`
 sets the block's size instead (`vid_scale 3` makes them larger at 1080 lines);
 `vid_scale 0` goes back to the frame's.
@@ -110,7 +137,9 @@ sets the block's size instead (`vid_scale 3` makes them larger at 1080 lines);
 Playing together is in the game's page's header, beside the sound and full
 screen. **Start server** starts a server of the game that everyone here can play
 on: choose the map, deathmatch (everyone against everyone) or cooperative
-(together against the monsters), and how many may play, from 2 to 16. While it
+(together against the monsters), and how many may play, from 2 to 16. A Quake
+III game is hosted as a deathmatch, its free for all; it has no cooperative
+game. While it
 runs, **Play** enters the game on it, for everyone here who has the game, and
 says whose server it is and who plays; the one who started it, or an
 administrator, has **Stop server**, which drops everyone in it. A server nobody
@@ -118,13 +147,22 @@ has played on for five minutes stops by itself.
 
 The game's own **Multiplayer** menu sets who you are in a game: your name, and
 your colours in Quake or your model and skin in Quake II. Joining and starting a
-game are the page's, so that menu no longer offers them.
+game are the page's, so that menu no longer offers them. In Quake III, **Setup**
+> **Player** sets your name and model; its own **Multiplayer** menu finds no
+servers, since the page joins them, and a server started there runs in your
+browser, where nobody else reaches it. Its **Single Player** arenas, against
+bots, are played in the browser, as any game on your own.
 
 The game's server runs on EiN, not in anyone's browser: the module's
-`quake-server` service runs each hosted game as Quake's or Quake II's dedicated
-server, built for it beside the game (`assets/quake-server.wasm`,
-`assets/quake2-server.wasm`), in a worker of EiN's own, so a slow frame never
-holds up EiN. The games module's `GameServers` does the rest: it listens on each
+`quake-server` service runs each hosted game as Quake's, Quake II's or Quake
+III's dedicated server, built for it beside the game (`assets/quake-server.wasm`,
+`assets/quake2-server.wasm`, `assets/quake3-server.wasm`), in a worker of EiN's
+own, so a slow frame never holds up EiN. A Quake III server is given only what
+it reads of the game's pk3s, its arenas and their bots' routes, its game code,
+scripts and bots, so it holds a fraction of the game; its pk3s are then not its
+players', so it asks for none of them (`sv_pure 0`), and each player plays with
+their own copy of the game. Its players see a warning that they lack its pk3s,
+which they may pass over. The games module's `GameServers` does the rest: it listens on each
 game's socket node, seats each connection under its account's name (`guest` for
 an invitation's) at a fake address (10.66.0.2 and on), which a page reloaded
 gets again, and carries the game's datagrams both ways. The server is 10.66.0.1
@@ -162,7 +200,8 @@ this module as of any other; a game is the module's name and the game's folder:
 | `games-servers [--module quake]`                          | Lists the hosted games, with who plays in each                                      |
 | `games-join <id>`, `games-invite <id>`, `games-stop <id>` | The way into a game, a guest's invitation to it, and stopping it                    |
 
-The game's own console works as well: `status`, `say`, `kill`.
+The game's own console works as well: `status`, `say`, `kill`. A Quake III
+game's server runs no bots of its own.
 
 ## Saved games and settings
 
@@ -180,6 +219,9 @@ game, go to another page of EiN's or close the tab.
   it. A save holds the game code's own places in the engine, so one made with
   an earlier release of this module's Quake II may not load into a later one.
 
+- Quake III keeps no saved games, only its settings, `q3config.cfg`, written
+  whenever they change.
+
 Without an account, saves and settings last only as long as the page.
 
 ## On a dashboard
@@ -187,6 +229,7 @@ Without an account, saves and settings last only as long as the page.
 With EiN's Dashboards module, add the **Quake** card to a dashboard and choose
 its game, one of those installed. The card plays the game as it does when nobody plays: the demos
 recorded in its paks, one after the other. It makes no sound and takes no keys.
+Quake III plays no demos when nobody plays, so its card shows its main menu.
 
 ## Add your own games
 
@@ -198,16 +241,20 @@ and appears as a card under the folder's name.
 The Games page knows what else of a game's is dropped on it, and asks which game
 it goes into when more than one could take it:
 
-- a Quake map (a `.bsp` of Quake's) into a Quake game's `maps/` folder, and a
-  Quake II map into a Quake II game's. **Play on a map** and **Start server**
+- a Quake map (a `.bsp` of Quake's) into a Quake game's `maps/` folder, a
+  Quake II map into a Quake II game's, and a Quake III map into a Quake III
+  game's. **Play on a map** and **Start server**
   then offer it. Quake's shareware episode plays only the maps in its paks, so
   give a map to the whole game or to LibreQuake.
 - another pak, `pak1.pak` and on, into a game's folder.
+- a pk3 into a Quake III game's folder: a map someone made comes as one, with
+  its textures and levelshot, and Quake III loads every pk3 in the folder.
 - a folder called `music` into a game's folder (below).
 
-Which engine plays it, the paks say: a game whose paks have Quake II's pictures
-(`pics/`), wall textures (`.wal`), models (`.md2`) or players' skins
-(`players/`) is a Quake II game, and any other a Quake one.
+Which engine plays it, the paks say: a folder of pk3s and no `pak0.pak` is a
+Quake III game; a game whose paks have Quake II's pictures (`pics/`), wall
+textures (`.wal`), models (`.md2`) or players' skins (`players/`) is a Quake II
+game, and any other a Quake one.
 
 - id's whole Quake: drop the `id1` folder of your Quake 1.06. The list calls a
   folder with id's `pak0.pak` and a `pak1.pak` **Quake**.
@@ -218,9 +265,18 @@ Which engine plays it, the paks say: a game whose paks have Quake II's pictures
   later. The list calls a Quake II game with the map `base1` **Quake II**. Its
   single-player game is played; the mission packs, and mods with game code of
   their own (a `gamex86.dll`), are not yet.
+- id's whole Quake III Arena: drop the `baseq3` folder of your Quake III Arena,
+  with `pak0.pk3` and the 1.32 point release's `pak1.pk3` to `pak8.pk3`. The
+  list calls a Quake III game with the arena `q3dm0` **Quake III Arena**. Its
+  mission pack, Team Arena, is not played yet; nor is the Quake III demo, whose
+  game code ioquake3 does not run.
+- A game of its own for Quake 3's engine, as OpenArena is: drop the folder of
+  its pk3s. It is played in a folder named as its own, as ioquake3 plays a game
+  that is not id's.
 
 ## Add the music
 
+Quake III plays its music from files in its pk3s, so it needs nothing here.
 Quake and Quake II played their music from the CD's audio tracks. To play the
 CD's music, or any other, with a game, put the tracks in a `music` folder in the
 game's own, `/groups/users/quake/<game>/music`: drop the folder on the Games page
@@ -249,8 +305,10 @@ free ones is offered again once it is gone.
 In EiN's terminal, `quake-games` lists the games with their titles, engines,
 paks, maps and music, and the free ones not fetched yet; `games-list` lists them
 with every other game module's. `quake-fetch shareware`, `quake-fetch
-quake2-demo` or `quake-fetch librequake` fetches one of the free ones, as
-**Fetch** does.
+quake2-demo`, `quake-fetch librequake` or `quake-fetch openarena` fetches one
+of the free ones, as **Fetch** does. It downloads and unpacks the release in a
+hidden folder of the games folder, `.fetch-<game>`, which it removes once the
+game is in its own.
 
 ## Sound
 
@@ -258,7 +316,8 @@ The sound effects are each game's own mixer, id's `snd_dma.c` and `snd_mix.c`,
 painting a ring of samples ahead of where the page plays it, as it painted a
 sound card's DMA buffer; Web Audio plays the ring. The games played their music
 from the CD's audio tracks; here the page plays the game's file for the track
-the game asks for. The browser plays the files itself (Ogg in Safari from 18.4).
+the game asks for. Quake III's mixer mixes its music too, from the Ogg Vorbis
+files in its pk3s, into the same ring. The browser plays the files itself (Ogg in Safari from 18.4).
 In Quake, **Options → Sound Volume** and **CD Music Volume** set the effects and
 the music; in Quake II, **Options → effects volume** sets the effects and **CD
 music** turns the music on and off.
@@ -273,12 +332,14 @@ music** turns the music on and off.
 | `ui/cards/demo.tsx`                                                               | The dashboard card, offered in `etc/dashboard.d/cards.json`: the games module's demo card, a game running its demos.                                                                         |
 | `ui/adapter.ts`                                                                   | The adapter the games module plays the games with: lists them, starts one, maps the keys, the mouse and the wheel, and names the saves kept.                                                 |
 | `ui/quake/engine.ts`                                                              | Loads the game's engine, its glue and wasm, the paks and the files beside them, and wraps the engine's exports; what differs between the engines.                                            |
-| `ui/quake/keys.ts`                                                                | Browser key codes and mouse buttons to Quake's, which are Quake II's too.                                                                                                                    |
+| `ui/quake/quake3.ts`                                                              | Loads a Quake III game's engine, pk3s and files, gives it a canvas to draw on with WebGL, reads each frame back for the page, and maps its keys and the characters they type.              |
+| `ui/quake/keys.ts`                                                                | Browser key codes and mouse buttons to Quake's, which are Quake II's too, and to Quake III's, with the characters they type.                                                                |
 | `bin/quake-games`                                                                 | Lists the games with their titles, engines, title art, paks, maps and music, and the free ones not fetched yet, for the Games page, a game's page and the card's choice of game.             |
 | `lib/games.ts`, `lib/api.ts`                                                      | Where the games are, which engine plays a game, its maps and music, the games known by name, the free games offered, and the shape `quake-games` answers in.                                 |
 | `lib/catalog.ts`                                                                  | Reads the games folder: each game's paks, the files beside them, and what `quake-games` says of it.                                                                                          |
 | `lib/cover.ts`                                                                    | Decodes a game's title art out of its console background, Quake's with its palette, Quake II's a PCX, reading only those, as a PNG.                                                          |
 | `lib/paks.ts`                                                                     | Reads a pak's header and directory and the files in it, and packs a pak.                                                                                                                     |
+| `lib/pk3.ts`                                                                      | Reads a pk3's central directory and the files in it, and trims a pk3 to the files a Quake III server reads.                                                                                 |
 | `bin/quake-fetch`                                                                 | Fetches one of the free games into the games folder, checked against its release's SHA-256.                                                                                                  |
 | `bin/quake-server`, `services/quake-server/`                                      | The service that runs the hosted games with the games module's `GameServers`: `lib/server.ts` runs each server in a worker (`lib/server-worker.ts`).                                         |
 | `engine/quakegeneric_ein.c`                                                       | quakegeneric's platform layer for the page: the frame, keys, mouse, start-up, and whether a menu is up and the frame fullscreen.                                                             |
@@ -305,10 +366,19 @@ music** turns the music on and off.
 | `engine/quake2/widescreen.patch`                                                  | Adds the widescreen modes up to 1920 by 1200, and a field of view as wide as the frame.                                                                                                      |
 | `engine/quake2/scale.patch`                                                       | Draws the menus, the HUD and the console at a scale of the frame's height, so they keep their size.                                                                                          |
 | `engine/quake2/net_ein.c`, `engine/quake2/server_ein.c`, `engine/quake2/build.sh` | Quake II's network, its dedicated server's platform layer, and the build of the game and the server.                                                                                         |
+| `engine/quake3/quake3_ein.c`                                                      | ioquake3's platform layer for the page: start-up, a frame a tick, keys, characters, the mouse, and whether the console is up and the frame fullscreen.                                     |
+| `engine/quake3/glimp_ein.c`                                                       | Quake III's OpenGL: a WebGL 2 context on the page's canvas for the OpenGL 2 renderer, at the video mode's size or the screen's.                                                            |
+| `engine/quake3/snd_ein.c`, `engine/quake3/net_ein.c`                              | Quake III's sound card, as Quake's, and its network over the page's or the worker's.                                                                                                        |
+| `engine/quake3/server_ein.c`, `engine/quake3/build.sh`                            | Quake III's dedicated server's platform layer, and the build of the game and the server.                                                                                                    |
+| `engine/quake3/Containerfile`                                                     | Quake III's build: pinned emsdk image and ioquake3 commit.                                                                                                                                  |
+| `engine/quake3/main.patch`                                                        | Makes the system layer's main `Sys_Main`, which sets the game up and returns, without SDL.                                                                                                  |
+| `engine/quake3/frame.patch`                                                       | Returns at once from a frame that is not due yet, rather than waiting for its time.                                                                                                         |
+| `engine/quake3/config.patch`                                                      | Tells the page when Quake III has written its settings, so it can keep them.                                                                                                                |
 | `assets/icon.svg`                                                                 | The Q of Quake, drawn for the module: its icon on the Games page and the dashboard card's, filled with the text colour.                                                                      |
 | `assets/quake.js`, `assets/quake.wasm`, `assets/quake2.js`, `assets/quake2.wasm`  | The built engines, committed, since a module is installed as its repository stands. `assets/quake-build.txt` and `assets/quake2-build.txt` say what built them.                              |
-| `assets/quake-server.*`, `assets/quake2-server.*`                                 | The built dedicated servers, which the quake-server service runs.                                                                                                                            |
-| `scripts/build-engine.sh`                                                         | Rebuilds both engines into `assets/`.                                                                                                                                                        |
+| `assets/quake3.js`, `assets/quake3.wasm`                                          | Quake III's built engine; `assets/quake3-build.txt` says what built it.                                                                                                                     |
+| `assets/quake-server.*`, `assets/quake2-server.*`, `assets/quake3-server.*`       | The built dedicated servers, which the quake-server service runs.                                                                                                                            |
+| `scripts/build-engine.sh`                                                         | Rebuilds the three engines into `assets/`.                                                                                                                                                        |
 | `test/smoke.mjs`                                                                  | Signs in with headless Chrome, plays a little, saves screenshots.                                                                                                                            |
 | `deno.jsonc`                                                                      | Generated from `mod.json` by core's `deno task sync:modules`, for type-checking in a core checkout.                                                                                          |
 
@@ -318,9 +388,10 @@ Needs only docker with buildx, or podman; nothing is installed on the host.
 
     scripts/build-engine.sh
 
-It builds `engine/Containerfile` and `engine/quake2/Containerfile` and exports
-the results into `assets/` with the local exporter: each engine twice, the game
-and its dedicated server (`engine/build.sh`, `engine/quake2/build.sh`). The source of the committed
+It builds `engine/Containerfile`, `engine/quake2/Containerfile` and
+`engine/quake3/Containerfile` and exports the results into `assets/` with the
+local exporter: each engine twice, the game and its dedicated server
+(`engine/build.sh`, `engine/quake2/build.sh`, `engine/quake3/build.sh`). The source of the committed
 `assets/quake.wasm` is quakegeneric at the commit `engine/Containerfile` pins,
 with `engine/resolution.patch`, `engine/scale.patch`, `engine/files.patch` and
 `engine/long-strings.patch` applied, id Software's `snd_dma.c`, `snd_mem.c`,
@@ -333,6 +404,12 @@ The source of `assets/quake2.wasm` is quake2generic at the commit
 `engine/quake2/menu.patch`, `engine/quake2/video.patch`,
 `engine/quake2/widescreen.patch` and `engine/quake2/scale.patch` applied and the
 `engine/quake2/` files added.
+The source of `assets/quake3.wasm` is ioquake3 at the commit
+`engine/quake3/Containerfile` pins, with `engine/quake3/main.patch`,
+`engine/quake3/frame.patch` and `engine/quake3/config.patch` applied and the
+`engine/quake3/` files added; it builds ioquake3's sources itself
+(`engine/quake3/build.sh`) rather than with ioquake3's CMake, which builds the
+browser's game with SDL and no dedicated server.
 
 ## Developing
 
@@ -352,12 +429,14 @@ Node 22 or later:
 
 ## Licence
 
-GPL-2.0-or-later, as quakegeneric, quake2generic and id's source are: see
-`LICENSE`. Quake's and Quake II's source is © id Software and the quakegeneric
-and quake2generic authors; their notices are in the source the builds fetch.
-`assets/quake.js`, `assets/quake2.js` and the servers' `.js` are Emscripten's runtime, under the MIT
+GPL-2.0-or-later, as quakegeneric, quake2generic, ioquake3 and id's source are:
+see `LICENSE`. Quake's, Quake II's and Quake III's source is © id Software and
+the quakegeneric, quake2generic and ioquake3 authors; their notices are in the
+source the builds fetch. `assets/quake.js`, `assets/quake2.js`,
+`assets/quake3.js` and the servers' `.js` are Emscripten's runtime, under the MIT
 licence. `assets/icon.svg` is the module's own drawing of Quake's Q, which is id
 Software's trademark. The module fetches, when asked, and does not ship the games: Quake's
 shareware episode is id Software's, under its own shareware licence; Quake II's
-demo is id Software's, under its own demo licence, which is fetched with it; and
-LibreQuake is under the BSD licence, its game code under the GPL.
+demo is id Software's, under its own demo licence, which is fetched with it;
+LibreQuake is under the BSD licence, its game code under the GPL; and OpenArena
+is under the GPL.
