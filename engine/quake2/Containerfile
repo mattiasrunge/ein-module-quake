@@ -44,7 +44,8 @@ COPY soft.patch /src/
 RUN git -C /src apply /src/soft.patch
 
 # The game mixes its sound into a ring the page plays (ein_audio_render), at the page's rate,
-# rather than one SDL plays.
+# rather than one SDL plays, through a limiter, so sounds that pile up past full scale, as the
+# earthquake's does, are turned down rather than cut off.
 COPY sound.patch /src/
 RUN git -C /src apply /src/sound.patch
 

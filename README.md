@@ -432,6 +432,8 @@ sound card's DMA buffer; Web Audio plays the ring. The games played their music
 from the CD's audio tracks; here the page plays the game's file for the track
 the game asks for. Quake III's mixer mixes its music too, from the Ogg Vorbis
 files in its pk3s, into the same ring. The browser plays the files itself (Ogg in Safari from 18.4).
+Quake II's mix passes a limiter before it is cut to 16 bits, so sounds that pile up, as the
+earthquake's rumble does, are turned down rather than distorted.
 In Quake, **Options → Sound Volume** and **CD Music Volume** set the effects and
 the music; in Quake II, **Options → effects volume** and **music volume** set
 them, and **music** turns the music on and off.
@@ -491,7 +493,7 @@ them, and **music** turns the music on and off.
 | `engine/quake2/system.patch`                                                      | Calls the game code linked in rather than loading `game.so`, without a server's console input or a binary's folder.                                                                                                               |
 | `engine/quake2/renderers.patch`                                                   | Starts the renderers linked in, WebGL 2 by default and software without it, rather than loading `ref_*.so`; fullscreen takes no video restart.                                                                                    |
 | `engine/quake2/soft.patch`                                                        | Hands the software renderer's frame to the platform layer rather than to SDL.                                                                                                                                                     |
-| `engine/quake2/sound.patch`                                                       | Mixes the sound into a ring the page plays, at the page's rate, rather than one SDL plays.                                                                                                                                        |
+| `engine/quake2/sound.patch`                                                       | Mixes the sound into a ring the page plays, at the page's rate, rather than one SDL plays, through a limiter.                                                                                                                     |
 | `engine/quake2/files.patch`                                                       | Tells the page when Quake II has saved a game or written its settings, so it can keep them.                                                                                                                                       |
 | `engine/quake2/menu.patch`                                                        | Makes the Multiplayer menu the player's setup and keys, without the menus of joining and starting a server, which the page does; the Options menu's music is the page's.                                                          |
 | `engine/quake2/video.patch`                                                       | Makes the Video menu the page's: the two renderers, modes up to 1920 by 1200, fullscreen yes or no, no vertical sync or multisampling.                                                                                            |

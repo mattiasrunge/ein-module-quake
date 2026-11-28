@@ -1,5 +1,5 @@
 diff --git a/src/client/sound/sdl.c b/src/client/sound/sdl.c
-index b99fa8d9..7bf4fa91 100644
+index b99fa8d9..d873bca1 100644
 --- a/src/client/sound/sdl.c
 +++ b/src/client/sound/sdl.c
 @@ -33,12 +33,21 @@
@@ -24,7 +24,103 @@ index b99fa8d9..7bf4fa91 100644
  
  #include <errno.h>
  
-@@ -1323,7 +1332,95 @@ SDL_Callback(void *data, Uint8 *stream, int length)
+@@ -173,6 +182,84 @@ lpf_update_samples(LpfContext* lpf_context,int sample_count, portable_samplepair
+ 	}
+ }
+ 
++#ifdef EIN
++/*
++ * A limiter on the mix, before it is cut to 16 bits. Sounds the game
++ * starts over each other add up past full scale, as the earthquake's
++ * world/quake.wav does, started again every half second for seconds
++ * (target_earthquake): cut off, that is a loud distorted roar. Here the
++ * whole mix is turned down as far as a block's loudest sample needs to
++ * stay under the ceiling, at once, and back up over half a second; a
++ * mix that stays under it, as single sounds do, is left as it is.
++ */
++#define EIN_LIMIT_CEILING (29000 * 256)
++#define EIN_LIMIT_ATTACK 48
++
++static float ein_gain = 1.0f;
++
++static void
++EIN_LimitPaintBuffer(int count)
++{
++	float target, from, gain, release;
++	int i, peak = 0;
++
++	if (count <= 0)
++	{
++		return;
++	}
++
++	for (i = 0; i < count; i++)
++	{
++		int left = abs(paintbuffer[i].left);
++		int right = abs(paintbuffer[i].right);
++
++		if (left > peak)
++		{
++			peak = left;
++		}
++
++		if (right > peak)
++		{
++			peak = right;
++		}
++	}
++
++	target = (peak > EIN_LIMIT_CEILING) ? (float)EIN_LIMIT_CEILING / peak : 1.0f;
++
++	if (target == 1.0f && ein_gain == 1.0f)
++	{
++		return;
++	}
++
++	from = ein_gain;
++	release = 2.0f / sound.speed;
++
++	for (i = 0; i < count; i++)
++	{
++		if (target < from)
++		{
++			/* Down to what the block needs within a millisecond. */
++			gain = (i < EIN_LIMIT_ATTACK) ? from + (target - from) * (i + 1) / EIN_LIMIT_ATTACK : target;
++		}
++		else
++		{
++			/* Back up slowly, never past what the block allows. */
++			gain = from + release * (i + 1);
++
++			if (gain > target)
++			{
++				gain = target;
++			}
++		}
++
++		paintbuffer[i].left = (int)(paintbuffer[i].left * gain);
++		paintbuffer[i].right = (int)(paintbuffer[i].right * gain);
++	}
++
++	ein_gain = gain;
++}
++#endif
++
+ /*
+  * Transfers a mixed "paint buffer" to
+  * the SDL output buffer and places it
+@@ -187,6 +274,10 @@ SDL_TransferPaintBuffer(int endtime)
+ 
+ 	pbuf = sound.buffer;
+ 
++#ifdef EIN
++	EIN_LimitPaintBuffer(endtime - paintedtime);
++#endif
++
+ 	if (s_testsound->value)
+ 	{
+ 		int i;
+@@ -1323,7 +1414,95 @@ SDL_Callback(void *data, Uint8 *stream, int length)
  	}
  }
  
