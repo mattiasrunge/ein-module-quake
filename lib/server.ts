@@ -45,6 +45,9 @@ type ServerSpec = {
 const QUAKE3_BASE = '/q3';
 const QUAKE3_HOME = '/home';
 
+/** What a server is called in the games' own server lists, beside its map: whose it is, as the page says it. */
+const hostname = (info: ServerInfo): string => `${info.startedBy}'s server`;
+
 const SPECS: Record<EngineName, ServerSpec> = {
   quake2: {
     folder: () => '/baseq2',
@@ -53,7 +56,9 @@ const SPECS: Record<EngineName, ServerSpec> = {
     unread: /\.(wav|pcx|wal|md2|sp2|cin|tga|jpg|png|ogg|mp3|dm2)$/,
     // The mode is the cvar that sets it: deathmatch or coop.
     modes: ['deathmatch', 'coop'],
-    args: (info) => ['quake2', '+set', 'dedicated', '1', '+set', info.mode, '1', '+set', 'maxclients', String(info.maxPlayers), '+map', info.map],
+    args: (
+      info,
+    ) => ['quake2', '+set', 'dedicated', '1', '+set', 'hostname', hostname(info), '+set', info.mode, '1', '+set', 'maxclients', String(info.maxPlayers), '+map', info.map],
   },
   quake: {
     folder: () => '/id1',
@@ -62,7 +67,9 @@ const SPECS: Record<EngineName, ServerSpec> = {
     // shareware episode refuses to run.
     // -dedicated sets deathmatch when it has room for more than one; a cooperative game says otherwise.
     modes: ['deathmatch', 'coop'],
-    args: (info) => ['quake', '-dedicated', String(info.maxPlayers), ...(info.mode === 'coop' ? ['+deathmatch', '0', '+coop', '1'] : []), '+map', info.map],
+    args: (
+      info,
+    ) => ['quake', '-dedicated', String(info.maxPlayers), '+hostname', hostname(info), ...(info.mode === 'coop' ? ['+deathmatch', '0', '+coop', '1'] : []), '+map', info.map],
   },
   quake3: {
     folder: (info) => `${QUAKE3_BASE}/${gamedirOf(info.game, info.title)}`,
@@ -100,6 +107,9 @@ const SPECS: Record<EngineName, ServerSpec> = {
       '+set',
       'sv_maxclients',
       String(info.maxPlayers),
+      '+set',
+      'sv_hostname',
+      hostname(info),
       '+map',
       info.map,
     ],
