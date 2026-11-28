@@ -1,6 +1,6 @@
 {
   "name": "quake",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "Quake, Quake II and Quake III in EiN: quakegeneric (with a WebGL 2 renderer beside its software one), Yamagi Quake II (WebGL 2 or software renderer) and ioquake3 built to WebAssembly, played on the Games page",
   "license": "GPL-2.0-or-later",
   "coreApi": "^0.15.77",
