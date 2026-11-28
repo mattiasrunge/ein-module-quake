@@ -1,0 +1,1134 @@
+diff --git a/source/cl_parse.c b/source/cl_parse.c
+index a794258..566447b 100644
+--- a/source/cl_parse.c
++++ b/source/cl_parse.c
+@@ -20,6 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ // cl_parse.c  -- parse a message received from the server
+ 
+ #include "quakedef.h"
++#include "gl_ein.h"
+ 
+ char *svc_strings[] =
+ {
+@@ -64,7 +65,15 @@ char *svc_strings[] =
+ 	"svc_finale",			// [string] music [string] text
+ 	"svc_cdtrack",			// [byte] track [byte] looptrack
+ 	"svc_sellscreen",
+-	"svc_cutscene"
++	"svc_cutscene",
++	"", "",
++	"svc_skybox",			// [string] name
++	"", "",
++	"svc_bf",
++	"svc_fog",				// [byte] density [byte] r [byte] g [byte] b [short] time
++	"svc_spawnbaseline2",
++	"svc_spawnstatic2",
++	"svc_spawnstaticsound2"
+ };
+ 
+ //=============================================================================
+@@ -120,11 +129,23 @@ void CL_ParseStartSoundPacket(void)
+ 	else
+ 		attenuation = DEFAULT_SOUND_PACKET_ATTENUATION;
+ 	
+-	channel = MSG_ReadShort ();
+-	sound_num = MSG_ReadByte ();
+-
+-	ent = channel >> 3;
+-	channel &= 7;
++	if (field_mask & SND_LARGEENTITY)
++	{
++		ent = (unsigned short) MSG_ReadShort ();
++		channel = MSG_ReadByte ();
++	}
++	else
++	{
++		channel = (unsigned short) MSG_ReadShort ();
++		ent = channel >> 3;
++		channel &= 7;
++	}
++	if (field_mask & SND_LARGESOUND)
++		sound_num = (unsigned short) MSG_ReadShort ();
++	else
++		sound_num = MSG_ReadByte ();
++	if (sound_num >= MAX_SOUNDS)
++		Host_Error ("CL_ParseStartSoundPacket: sound = %i", sound_num);
+ 
+ 	if (ent > MAX_EDICTS)
+ 		Host_Error ("CL_ParseStartSoundPacket: ent = %i", ent);
+@@ -149,7 +170,7 @@ void CL_KeepaliveMessage (void)
+ 	static float lastmsg;
+ 	int		ret;
+ 	sizebuf_t	old;
+-	byte		olddata[8192];
++	static byte	olddata[NET_MAXMESSAGE];
+ 	
+ 	if (sv.active)
+ 		return;		// no need if server is local
+@@ -173,8 +194,8 @@ void CL_KeepaliveMessage (void)
+ 			Host_Error ("CL_KeepaliveMessage: received a message");
+ 			break;
+ 		case 2:
+-			if (MSG_ReadByte() != svc_nop)
+-				Host_Error ("CL_KeepaliveMessage: datagram wasn't a nop");
++			// an update the server sends while the map loads, which a large
++			// map takes long over: dropped, as an unreliable one may be
+ 			break;
+ 		}
+ 	} while (ret);
+@@ -206,8 +227,8 @@ void CL_ParseServerInfo (void)
+ 	char	*str;
+ 	int		i;
+ 	int		nummodels, numsounds;
+-	char	model_precache[MAX_MODELS][MAX_QPATH];
+-	char	sound_precache[MAX_SOUNDS][MAX_QPATH];
++	static char	model_precache[MAX_MODELS][MAX_QPATH];
++	static char	sound_precache[MAX_SOUNDS][MAX_QPATH];
+ 	
+ 	Con_DPrintf ("Serverinfo packet received.\n");
+ //
+@@ -217,11 +238,12 @@ void CL_ParseServerInfo (void)
+ 
+ // parse protocol version number
+ 	i = MSG_ReadLong ();
+-	if (i != PROTOCOL_VERSION)
++	if (i != PROTOCOL_NETQUAKE && i != PROTOCOL_FITZQUAKE)
+ 	{
+-		Con_Printf ("Server returned version %i, not %i", i, PROTOCOL_VERSION);
++		Con_Printf ("Server returned version %i, not %i or %i", i, PROTOCOL_NETQUAKE, PROTOCOL_FITZQUAKE);
+ 		return;
+ 	}
++	cl.protocol = i;
+ 
+ // parse maxclients
+ 	cl.maxclients = MSG_ReadByte ();
+@@ -327,6 +349,27 @@ relinked.  Other attributes can change without relinking.
+ */
+ int	bitcounts[16];
+ 
++// The entity's model, its index `modnum`; a null model forces a link.
++static void CL_SetModel (entity_t *ent, int modnum, qboolean *forcelink)
++{
++	model_t		*model = cl.model_precache[modnum];
++
++	if (model == ent->model)
++		return;
++	ent->model = model;
++// automatic animation (torches, etc) can be either all together
++// or randomized
++	if (model)
++	{
++		if (model->synctype == ST_RAND)
++			ent->syncbase = (float)(rand()&0x7fff) / 0x7fff;
++		else
++			ent->syncbase = 0.0;
++	}
++	else
++		*forcelink = true;	// hack to make null model players work
++}
++
+ void CL_ParseUpdate (int bits)
+ {
+ 	int			i;
+@@ -348,6 +391,13 @@ void CL_ParseUpdate (int bits)
+ 		i = MSG_ReadByte ();
+ 		bits |= (i<<8);
+ 	}
++	if (cl.protocol == PROTOCOL_FITZQUAKE)
++	{
++		if (bits & U_EXTEND1)
++			bits |= MSG_ReadByte () << 16;
++		if (bits & U_EXTEND2)
++			bits |= MSG_ReadByte () << 24;
++	}
+ 
+ 	if (bits & U_LONGENTITY)	
+ 		num = MSG_ReadShort ();
+@@ -356,9 +406,6 @@ void CL_ParseUpdate (int bits)
+ 
+ 	ent = CL_EntityNum (num);
+ 
+-for (i=0 ; i<16 ; i++)
+-if (bits&(1<<i))
+-	bitcounts[i]++;
+ 
+ 	if (ent->msgtime != cl.mtime[1])
+ 		forcelink = true;	// no previous frame to lerp from
+@@ -376,22 +423,7 @@ if (bits&(1<<i))
+ 	else
+ 		modnum = ent->baseline.modelindex;
+ 		
+-	model = cl.model_precache[modnum];
+-	if (model != ent->model)
+-	{
+-		ent->model = model;
+-	// automatic animation (torches, etc) can be either all together
+-	// or randomized
+-		if (model)
+-		{
+-			if (model->synctype == ST_RAND)
+-				ent->syncbase = (float)(rand()&0x7fff) / 0x7fff;
+-			else
+-				ent->syncbase = 0.0;
+-		}
+-		else
+-			forcelink = true;	// hack to make null model players work
+-	}
++	CL_SetModel (ent, modnum, &forcelink);
+ 	
+ 	if (bits & U_FRAME)
+ 		ent->frame = MSG_ReadByte ();
+@@ -452,6 +484,28 @@ if (bits&(1<<i))
+ 	else
+ 		ent->msg_angles[0][2] = ent->baseline.angles[2];
+ 
++	// protocol 666's: the alpha, the frame's and the model's high bytes
++	if (cl.protocol == PROTOCOL_FITZQUAKE)
++	{
++		if (bits & U_ALPHA)
++			ent->alpha = MSG_ReadByte ();
++		else
++			ent->alpha = ent->baseline.alpha;
++		if (bits & U_FRAME2)
++			ent->frame = (ent->frame & 0x00FF) | (MSG_ReadByte () << 8);
++		if (bits & U_MODEL2)
++		{
++			modnum = (modnum & 0x00FF) | (MSG_ReadByte () << 8);
++			if (modnum >= MAX_MODELS)
++				Host_Error ("CL_ParseModel: bad modnum");
++			CL_SetModel (ent, modnum, &forcelink);
++		}
++		if (bits & U_LERPFINISH)
++			MSG_ReadByte ();
++	}
++	else
++		ent->alpha = ENTALPHA_DEFAULT;
++
+ 	if ( bits & U_NOLERP )
+ 		ent->forcelink = true;
+ 	ent->gl_step = (bits & U_NOLERP) != 0;	// a monster's steps: gl_models.c blends them
+@@ -471,12 +525,14 @@ if (bits&(1<<i))
+ CL_ParseBaseline
+ ==================
+ */
+-void CL_ParseBaseline (entity_t *ent)
++void CL_ParseBaseline (entity_t *ent, int version)
+ {
+-	int			i;
+-	
+-	ent->baseline.modelindex = MSG_ReadByte ();
+-	ent->baseline.frame = MSG_ReadByte ();
++	int			i, bits;
++
++	// version 2 (protocol 666's spawnbaseline2 and spawnstatic2) has B_ bits
++	bits = version == 2 ? MSG_ReadByte () : 0;
++	ent->baseline.modelindex = (bits & B_LARGEMODEL) ? (unsigned short) MSG_ReadShort () : MSG_ReadByte ();
++	ent->baseline.frame = (bits & B_LARGEFRAME) ? (unsigned short) MSG_ReadShort () : MSG_ReadByte ();
+ 	ent->baseline.colormap = MSG_ReadByte();
+ 	ent->baseline.skin = MSG_ReadByte();
+ 	for (i=0 ; i<3 ; i++)
+@@ -484,6 +540,9 @@ void CL_ParseBaseline (entity_t *ent)
+ 		ent->baseline.origin[i] = MSG_ReadCoord ();
+ 		ent->baseline.angles[i] = MSG_ReadAngle ();
+ 	}
++	ent->baseline.alpha = (bits & B_ALPHA) ? MSG_ReadByte () : ENTALPHA_DEFAULT;
++	if (ent->baseline.modelindex >= MAX_MODELS)
++		Host_Error ("CL_ParseBaseline: model %i", ent->baseline.modelindex);
+ }
+ 
+ 
+@@ -603,6 +662,24 @@ void CL_ParseClientdata (int bits)
+ 			Sbar_Changed ();
+ 		}
+ 	}
++	// protocol 666's high bytes, and the weapon's alpha
++	if (bits & SU_WEAPON2)
++		cl.stats[STAT_WEAPON] |= MSG_ReadByte () << 8;
++	if (bits & SU_ARMOR2)
++		cl.stats[STAT_ARMOR] |= MSG_ReadByte () << 8;
++	if (bits & SU_AMMO2)
++		cl.stats[STAT_AMMO] |= MSG_ReadByte () << 8;
++	if (bits & SU_SHELLS2)
++		cl.stats[STAT_SHELLS] |= MSG_ReadByte () << 8;
++	if (bits & SU_NAILS2)
++		cl.stats[STAT_NAILS] |= MSG_ReadByte () << 8;
++	if (bits & SU_ROCKETS2)
++		cl.stats[STAT_ROCKETS] |= MSG_ReadByte () << 8;
++	if (bits & SU_CELLS2)
++		cl.stats[STAT_CELLS] |= MSG_ReadByte () << 8;
++	if (bits & SU_WEAPONFRAME2)
++		cl.stats[STAT_WEAPONFRAME] |= MSG_ReadByte () << 8;
++	cl.viewent.alpha = (bits & SU_WEAPONALPHA) ? MSG_ReadByte () : ENTALPHA_DEFAULT;
+ }
+ 
+ /*
+@@ -645,7 +722,7 @@ void CL_NewTranslation (int slot)
+ CL_ParseStatic
+ =====================
+ */
+-void CL_ParseStatic (void)
++void CL_ParseStatic (int version)
+ {
+ 	entity_t *ent;
+ 	int		i;
+@@ -655,7 +732,7 @@ void CL_ParseStatic (void)
+ 		Host_Error ("Too many static entities");
+ 	ent = &cl_static_entities[i];
+ 	cl.num_statics++;
+-	CL_ParseBaseline (ent);
++	CL_ParseBaseline (ent, version);
+ 
+ // copy it to the current state
+ 	ent->model = cl.model_precache[ent->baseline.modelindex];
+@@ -663,6 +740,7 @@ void CL_ParseStatic (void)
+ 	ent->colormap = vid.colormap;
+ 	ent->skinnum = ent->baseline.skin;
+ 	ent->effects = ent->baseline.effects;
++	ent->alpha = ent->baseline.alpha;
+ 
+ 	VectorCopy (ent->baseline.origin, ent->origin);
+ 	VectorCopy (ent->baseline.angles, ent->angles);	
+@@ -674,7 +752,7 @@ void CL_ParseStatic (void)
+ CL_ParseStaticSound
+ ===================
+ */
+-void CL_ParseStaticSound (void)
++void CL_ParseStaticSound (int version)
+ {
+ 	vec3_t		org;
+ 	int			sound_num, vol, atten;
+@@ -682,7 +760,9 @@ void CL_ParseStaticSound (void)
+ 	
+ 	for (i=0 ; i<3 ; i++)
+ 		org[i] = MSG_ReadCoord ();
+-	sound_num = MSG_ReadByte ();
++	sound_num = version == 2 ? (unsigned short) MSG_ReadShort () : MSG_ReadByte ();
++	if (sound_num >= MAX_SOUNDS)
++		Host_Error ("CL_ParseStaticSound: sound %i", sound_num);
+ 	vol = MSG_ReadByte ();
+ 	atten = MSG_ReadByte ();
+ 	
+@@ -756,7 +836,11 @@ void CL_ParseServerMessage (void)
+ 			break;
+ 			
+ 		case svc_clientdata:
+-			i = MSG_ReadShort ();
++			i = (unsigned short) MSG_ReadShort ();
++			if (i & SU_EXTEND1)
++				i |= MSG_ReadByte () << 16;
++			if (i & SU_EXTEND2)
++				i |= MSG_ReadByte () << 24;
+ 			CL_ParseClientdata (i);
+ 			break;
+ 		
+@@ -848,11 +932,35 @@ void CL_ParseServerMessage (void)
+ 		case svc_spawnbaseline:
+ 			i = MSG_ReadShort ();
+ 			// must use CL_EntityNum() to force cl.num_entities up
+-			CL_ParseBaseline (CL_EntityNum(i));
++			CL_ParseBaseline (CL_EntityNum(i), 1);
++			break;
++		case svc_spawnbaseline2:
++			i = MSG_ReadShort ();
++			CL_ParseBaseline (CL_EntityNum(i), 2);
+ 			break;
+ 		case svc_spawnstatic:
+-			CL_ParseStatic ();
++			CL_ParseStatic (1);
+ 			break;			
++		case svc_spawnstatic2:
++			CL_ParseStatic (2);
++			break;
++		case svc_spawnstaticsound2:
++			CL_ParseStaticSound (2);
++			break;
++		case svc_skybox:
++			GL_SkyName (MSG_ReadString ());
++			break;
++		case svc_bf:
++			Cmd_ExecuteString ("bf", src_command);
++			break;
++		case svc_fog:
++			i = MSG_ReadByte ();
++			{
++				int		r = MSG_ReadByte (), g = MSG_ReadByte (), b = MSG_ReadByte ();
++
++				GL_Fog (i / 255.0, r / 255.0, g / 255.0, b / 255.0, MSG_ReadShort () / 100.0);
++			}
++			break;
+ 		case svc_temp_entity:
+ 			CL_ParseTEnt ();
+ 			break;
+@@ -896,7 +1004,7 @@ void CL_ParseServerMessage (void)
+ 			break;
+ 			
+ 		case svc_spawnstaticsound:
+-			CL_ParseStaticSound ();
++			CL_ParseStaticSound (1);
+ 			break;
+ 
+ 		case svc_cdtrack:
+diff --git a/source/client.h b/source/client.h
+index c6a0b00..7912d8e 100644
+--- a/source/client.h
++++ b/source/client.h
+@@ -77,7 +77,7 @@ typedef struct
+ } dlight_t;
+ 
+ 
+-#define	MAX_BEAMS	24
++#define	MAX_BEAMS	32
+ typedef struct
+ {
+ 	int		entity;
+@@ -86,7 +86,7 @@ typedef struct
+ 	vec3_t	start, end;
+ } beam_t;
+ 
+-#define	MAX_EFRAGS		640
++#define	MAX_EFRAGS		16384
+ 
+ #define	MAX_MAPSTRING	2048
+ #define	MAX_DEMOS		8
+@@ -206,6 +206,7 @@ typedef struct
+ 	char		levelname[40];	// for display on solo scoreboard
+ 	int			viewentity;		// cl_entitites[cl.viewentity] = player
+ 	int			maxclients;
++	int			protocol;		// the server's: PROTOCOL_NETQUAKE or PROTOCOL_FITZQUAKE
+ 	int			gametype;
+ 
+ // refresh related state
+@@ -256,8 +257,8 @@ extern	cvar_t	m_forward;
+ extern	cvar_t	m_side;
+ 
+ 
+-#define	MAX_TEMP_ENTITIES	64			// lightning bolts, etc
+-#define	MAX_STATIC_ENTITIES	128			// torches, etc
++#define	MAX_TEMP_ENTITIES	256			// lightning bolts, etc
++#define	MAX_STATIC_ENTITIES	4096		// torches, etc
+ 
+ extern	client_state_t	cl;
+ 
+@@ -290,7 +291,7 @@ void CL_Disconnect (void);
+ void CL_Disconnect_f (void);
+ void CL_NextDemo (void);
+ 
+-#define			MAX_VISEDICTS	256
++#define			MAX_VISEDICTS	4096
+ extern	int				cl_numvisedicts;
+ extern	entity_t		*cl_visedicts[MAX_VISEDICTS];
+ 
+diff --git a/source/net.h b/source/net.h
+index d59420b..bc1448c 100644
+--- a/source/net.h
++++ b/source/net.h
+@@ -28,9 +28,9 @@ struct qsockaddr
+ 
+ #define	NET_NAMELEN			64
+ 
+-#define NET_MAXMESSAGE		8192
++#define NET_MAXMESSAGE		64000
+ #define NET_HEADERSIZE		(2 * sizeof(unsigned int))
+-#define NET_DATAGRAMSIZE	(MAX_DATAGRAM + NET_HEADERSIZE)
++#define NET_DATAGRAMSIZE	(DATAGRAM_MTU + NET_HEADERSIZE)
+ 
+ // NetHeader flags
+ #define NETFLAG_LENGTH_MASK	0x0000ffff
+diff --git a/source/net_dgrm.c b/source/net_dgrm.c
+index 968a0b4..b4fa1b9 100644
+--- a/source/net_dgrm.c
++++ b/source/net_dgrm.c
+@@ -75,7 +75,7 @@ struct
+ {
+ 	unsigned int	length;
+ 	unsigned int	sequence;
+-	byte			data[MAX_DATAGRAM];
++	byte			data[DATAGRAM_MTU];	// a packet: protocol 15's datagram, which every peer reads
+ } packetBuffer;
+ 
+ extern int m_return_state;
+@@ -178,14 +178,14 @@ int Datagram_SendMessage (qsocket_t *sock, sizebuf_t *data)
+ 	Q_memcpy(sock->sendMessage, data->data, data->cursize);
+ 	sock->sendMessageLength = data->cursize;
+ 
+-	if (data->cursize <= MAX_DATAGRAM)
++	if (data->cursize <= DATAGRAM_MTU)
+ 	{
+ 		dataLen = data->cursize;
+ 		eom = NETFLAG_EOM;
+ 	}
+ 	else
+ 	{
+-		dataLen = MAX_DATAGRAM;
++		dataLen = DATAGRAM_MTU;
+ 		eom = 0;
+ 	}
+ 	packetLen = NET_HEADERSIZE + dataLen;
+@@ -211,14 +211,14 @@ int SendMessageNext (qsocket_t *sock)
+ 	unsigned int	dataLen;
+ 	unsigned int	eom;
+ 
+-	if (sock->sendMessageLength <= MAX_DATAGRAM)
++	if (sock->sendMessageLength <= DATAGRAM_MTU)
+ 	{
+ 		dataLen = sock->sendMessageLength;
+ 		eom = NETFLAG_EOM;
+ 	}
+ 	else
+ 	{
+-		dataLen = MAX_DATAGRAM;
++		dataLen = DATAGRAM_MTU;
+ 		eom = 0;
+ 	}
+ 	packetLen = NET_HEADERSIZE + dataLen;
+@@ -244,14 +244,14 @@ int ReSendMessage (qsocket_t *sock)
+ 	unsigned int	dataLen;
+ 	unsigned int	eom;
+ 
+-	if (sock->sendMessageLength <= MAX_DATAGRAM)
++	if (sock->sendMessageLength <= DATAGRAM_MTU)
+ 	{
+ 		dataLen = sock->sendMessageLength;
+ 		eom = NETFLAG_EOM;
+ 	}
+ 	else
+ 	{
+-		dataLen = MAX_DATAGRAM;
++		dataLen = DATAGRAM_MTU;
+ 		eom = 0;
+ 	}
+ 	packetLen = NET_HEADERSIZE + dataLen;
+@@ -294,7 +294,7 @@ int Datagram_SendUnreliableMessage (qsocket_t *sock, sizebuf_t *data)
+ 	if (data->cursize == 0)
+ 		Sys_Error("Datagram_SendUnreliableMessage: zero length message\n");
+ 
+-	if (data->cursize > MAX_DATAGRAM)
++	if (data->cursize > DATAGRAM_MTU)
+ 		Sys_Error("Datagram_SendUnreliableMessage: message too big %u\n", data->cursize);
+ #endif
+ 
+@@ -417,10 +417,10 @@ int	Datagram_GetMessage (qsocket_t *sock)
+ 				Con_DPrintf("Duplicate ACK received\n");
+ 				continue;
+ 			}
+-			sock->sendMessageLength -= MAX_DATAGRAM;
++			sock->sendMessageLength -= DATAGRAM_MTU;
+ 			if (sock->sendMessageLength > 0)
+ 			{
+-				Q_memcpy(sock->sendMessage, sock->sendMessage+MAX_DATAGRAM, sock->sendMessageLength);
++				Q_memcpy(sock->sendMessage, sock->sendMessage+DATAGRAM_MTU, sock->sendMessageLength);
+ 				sock->sendNext = true;
+ 			}
+ 			else
+diff --git a/source/pr_cmds.c b/source/pr_cmds.c
+index e3925ce..1260006 100644
+--- a/source/pr_cmds.c
++++ b/source/pr_cmds.c
+@@ -529,11 +529,16 @@ void PF_ambientsound (void)
+ 
+ // add an svc_spawnambient command to the level signon packet
+ 
+-	MSG_WriteByte (&sv.signon,svc_spawnstaticsound);
++	if (soundnum >= 256 && sv.protocol == PROTOCOL_NETQUAKE)
++		return;
++	MSG_WriteByte (&sv.signon, soundnum >= 256 ? svc_spawnstaticsound2 : svc_spawnstaticsound);
+ 	for (i=0 ; i<3 ; i++)
+ 		MSG_WriteCoord(&sv.signon, pos[i]);
+ 
+-	MSG_WriteByte (&sv.signon, soundnum);
++	if (soundnum >= 256)
++		MSG_WriteShort (&sv.signon, soundnum);
++	else
++		MSG_WriteByte (&sv.signon, soundnum);
+ 
+ 	MSG_WriteByte (&sv.signon, vol*255);
+ 	MSG_WriteByte (&sv.signon, attenuation*64);
+@@ -1451,15 +1456,45 @@ int SV_ModelIndex (char *name);
+ void PF_makestatic (void)
+ {
+ 	edict_t	*ent;
+-	int		i;
++	int		i, model, bits;
+ 	
+ 	ent = G_EDICT(OFS_PARM0);
++	model = SV_ModelIndex(pr_strings + ent->v.model);
++	bits = 0;
++	if (sv.protocol == PROTOCOL_NETQUAKE)
++	{
++		if (model & 0xFF00 || (int) ent->v.frame & 0xFF00)
++		{
++			ED_Free (ent);
++			return;
++		}
++	}
++	else
++	{
++		eval_t	*alpha = GetEdictFieldValue (ent, "alpha");
++
++		if (alpha)
++			ent->alpha = ENTALPHA_ENCODE (alpha->_float);
++		if (model & 0xFF00)
++			bits |= B_LARGEMODEL;
++		if ((int) ent->v.frame & 0xFF00)
++			bits |= B_LARGEFRAME;
++		if (ent->alpha != ENTALPHA_DEFAULT)
++			bits |= B_ALPHA;
++	}
+ 
+-	MSG_WriteByte (&sv.signon,svc_spawnstatic);
+-
+-	MSG_WriteByte (&sv.signon, SV_ModelIndex(pr_strings + ent->v.model));
++	MSG_WriteByte (&sv.signon, bits ? svc_spawnstatic2 : svc_spawnstatic);
++	if (bits)
++		MSG_WriteByte (&sv.signon, bits);
+ 
+-	MSG_WriteByte (&sv.signon, ent->v.frame);
++	if (bits & B_LARGEMODEL)
++		MSG_WriteShort (&sv.signon, model);
++	else
++		MSG_WriteByte (&sv.signon, model);
++	if (bits & B_LARGEFRAME)
++		MSG_WriteShort (&sv.signon, ent->v.frame);
++	else
++		MSG_WriteByte (&sv.signon, ent->v.frame);
+ 	MSG_WriteByte (&sv.signon, ent->v.colormap);
+ 	MSG_WriteByte (&sv.signon, ent->v.skin);
+ 	for (i=0 ; i<3 ; i++)
+@@ -1467,6 +1502,8 @@ void PF_makestatic (void)
+ 		MSG_WriteCoord(&sv.signon, ent->v.origin[i]);
+ 		MSG_WriteAngle(&sv.signon, ent->v.angles[i]);
+ 	}
++	if (bits & B_ALPHA)
++		MSG_WriteByte (&sv.signon, ent->alpha);
+ 
+ // throw the entity away now
+ 	ED_Free (ent);
+diff --git a/source/pr_edict.c b/source/pr_edict.c
+index 0ccb00c..b557afe 100644
+--- a/source/pr_edict.c
++++ b/source/pr_edict.c
+@@ -71,6 +71,7 @@ void ED_ClearEdict (edict_t *e)
+ {
+ 	memset (&e->v, 0, progs->entityfields * 4);
+ 	e->free = false;
++	e->alpha = ENTALPHA_DEFAULT;
+ }
+ 
+ /*
+@@ -865,6 +866,11 @@ if (!strcmp(com_token, "light"))
+ // and are immediately discarded by quake
+ 		if (keyname[0] == '_')
+ 			continue;
++
++		// an alpha the progs may not have a field for (protocol 666), as
++		// QuakeSpasm keeps it
++		if (!strcmp (keyname, "alpha"))
++			ent->alpha = ENTALPHA_ENCODE (atof (com_token));
+ 		
+ 		key = ED_FindField (keyname);
+ 		if (!key)
+diff --git a/source/progs.h b/source/progs.h
+index 6d3aa8a..4a1d1c2 100644
+--- a/source/progs.h
++++ b/source/progs.h
+@@ -38,11 +38,12 @@ typedef struct edict_s
+ 	link_t		area;				// linked to a division node or leaf
+ 	
+ 	int			num_leafs;
+-	short		leafnums[MAX_ENT_LEAFS];
++	int			leafnums[MAX_ENT_LEAFS];
+ 
+ 	entity_state_t	baseline;
+ 	
+ 	float		freetime;			// sv.time when the object was freed
++	unsigned char	alpha;			// ENTALPHA_ENCODE of its alpha (protocol 666)
+ 	entvars_t	v;					// C exported fields from progs
+ // other fields from progs come immediately after
+ } edict_t;
+diff --git a/source/protocol.h b/source/protocol.h
+index 04c1c43..c7be139 100644
+--- a/source/protocol.h
++++ b/source/protocol.h
+@@ -19,7 +19,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ */
+ // protocol.h -- communications protocols
+ 
+-#define	PROTOCOL_VERSION	15
++#define	PROTOCOL_NETQUAKE	15
++#define	PROTOCOL_FITZQUAKE	666		// FitzQuake's and QuakeSpasm's: larger limits, alpha, fog, skyboxes
++#define	PROTOCOL_VERSION	PROTOCOL_NETQUAKE
+ 
+ // if the high bit of the servercmd is set, the low bits are fast update flags:
+ #define	U_MOREBITS	(1<<0)
+@@ -39,6 +41,23 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ #define	U_SKIN		(1<<12)
+ #define	U_EFFECTS	(1<<13)
+ #define	U_LONGENTITY	(1<<14)
++// protocol 666's
++#define	U_EXTEND1		(1<<15)
++#define	U_ALPHA			(1<<16)	// 1 byte, ENTALPHA_ENCODE
++#define	U_FRAME2		(1<<17)	// 1 byte, the frame's high byte
++#define	U_MODEL2		(1<<18)	// 1 byte, the model index's high byte
++#define	U_LERPFINISH	(1<<19)	// 1 byte, 0.0-1.0 maps to 0-255
++#define	U_SCALE			(1<<20)	// 1 byte (RMQ)
++#define	U_EXTEND2		(1<<23)
++
++// an entity's alpha as protocol 666 sends it: 0 the default (opaque), 1 to 255 for 0 to 1
++#define	ENTALPHA_DEFAULT	0
++#define	ENTALPHA_ZERO		1
++#define	ENTALPHA_ONE		255
++#define	ENTALPHA_ENCODE(a)	(((a) == 0) ? ENTALPHA_DEFAULT : Q_rint (CLAMP (1, 254 * (a) + 1, 255)))
++#define	ENTALPHA_DECODE(a)	(((a) == ENTALPHA_DEFAULT) ? 1.0f : ((float) (a) - 1) / 254)
++#define	Q_rint(x)			((x) > 0 ? (int) ((x) + 0.5) : (int) ((x) - 0.5))
++#define	CLAMP(lo, x, hi)	((x) < (lo) ? (lo) : (x) > (hi) ? (hi) : (x))
+ 
+ 
+ #define	SU_VIEWHEIGHT	(1<<0)
+@@ -56,11 +75,30 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ #define	SU_WEAPONFRAME	(1<<12)
+ #define	SU_ARMOR		(1<<13)
+ #define	SU_WEAPON		(1<<14)
++// protocol 666's
++#define	SU_EXTEND1		(1<<15)
++#define	SU_WEAPON2		(1<<16)
++#define	SU_ARMOR2		(1<<17)
++#define	SU_AMMO2		(1<<18)
++#define	SU_SHELLS2		(1<<19)
++#define	SU_NAILS2		(1<<20)
++#define	SU_ROCKETS2		(1<<21)
++#define	SU_CELLS2		(1<<22)
++#define	SU_EXTEND2		(1<<23)
++#define	SU_WEAPONFRAME2	(1<<24)
++#define	SU_WEAPONALPHA	(1<<25)
+ 
+ // a sound with no channel is a local only sound
+ #define	SND_VOLUME		(1<<0)		// a byte
+ #define	SND_ATTENUATION	(1<<1)		// a byte
+ #define	SND_LOOPING		(1<<2)		// a long
++#define	SND_LARGEENTITY	(1<<3)		// protocol 666: a short entity and a byte channel
++#define	SND_LARGESOUND	(1<<4)		// protocol 666: a short sound
++
++// protocol 666's spawnbaseline2 and spawnstatic2
++#define	B_LARGEMODEL	(1<<0)
++#define	B_LARGEFRAME	(1<<1)
++#define	B_ALPHA			(1<<2)
+ 
+ 
+ // defaults for clientinfo messages
+@@ -129,6 +167,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ #define svc_sellscreen		33
+ 
+ #define svc_cutscene		34
++// protocol 666's
++#define	svc_skybox				37	// [string] name
++#define	svc_bf					40	// no data: the bonus flash
++#define	svc_fog					41	// [byte] density [byte] red [byte] green [byte] blue [short] time
++#define	svc_spawnbaseline2		42	// as svc_spawnbaseline, with B_ bits
++#define	svc_spawnstatic2		43	// as svc_spawnstatic, with B_ bits
++#define	svc_spawnstaticsound2	44	// [coord3] [short] sound [byte] vol [byte] aten
+ 
+ //
+ // client to server
+diff --git a/source/quakedef.h b/source/quakedef.h
+index e01c39d..757dfef 100644
+--- a/source/quakedef.h
++++ b/source/quakedef.h
+@@ -66,16 +66,17 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ 
+ #define	ON_EPSILON		0.1			// point on plane side epsilon
+ 
+-#define	MAX_MSGLEN		8000		// max length of a reliable message
+-#define	MAX_DATAGRAM	1024		// max length of unreliable message
++#define	MAX_MSGLEN		64000		// max length of a reliable message, protocol 666's
++#define	MAX_DATAGRAM	64000		// max length of unreliable message to a local client
++#define	DATAGRAM_MTU	1024		// a network packet's, which a protocol 15 peer reads
+ 
+ //
+ // per-level limits
+ //
+-#define	MAX_EDICTS		600			// FIXME: ouch! ouch! ouch!
++#define	MAX_EDICTS		8192		// protocol 666's, as QuakeSpasm's max_edicts
+ #define	MAX_LIGHTSTYLES	64
+-#define	MAX_MODELS		256			// these are sent over the net as bytes
+-#define	MAX_SOUNDS		256			// so they cannot be blindly increased
++#define	MAX_MODELS		4096		// over 256 only in protocol 666
++#define	MAX_SOUNDS		2048
+ 
+ #define	SAVEGAME_COMMENT_LENGTH	39
+ 
+@@ -193,6 +194,7 @@ typedef struct
+ 	int		colormap;
+ 	int		skin;
+ 	int		effects;
++	unsigned char	alpha;		// ENTALPHA_ENCODE (protocol 666)
+ } entity_state_t;
+ 
+ 
+diff --git a/source/render.h b/source/render.h
+index 0f38e5a..3425eef 100644
+--- a/source/render.h
++++ b/source/render.h
+@@ -43,6 +43,7 @@ typedef struct entity_s
+ 	int						update_type;
+ 
+ 	entity_state_t			baseline;		// to fill in defaults in updates
++	unsigned char			alpha;			// ENTALPHA_ENCODE of its alpha (protocol 666)
+ 
+ 	double					msgtime;		// time of last update
+ 	vec3_t					msg_origins[2];	// last two updates (0 is newest)	
+diff --git a/source/server.h b/source/server.h
+index 3d8266d..f80dbb2 100644
+--- a/source/server.h
++++ b/source/server.h
+@@ -59,13 +59,14 @@ typedef struct
+ 	server_state_t	state;			// some actions are only valid during load
+ 
+ 	sizebuf_t	datagram;
++	int			protocol;			// PROTOCOL_NETQUAKE or PROTOCOL_FITZQUAKE
+ 	byte		datagram_buf[MAX_DATAGRAM];
+ 
+ 	sizebuf_t	reliable_datagram;	// copied to all clients at end of frame
+ 	byte		reliable_datagram_buf[MAX_DATAGRAM];
+ 
+ 	sizebuf_t	signon;
+-	byte		signon_buf[8192];
++	byte		signon_buf[MAX_MSGLEN];
+ } server_t;
+ 
+ 
+diff --git a/source/sv_main.c b/source/sv_main.c
+index 1393cb3..b705037 100644
+--- a/source/sv_main.c
++++ b/source/sv_main.c
+@@ -33,6 +33,10 @@ char	localmodels[MAX_MODELS][5];			// inline model names for precache
+ SV_Init
+ ===============
+ */
++// The protocol a new server speaks: 666, FitzQuake's and QuakeSpasm's, as
++// QuakeSpasm's sv_protocol has it, or 15, id's, which older clients read.
++cvar_t	sv_protocol = {"sv_protocol", "666"};
++
+ void SV_Init (void)
+ {
+ 	int		i;
+@@ -48,6 +52,7 @@ void SV_Init (void)
+ 	extern	cvar_t	sv_aim;
+ 
+ 	Cvar_RegisterVariable (&sv_maxvelocity);
++	Cvar_RegisterVariable (&sv_protocol);
+ 	Cvar_RegisterVariable (&sv_gravity);
+ 	Cvar_RegisterVariable (&sv_friction);
+ 	Cvar_RegisterVariable (&sv_edgefriction);
+@@ -81,7 +86,7 @@ void SV_StartParticle (vec3_t org, vec3_t dir, int color, int count)
+ {
+ 	int		i, v;
+ 
+-	if (sv.datagram.cursize > MAX_DATAGRAM-16)
++	if (sv.datagram.cursize > DATAGRAM_MTU-16)
+ 		return;	
+ 	MSG_WriteByte (&sv.datagram, svc_particle);
+ 	MSG_WriteCoord (&sv.datagram, org[0]);
+@@ -149,13 +154,23 @@ void SV_StartSound (edict_t *entity, int channel, char *sample, int volume,
+     
+ 	ent = NUM_FOR_EDICT(entity);
+ 
+-	channel = (ent<<3) | channel;
+-
+ 	field_mask = 0;
+ 	if (volume != DEFAULT_SOUND_PACKET_VOLUME)
+ 		field_mask |= SND_VOLUME;
+ 	if (attenuation != DEFAULT_SOUND_PACKET_ATTENUATION)
+ 		field_mask |= SND_ATTENUATION;
++	if (ent >= 8192)
++	{
++		if (sv.protocol == PROTOCOL_NETQUAKE)
++			return;
++		field_mask |= SND_LARGEENTITY;
++	}
++	if (sound_num >= 256)
++	{
++		if (sv.protocol == PROTOCOL_NETQUAKE)
++			return;
++		field_mask |= SND_LARGESOUND;
++	}
+ 
+ // directed messages go only to the entity the are targeted on
+ 	MSG_WriteByte (&sv.datagram, svc_sound);
+@@ -164,8 +179,17 @@ void SV_StartSound (edict_t *entity, int channel, char *sample, int volume,
+ 		MSG_WriteByte (&sv.datagram, volume);
+ 	if (field_mask & SND_ATTENUATION)
+ 		MSG_WriteByte (&sv.datagram, attenuation*64);
+-	MSG_WriteShort (&sv.datagram, channel);
+-	MSG_WriteByte (&sv.datagram, sound_num);
++	if (field_mask & SND_LARGEENTITY)
++	{
++		MSG_WriteShort (&sv.datagram, ent);
++		MSG_WriteByte (&sv.datagram, channel);
++	}
++	else
++		MSG_WriteShort (&sv.datagram, (ent<<3) | channel);
++	if (field_mask & SND_LARGESOUND)
++		MSG_WriteShort (&sv.datagram, sound_num);
++	else
++		MSG_WriteByte (&sv.datagram, sound_num);
+ 	for (i=0 ; i<3 ; i++)
+ 		MSG_WriteCoord (&sv.datagram, entity->v.origin[i]+0.5*(entity->v.mins[i]+entity->v.maxs[i]));
+ }           
+@@ -196,7 +220,7 @@ void SV_SendServerinfo (client_t *client)
+ 	MSG_WriteString (&client->message,message);
+ 
+ 	MSG_WriteByte (&client->message, svc_serverinfo);
+-	MSG_WriteLong (&client->message, PROTOCOL_VERSION);
++	MSG_WriteLong (&client->message, sv.protocol);
+ 	MSG_WriteByte (&client->message, svs.maxclients);
+ 
+ 	if (!coop.value && deathmatch.value)
+@@ -452,6 +476,10 @@ void SV_WriteEntitiesToClient (edict_t	*clent, sizebuf_t *msg)
+ 			if (!ent->v.modelindex || !pr_strings[ent->v.model])
+ 				continue;
+ 
++// nor those protocol 15 cannot send
++			if (sv.protocol == PROTOCOL_NETQUAKE && ((int) ent->v.modelindex & 0xFF00))
++				continue;
++
+ 			for (i=0 ; i < ent->num_leafs ; i++)
+ 				if (pvs[ent->leafnums[i] >> 3] & (1 << (ent->leafnums[i]&7) ))
+ 					break;
+@@ -460,7 +488,20 @@ void SV_WriteEntitiesToClient (edict_t	*clent, sizebuf_t *msg)
+ 				continue;		// not visible
+ 		}
+ 
+-		if (msg->maxsize - msg->cursize < 16)
++		// the alpha the progs give it, when they have the field (protocol 666);
++		// otherwise the map's, which ED_ParseEdict keeps
++		if (sv.protocol != PROTOCOL_NETQUAKE)
++		{
++			eval_t	*alpha = GetEdictFieldValue (ent, "alpha");
++
++			if (alpha)
++				ent->alpha = ENTALPHA_ENCODE (alpha->_float);
++			// an invisible entity is not sent, unless it has effects
++			if (ent != clent && ent->alpha == ENTALPHA_ZERO && !ent->v.effects)
++				continue;
++		}
++
++		if (msg->maxsize - msg->cursize < 24)
+ 		{
+ 			Con_Printf ("packet overflow\n");
+ 			return;
+@@ -505,7 +546,21 @@ void SV_WriteEntitiesToClient (edict_t	*clent, sizebuf_t *msg)
+ 
+ 		if (e >= 256)
+ 			bits |= U_LONGENTITY;
+-			
++
++		if (sv.protocol != PROTOCOL_NETQUAKE)
++		{
++			if (ent->baseline.alpha != ent->alpha)
++				bits |= U_ALPHA;
++			if (bits & U_FRAME && (int) ent->v.frame & 0xFF00)
++				bits |= U_FRAME2;
++			if (bits & U_MODEL && (int) ent->v.modelindex & 0xFF00)
++				bits |= U_MODEL2;
++			if (bits >= 65536)
++				bits |= U_EXTEND1;
++			if (bits >= 16777216)
++				bits |= U_EXTEND2;
++		}
++
+ 		if (bits >= 256)
+ 			bits |= U_MOREBITS;
+ 
+@@ -516,6 +571,10 @@ void SV_WriteEntitiesToClient (edict_t	*clent, sizebuf_t *msg)
+ 		
+ 		if (bits & U_MOREBITS)
+ 			MSG_WriteByte (msg, bits>>8);
++		if (bits & U_EXTEND1)
++			MSG_WriteByte (msg, bits>>16);
++		if (bits & U_EXTEND2)
++			MSG_WriteByte (msg, bits>>24);
+ 		if (bits & U_LONGENTITY)
+ 			MSG_WriteShort (msg,e);
+ 		else
+@@ -543,6 +602,12 @@ void SV_WriteEntitiesToClient (edict_t	*clent, sizebuf_t *msg)
+ 			MSG_WriteCoord (msg, ent->v.origin[2]);
+ 		if (bits & U_ANGLE3)
+ 			MSG_WriteAngle(msg, ent->v.angles[2]);
++		if (bits & U_ALPHA)
++			MSG_WriteByte (msg, ent->alpha);
++		if (bits & U_FRAME2)
++			MSG_WriteByte (msg, (int) ent->v.frame >> 8);
++		if (bits & U_MODEL2)
++			MSG_WriteByte (msg, (int) ent->v.modelindex >> 8);
+ 	}
+ }
+ 
+@@ -651,10 +716,40 @@ void SV_WriteClientdataToMessage (edict_t *ent, sizebuf_t *msg)
+ //	if (ent->v.weapon)
+ 		bits |= SU_WEAPON;
+ 
++	if (sv.protocol != PROTOCOL_NETQUAKE)
++	{
++		if (SV_ModelIndex (pr_strings + ent->v.weaponmodel) & 0xFF00)
++			bits |= SU_WEAPON2;
++		if ((int) ent->v.armorvalue & 0xFF00)
++			bits |= SU_ARMOR2;
++		if ((int) ent->v.currentammo & 0xFF00)
++			bits |= SU_AMMO2;
++		if ((int) ent->v.ammo_shells & 0xFF00)
++			bits |= SU_SHELLS2;
++		if ((int) ent->v.ammo_nails & 0xFF00)
++			bits |= SU_NAILS2;
++		if ((int) ent->v.ammo_rockets & 0xFF00)
++			bits |= SU_ROCKETS2;
++		if ((int) ent->v.ammo_cells & 0xFF00)
++			bits |= SU_CELLS2;
++		if (bits & SU_WEAPONFRAME && (int) ent->v.weaponframe & 0xFF00)
++			bits |= SU_WEAPONFRAME2;
++		if (bits & SU_WEAPON && ent->alpha != ENTALPHA_DEFAULT)
++			bits |= SU_WEAPONALPHA;
++		if (bits >= 65536)
++			bits |= SU_EXTEND1;
++		if (bits >= 16777216)
++			bits |= SU_EXTEND2;
++	}
++
+ // send the data
+ 
+ 	MSG_WriteByte (msg, svc_clientdata);
+ 	MSG_WriteShort (msg, bits);
++	if (bits & SU_EXTEND1)
++		MSG_WriteByte (msg, bits>>16);
++	if (bits & SU_EXTEND2)
++		MSG_WriteByte (msg, bits>>24);
+ 
+ 	if (bits & SU_VIEWHEIGHT)
+ 		MSG_WriteChar (msg, ent->v.view_ofs[2]);
+@@ -702,6 +797,25 @@ void SV_WriteClientdataToMessage (edict_t *ent, sizebuf_t *msg)
+ 			}
+ 		}
+ 	}
++
++	if (bits & SU_WEAPON2)
++		MSG_WriteByte (msg, SV_ModelIndex (pr_strings + ent->v.weaponmodel) >> 8);
++	if (bits & SU_ARMOR2)
++		MSG_WriteByte (msg, (int) ent->v.armorvalue >> 8);
++	if (bits & SU_AMMO2)
++		MSG_WriteByte (msg, (int) ent->v.currentammo >> 8);
++	if (bits & SU_SHELLS2)
++		MSG_WriteByte (msg, (int) ent->v.ammo_shells >> 8);
++	if (bits & SU_NAILS2)
++		MSG_WriteByte (msg, (int) ent->v.ammo_nails >> 8);
++	if (bits & SU_ROCKETS2)
++		MSG_WriteByte (msg, (int) ent->v.ammo_rockets >> 8);
++	if (bits & SU_CELLS2)
++		MSG_WriteByte (msg, (int) ent->v.ammo_cells >> 8);
++	if (bits & SU_WEAPONFRAME2)
++		MSG_WriteByte (msg, (int) ent->v.weaponframe >> 8);
++	if (bits & SU_WEAPONALPHA)
++		MSG_WriteByte (msg, ent->alpha);
+ }
+ 
+ /*
+@@ -711,11 +825,12 @@ SV_SendClientDatagram
+ */
+ qboolean SV_SendClientDatagram (client_t *client)
+ {
+-	byte		buf[MAX_DATAGRAM];
++	static byte	buf[MAX_DATAGRAM];
+ 	sizebuf_t	msg;
+ 	
+ 	msg.data = buf;
+-	msg.maxsize = sizeof(buf);
++	// a network packet's to a remote client, as QuakeSpasm limits it
++	msg.maxsize = strcmp (client->netconnection->address, "LOCAL") ? DATAGRAM_MTU : sizeof(buf);
+ 	msg.cursize = 0;
+ 
+ 	MSG_WriteByte (&msg, svc_time);
+@@ -916,7 +1031,7 @@ SV_CreateBaseline
+ */
+ void SV_CreateBaseline (void)
+ {
+-	int			i;
++	int			i, bits;
+ 	edict_t			*svent;
+ 	int				entnum;	
+ 		
+@@ -940,22 +1055,52 @@ void SV_CreateBaseline (void)
+ 		{
+ 			svent->baseline.colormap = entnum;
+ 			svent->baseline.modelindex = SV_ModelIndex("progs/player.mdl");
++			svent->baseline.alpha = ENTALPHA_DEFAULT;
+ 		}
+ 		else
+ 		{
+ 			svent->baseline.colormap = 0;
+ 			svent->baseline.modelindex =
+ 				SV_ModelIndex(pr_strings + svent->v.model);
++			svent->baseline.alpha = svent->alpha;
++		}
++
++		bits = 0;
++		if (sv.protocol == PROTOCOL_NETQUAKE)
++		{
++			// what protocol 15 cannot send
++			if (svent->baseline.modelindex & 0xFF00)
++				svent->baseline.modelindex = 0;
++			if (svent->baseline.frame & 0xFF00)
++				svent->baseline.frame = 0;
++			svent->baseline.alpha = ENTALPHA_DEFAULT;
++		}
++		else
++		{
++			if (svent->baseline.modelindex & 0xFF00)
++				bits |= B_LARGEMODEL;
++			if (svent->baseline.frame & 0xFF00)
++				bits |= B_LARGEFRAME;
++			if (svent->baseline.alpha != ENTALPHA_DEFAULT)
++				bits |= B_ALPHA;
+ 		}
+ 		
+ 	//
+ 	// add to the message
+ 	//
+-		MSG_WriteByte (&sv.signon,svc_spawnbaseline);		
++		MSG_WriteByte (&sv.signon, bits ? svc_spawnbaseline2 : svc_spawnbaseline);
+ 		MSG_WriteShort (&sv.signon,entnum);
++		if (bits)
++			MSG_WriteByte (&sv.signon, bits);
+ 
+-		MSG_WriteByte (&sv.signon, svent->baseline.modelindex);
+-		MSG_WriteByte (&sv.signon, svent->baseline.frame);
++		if (bits & B_LARGEMODEL)
++			MSG_WriteShort (&sv.signon, svent->baseline.modelindex);
++		else
++			MSG_WriteByte (&sv.signon, svent->baseline.modelindex);
++		if (bits & B_LARGEFRAME)
++			MSG_WriteShort (&sv.signon, svent->baseline.frame);
++		else
++			MSG_WriteByte (&sv.signon, svent->baseline.frame);
+ 		MSG_WriteByte (&sv.signon, svent->baseline.colormap);
+ 		MSG_WriteByte (&sv.signon, svent->baseline.skin);
+ 		for (i=0 ; i<3 ; i++)
+@@ -963,6 +1108,8 @@ void SV_CreateBaseline (void)
+ 			MSG_WriteCoord(&sv.signon, svent->baseline.origin[i]);
+ 			MSG_WriteAngle(&sv.signon, svent->baseline.angles[i]);
+ 		}
++		if (bits & B_ALPHA)
++			MSG_WriteByte (&sv.signon, svent->baseline.alpha);
+ 	}
+ }
+ 
+@@ -1071,6 +1218,12 @@ void SV_SpawnServer (char *server)
+ 	memset (&sv, 0, sizeof(sv));
+ 
+ 	strcpy (sv.name, server);
++	sv.protocol = (int) sv_protocol.value;
++	if (sv.protocol != PROTOCOL_NETQUAKE && sv.protocol != PROTOCOL_FITZQUAKE)
++	{
++		Con_Printf ("sv_protocol %i is not 15 or 666: speaking 666\n", sv.protocol);
++		sv.protocol = PROTOCOL_FITZQUAKE;
++	}
+ 
+ // load progs to get entity field count
+ 	PR_LoadProgs ();

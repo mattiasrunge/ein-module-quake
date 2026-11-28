@@ -42,3 +42,11 @@ qboolean GL_EndFrame (void)
 {
 	return false;
 }
+
+void GL_Fog (float density, float red, float green, float blue, float time)
+{
+}
+
+void GL_SkyName (char *name)
+{
+}

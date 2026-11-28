@@ -56,4 +56,10 @@ void GL_Particle (particle_t *p);
 // the next frame.
 qboolean GL_EndFrame (void);
 
+// Protocol 666's fog (svc_fog: its density, colour and how long it takes
+// to fade there) and skybox (svc_skybox), which the map's worldspawn sets
+// too (fog, sky) and the console's fog and sky commands.
+void GL_Fog (float density, float red, float green, float blue, float time);
+void GL_SkyName (char *name);
+
 #endif

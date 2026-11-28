@@ -91,15 +91,26 @@ RUN git -C /src apply /src/watervis.patch
 COPY lerp.patch /src/
 RUN git -C /src apply /src/lerp.patch
 
+# FitzQuake's protocol 666, as QuakeSpasm speaks it, beside id's 15: the larger limits (8192 edicts,
+# 4096 models, 2048 sounds, 64000-byte messages, 4096 static entities), entity alpha, fog and
+# skyboxes from the server. The server speaks 666 unless sv_protocol 15; the client plays either,
+# and id's protocol 15 demos.
+COPY protocol.patch /src/
+RUN git -C /src apply /src/protocol.patch
+
+# BSP2 and 2PSB maps, and BSP 29 maps past 32767 clipnodes or nodes, as QuakeSpasm loads them.
+COPY bsp2.patch /src/
+RUN git -C /src apply /src/bsp2.patch
+
 WORKDIR /src/source
 COPY quakegeneric_ein.c sys_ein.c snd_ein.c cd_ein.c net_ein.c server_ein.c watervis_ein.c build.sh ./
-COPY gl_ein.h gl_local.h gl_main.c gl_world.c gl_models.c gl_shaders.c gl_null.c ./
+COPY gl_ein.h gl_local.h gl_main.c gl_world.c gl_models.c gl_shaders.c gl_sky.c gl_null.c ./
 
 # The game and its dedicated server (build.sh). Two compilers at a time keep the build's memory small
 # beside a running EiN.
 ENV EMCC_CORES=2
 RUN sh build.sh \
-  && echo "quakegeneric ${QUAKEGENERIC_COMMIT} with resolution.patch, scale.patch, files.patch, long-strings.patch, connect.patch, menu.patch, controls.patch, webgl.patch, watervis.patch and lerp.patch, id Software's Quake ${QUAKE_COMMIT}'s WinQuake sound and datagram driver, modes up to 1920x1200, a WebGL 2 renderer beside the software one: the game and its dedicated server; emsdk 6.0.13" > /out/quake-build.txt
+  && echo "quakegeneric ${QUAKEGENERIC_COMMIT} with resolution.patch, scale.patch, files.patch, long-strings.patch, connect.patch, menu.patch, controls.patch, webgl.patch, watervis.patch, lerp.patch, protocol.patch and bsp2.patch, id Software's Quake ${QUAKE_COMMIT}'s WinQuake sound and datagram driver, modes up to 1920x1200, a WebGL 2 renderer beside the software one: the game and its dedicated server; emsdk 6.0.13" > /out/quake-build.txt
 
 FROM scratch
 COPY --from=build /out/ /
