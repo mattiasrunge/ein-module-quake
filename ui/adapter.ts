@@ -1,3 +1,4 @@
+import { shq } from '@ein/ui/lib';
 import { execCommand } from '@ein/ui/signals';
 import type { GameAdapter, Written } from '@games/adapter';
 import type { Game } from '../lib/api.ts';
@@ -18,7 +19,9 @@ const KEPT = /^(config\.cfg|q3config\.cfg|s\d+\.sav|save\/(?!current\/)[^/]+\/[^
 export const adapter: GameAdapter<Game> = {
   module: 'quake',
   title: 'Quake',
-  list: () => execCommand<Game[]>('quake-games'),
+  list: (path) => execCommand<Game[]>(path ? `quake-games ${shq(path)}` : 'quake-games'),
+  // A game is listed by its folder, so it can be shared by a link to it.
+  shares: true,
   async start({ game, onKeep, ...options }) {
     if (game.state !== 'installed') throw new Error(`${game.title} is not here yet`);
     // The keys' drawing (`QuakePad`) shows the binds the game starts with and those it writes.

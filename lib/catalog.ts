@@ -121,9 +121,16 @@ async function readGame(cmd: Command, name: string): Promise<InstalledGame | und
 
 /**
  * The games in `GAMES`, id's first, then the free games the module offers whose folders are not
- * there, as `quake-games` lists them.
+ * there, as `quake-games` lists them. With `only`, a game's folder in `GAMES`, that game alone, or
+ * none when it is no game: what someone who opened a share link to it reads, who may not list `GAMES`.
  */
-export async function findGames(cmd: Command): Promise<Game[]> {
+export async function findGames(cmd: Command, only?: string): Promise<Game[]> {
+  if (only !== undefined) {
+    const name = only.slice(GAMES.length + 1);
+    if (!only.startsWith(`${GAMES}/`) || !name || name.includes('/') || name.startsWith('.')) return [];
+    const game = await readGame(cmd, name).catch(() => undefined);
+    return game ? [game] : [];
+  }
   // No folder yet is no games yet: a fetch or a drop makes it.
   const children = await cmd.sys.vfs.children(cmd.access, GAMES).catch(() => []);
   const folders = children.filter((child) => child.node.type === 'directory' && !child.name.startsWith('.')).map((child) => child.name);
