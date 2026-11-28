@@ -94,6 +94,23 @@ static float		*particles;
 static int			num_particles, particles_room;
 static GLuint		particle_vao, particle_vbo;
 
+// Blending for an entity drawn `alpha` opaque: none at 1, and then the
+// depth it is drawn at kept.
+void GLM_Blend (float alpha)
+{
+	if (alpha < 1)
+	{
+		glEnable (GL_BLEND);
+		glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glDepthMask (GL_FALSE);
+	}
+	else
+	{
+		glDisable (GL_BLEND);
+		glDepthMask (GL_TRUE);
+	}
+}
+
 //=============================================================================
 // Alias models
 
@@ -541,6 +558,8 @@ static void GLM_DrawAlias (entity_t *e, int ambient, int shade, vec3_t tint)
 	GL_Matrix (origin, lerped, true, mvp);
 	glUniformMatrix4fv (p->u[UF_MVP], 1, GL_FALSE, mvp);
 	glUniform1f (p->u[UF_BLEND], blend);
+	glUniform1f (p->u[UF_ALPHA], ENTALPHA_DECODE (e->alpha));
+	GLM_Blend (ENTALPHA_DECODE (e->alpha));
 	glUniform3fv (p->u[UF_SCALE], 1, mdl->scale);
 	glUniform3fv (p->u[UF_ORIGIN], 1, mdl->scale_origin);
 
@@ -582,6 +601,7 @@ static void GLM_DrawAlias (entity_t *e, int ambient, int shade, vec3_t tint)
 	glDrawElements (GL_TRIANGLES, a->numindices, GL_UNSIGNED_SHORT, 0);
 	glBindVertexArray (0);
 	GL_LinearSampler (TU_TEXTURE, false);
+	GLM_Blend (1);
 }
 
 //=============================================================================
@@ -705,6 +725,8 @@ static void GLM_DrawSprite (entity_t *e)
 	p = GL_UseProgram (gl_linear ? P_SPRITE_LINEAR : P_SPRITE);
 	glUniformMatrix4fv (p->u[UF_MVP], 1, GL_FALSE, gl_viewproj);
 	glUniform2i (p->u[UF_SIZE], frame->width, frame->height);
+	glUniform1f (p->u[UF_ALPHA], ENTALPHA_DECODE (e->alpha));
+	GLM_Blend (ENTALPHA_DECODE (e->alpha));
 	GL_Bind (TU_TEXTURE, GL_TEXTURE_2D, gl_linear ? s->rgba : s->index);
 
 	if (!sprite_vao)
@@ -724,6 +746,7 @@ static void GLM_DrawSprite (entity_t *e)
 	GL_LinearSampler (TU_TEXTURE, true);
 	glDrawArrays (GL_TRIANGLE_FAN, 0, 4);
 	GL_LinearSampler (TU_TEXTURE, false);
+	GLM_Blend (1);
 	glBindVertexArray (0);
 }
 
@@ -739,7 +762,7 @@ draw them: brush models, sprites, and alias models in the light under them
 and of the dynamic lights near them, not the player's own.
 =============
 */
-void GLM_DrawEntities (void)
+void GLM_DrawEntities (qboolean translucent)
 {
 	entity_t	*e;
 	vec3_t		dist;
@@ -753,6 +776,10 @@ void GLM_DrawEntities (void)
 	for (i = 0 ; i < cl_numvisedicts ; i++)
 	{
 		e = cl_visedicts[i];
+		// translucent ones after the water, as QuakeSpasm draws them; an
+		// invisible one (alpha 0) not at all
+		if (e->alpha == ENTALPHA_ZERO || (e->alpha != ENTALPHA_DEFAULT && e->alpha != ENTALPHA_ONE) != translucent)
+			continue;
 		if (e->model->type == mod_brush)
 		{
 			GLW_DrawBrushEntity (e);
@@ -798,7 +825,7 @@ The player's weapon, as R_DrawViewModel draws it, never darker than 24,
 in front of everything (the software renderer's z scaled by 3 for it).
 =============
 */
-void GLM_DrawViewModel (void)
+void GLM_DrawViewModel (qboolean translucent)
 {
 	entity_t	*e = &cl.viewent;
 	dlight_t	*dl;
@@ -808,7 +835,8 @@ void GLM_DrawViewModel (void)
 	int			lnum, ambient, shade;
 
 	if (!r_drawviewmodel.value || r_fov_greater_than_90 || (cl.items & IT_INVISIBILITY)
-		|| cl.stats[STAT_HEALTH] <= 0 || !e->model)
+		|| cl.stats[STAT_HEALTH] <= 0 || !e->model || e->alpha == ENTALPHA_ZERO
+		|| (e->alpha != ENTALPHA_DEFAULT && e->alpha != ENTALPHA_ONE) != translucent)
 		return;
 
 	currententity = e;

@@ -323,16 +323,18 @@ for water and for those of them at 0.
 */
 float GLW_LiquidAlpha (texture_t *t)
 {
-	float	alpha = 0;
+	float	alpha = 0, water;
 
+	// the map's own, from its worldspawn (gl_sky.c), before the player's
+	water = gl_map_alpha[0] >= 0 ? gl_map_alpha[0] : r_wateralpha.value;
 	if (!Q_strncasecmp (t->name, "*lava", 5))
-		alpha = r_lavaalpha.value;
+		alpha = gl_map_alpha[1] >= 0 ? gl_map_alpha[1] : r_lavaalpha.value;
 	else if (!Q_strncasecmp (t->name, "*tele", 5))
-		alpha = r_telealpha.value;
+		alpha = gl_map_alpha[3] >= 0 ? gl_map_alpha[3] : r_telealpha.value;
 	else if (!Q_strncasecmp (t->name, "*slime", 6))
-		alpha = r_slimealpha.value;
+		alpha = gl_map_alpha[2] >= 0 ? gl_map_alpha[2] : r_slimealpha.value;
 	if (alpha <= 0)
-		alpha = r_wateralpha.value;
+		alpha = water;
 	return alpha < 0 ? 0 : alpha > 1 ? 1 : alpha;
 }
 
@@ -460,7 +462,7 @@ static int GLW_LightSize (model_t *model)
 =============
 GLW_LoadLit
 
-The colours of the BSP's light, from a .lit beside it (maps/<map>.lit, as
+The colours of the world's light, from a .lit beside it (maps/<map>.lit, as
 QuakeSpasm looks for it): "QLIT", version 1, then three bytes for each byte
 of the BSP's light. Without one, or with one of another size, the light is
 the BSP's own, white.
@@ -476,10 +478,11 @@ static void GLW_LoadLit (glbrush_t *b, model_t *model)
 	b->channels = 1;
 	b->lightdata = model->lightdata;
 	b->lit = NULL;
-	// a submodel ("*1") is its BSP's: the world's
+	// a submodel ("*1") is its BSP's: the world's. Only the world's is looked
+	// for: the BSPs of boxes and the like (b_bh25.bsp) have none.
 	if (model->name[0] == '*' && cl.worldmodel && model->surfaces == cl.worldmodel->surfaces)
 		named = cl.worldmodel;
-	if (!model->lightdata || named->name[0] == '*')
+	if (!model->lightdata || named != cl.worldmodel)
 		return;
 	COM_StripExtension (named->name, name);
 	strcat (name, ".lit");
@@ -804,7 +807,7 @@ texture is the one its animation shows now (R_TextureAnimation, for
 currententity).
 =============
 */
-static void GLW_DrawBatches (glbrush_t *b, float *mvp, qboolean translucent)
+static void GLW_DrawBatches (glbrush_t *b, float *mvp, qboolean translucent, float entalpha)
 {
 	float			alpha;
 	extern cvar_t	d_mipscale, d_mipcap;
@@ -839,12 +842,19 @@ static void GLW_DrawBatches (glbrush_t *b, float *mvp, qboolean translucent)
 						0.25 * 0.8 * d_mipscale.value);
 					glUniform1i (p->u[UF_MINMIP], minmip < 0 ? 0 : minmip > 3 ? 3 : minmip);
 					glUniform1i (p->u[UF_COLOURED], b->channels == 3);
+					glUniform1f (p->u[UF_ALPHA], entalpha);
+					GLM_Blend (entalpha);
 				}
 				else if (pass == 1)
 				{
 					p = GL_UseProgram (gl_linear ? P_TURB_LINEAR : P_TURB);
 					glUniform1f (p->u[UF_TIME], cl.time);
 					glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+				}
+				else if (GLS_SkyBox ())
+				{
+					p = GL_UseProgram (gl_linear ? P_SKYBOX_LINEAR : P_SKYBOX);
+					GL_LinearSampler (TU_TEXTURE, true);
 				}
 				else
 				{
@@ -861,13 +871,19 @@ static void GLW_DrawBatches (glbrush_t *b, float *mvp, qboolean translucent)
 			}
 			t = batch->flags ? batch->texture : R_TextureAnimation (batch->texture);
 			GLW_Texture (t, batch->flags);
+			if (pass == 2 && GLS_SkyBox ())
+			{
+				GL_Bind (TU_TEXTURE, GL_TEXTURE_2D_ARRAY, GLS_SkyBox ());
+				GLW_DrawBatch (batch);
+				continue;
+			}
 			GL_Bind (TU_TEXTURE, GL_TEXTURE_2D, gl_linear ? t->gl_rgba : t->gl_index);
 			if (batch->flags & SURF_DRAWSKY)
 				GL_Bind (TU_SECOND, GL_TEXTURE_2D, gl_linear ? t->gl_frontrgba : t->gl_front);
 			glUniform2i (p->u[UF_SIZE], t->width, t->height);
 			if (pass == 1)
 			{
-				alpha = translucent ? GLW_LiquidAlpha (batch->texture) : 1;
+				alpha = (translucent ? GLW_LiquidAlpha (batch->texture) : 1) * entalpha;
 				glUniform1f (p->u[UF_ALPHA], alpha);
 				if (alpha < 1)
 					glEnable (GL_BLEND);
@@ -877,11 +893,8 @@ static void GLW_DrawBatches (glbrush_t *b, float *mvp, qboolean translucent)
 			}
 			GLW_DrawBatch (batch);
 		}
-		if (pass == 1 && p)
-		{
-			glDisable (GL_BLEND);
-			glDepthMask (GL_TRUE);
-		}
+		if (p)
+			GLM_Blend (1);
 	}
 	glBindVertexArray (0);
 }
@@ -960,7 +973,7 @@ void GLW_DrawWorld (void)
 	GLW_WorldNode (b, cl.worldmodel->nodes);
 	in_world = false;
 	GLW_Batch ();
-	GLW_DrawBatches (b, gl_viewproj, false);
+	GLW_DrawBatches (b, gl_viewproj, false, 1);
 }
 
 /*
@@ -1031,7 +1044,7 @@ void GLW_DrawBrushEntity (entity_t *e)
 	}
 	GLW_Batch ();
 	GL_EntityMatrix (e, false, mvp);
-	GLW_DrawBatches (b, mvp, true);
+	GLW_DrawBatches (b, mvp, true, ENTALPHA_DECODE (e->alpha));
 	currententity = &cl_entities[0];
 }
 
@@ -1054,5 +1067,5 @@ void GLW_DrawWater (void)
 		t->gl_chain = surf;
 	}
 	GLW_Batch ();
-	GLW_DrawBatches (water_brush, gl_viewproj, true);
+	GLW_DrawBatches (water_brush, gl_viewproj, true, 1);
 }
