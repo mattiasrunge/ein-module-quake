@@ -204,6 +204,30 @@ by its own visibility. What the monsters see is unchanged. `r_watervis 0` draws
 only what the map's own visibility has. The software renderer draws the liquids
 opaque.
 
+Maps and mods made for QuakeSpasm play as they do there. The game speaks
+FitzQuake's protocol 666, as QuakeSpasm does, with its larger limits (8192
+entities, 4096 models, 2048 sounds, larger messages and more static entities),
+and still id's protocol 15: id's demos play, and a game hosted here speaks 666
+unless its console's `sv_protocol 15` asks for id's. BSP2 and 2PSB maps load,
+and maps past the old limits of nodes and clipnodes, in both renderers. In
+WebGL:
+
+- **Fog**, from the map (its worldspawn's `fog`, "density red green blue"),
+  the server or the console's `fog` command (`fog 0.05`, `fog 0.3 0.3 0.4`, or
+  all four and a time to fade over), thicker with the distance. Nearest bands
+  it in 16 steps, as the colormap bands the light (`gl_fogbands`, 0 for smooth).
+  The sky takes `r_skyfog` (0.5) of its colour, or the map's own `skyfog`.
+- **Skyboxes**, from the map's `sky` key, the server or the console's `sky
+  <name>`: six pictures, `gfx/env/<name>rt.tga` (or `.pcx`) and `bk`, `lf`,
+  `ft`, `up`, `dn`, in a pak or in the game's `gfx/env` folder. Without one the
+  sky scrolls as before.
+- **Translucent entities**: a door, a wall or a model whose `alpha` the map or
+  the game gives is drawn as translucent, after the water; the map's
+  `wateralpha`, `lavaalpha`, `slimealpha` and `telealpha` set its liquids'.
+
+The software renderer draws none of these: no fog, the scrolling sky, and every
+entity opaque.
+
 The WebGL renderer blends the models' poses and the monsters' steps, as
 QuakeSpasm does: a monster or a weapon between two of its frames moves
 smoothly rather than in the server's tenths of a second (`r_lerpmodels`, 0 to
@@ -488,6 +512,7 @@ them, and **music** turns the music on and off.
 | `engine/gl_world.c`                                                               | The WebGL renderer's world and brush models: their surfaces, lightmaps, water and sky.                                                                                                                                            |
 | `engine/gl_models.c`                                                              | The WebGL renderer's alias models, sprites and particles.                                                                                                                                                                         |
 | `engine/gl_shaders.c`                                                             | The WebGL renderer's GLSL ES 3.00 shaders. `engine/gl_null.c` is the dedicated server's, which draws nothing.                                                                                                                     |
+| `engine/gl_sky.c`                                                                 | The WebGL renderer's skyboxes and fog, and the map's liquid alphas.                                                                                                                                                               |
 | `engine/watervis_ein.c`                                                           | What a leaf sees through liquids on a map vised as if they were walls, for translucent water.                                                                                                                                     |
 | `engine/sys_ein.c`                                                                | The system driver: files, the clock, and Quit and errors that end the game.                                                                                                                                                       |
 | `engine/snd_ein.c`                                                                | The sound card: the ring Quake's mixer paints, handed to the page.                                                                                                                                                                |
@@ -499,6 +524,8 @@ them, and **music** turns the music on and off.
 | `engine/webgl.patch`                                                              | Hands the view, a new map and the particles to the WebGL renderer while it draws, and puts the renderer and its filtering in Video Options.                                                                                       |
 | `engine/watervis.patch`                                                           | Has the server send what a player sees through liquids too (`engine/watervis_ein.c`).                                                                                                                                             |
 | `engine/lerp.patch`                                                               | Keeps on each entity what the WebGL renderer blends its poses and moves with.                                                                                                                                                     |
+| `engine/protocol.patch`                                                           | FitzQuake's protocol 666 beside id's 15, with QuakeSpasm's larger limits.                                                                                                                                                         |
+| `engine/bsp2.patch`                                                               | BSP2 and 2PSB maps, and maps past the old node and clipnode limits.                                                                                                                                                               |
 | `engine/long-strings.patch`                                                       | Saves strings longer than 256 bytes, as LibreQuake's are, instead of overrunning the buffer they were written into.                                                                                                               |
 | `engine/net_ein.c`, `engine/connect.patch`                                        | Quake's network: the loopback, and id's datagram driver over the page's or the worker's; connecting without waiting in a loop for answers.                                                                                        |
 | `engine/controls.patch`                                                           | Puts the previous weapon (`impulse 12`) beside the next in Customize controls, and a Crosshair line in Options.                                                                                                                   |
@@ -558,7 +585,8 @@ with `engine/resolution.patch`, `engine/scale.patch`, `engine/files.patch` and
 `engine/long-strings.patch` applied, id Software's `snd_dma.c`, `snd_mem.c`,
 `snd_mix.c` and `net_dgrm.c` from WinQuake at the commit it pins, with
 `engine/connect.patch`, `engine/menu.patch`, `engine/controls.patch`,
-`engine/webgl.patch`, `engine/watervis.patch` and `engine/lerp.patch` applied, and the `engine/` files added.
+`engine/webgl.patch`, `engine/watervis.patch`, `engine/lerp.patch`,
+`engine/protocol.patch` and `engine/bsp2.patch` applied, and the `engine/` files added.
 The source of `assets/quake2.wasm` is Yamagi Quake II at the commit
 `engine/quake2/Containerfile` pins, its 8.70 release, with
 `engine/quake2/main.patch`, `engine/quake2/system.patch`,
