@@ -58,6 +58,7 @@ typedef enum
 	P_WORLD, P_WORLD_LINEAR,
 	P_TURB, P_TURB_LINEAR,
 	P_SKY, P_SKY_LINEAR,
+	P_SKYBOX, P_SKYBOX_LINEAR,
 	P_ALIAS, P_ALIAS_LINEAR,
 	P_SPRITE, P_SPRITE_LINEAR,
 	P_PARTICLE,
@@ -73,6 +74,7 @@ typedef enum
 	UF_SCALE, UF_ORIGIN, UF_LIGHTVEC, UF_AMBIENT, UF_SHADE, UF_NORMALS, UF_CMAP,
 	UF_PARTICLE, UF_VIEWPORT,
 	UF_VRECT, UF_SHIFTS, UF_WARP, UF_BLEND, UF_COLOURED, UF_LITPALETTE,
+	UF_FOG, UF_FOGBANDS, UF_SKYFOG, UF_EYE,
 	UF_COUNT
 } gluniformid_t;
 
@@ -132,10 +134,18 @@ void GLW_DrawWorld (void);
 void GLW_DrawBrushEntity (entity_t *e);
 void GLW_DrawWater (void);
 
+// gl_sky.c
+extern float	gl_map_alpha[4];	// the map's water, lava, slime and teleporter alpha; below 0 none
+void GLS_Register (void);
+void GLS_NewMap (void);
+void GLS_Frame (void);
+GLuint GLS_SkyBox (void);
+
 // gl_models.c
 void GLM_Register (void);
-void GLM_DrawEntities (void);
-void GLM_DrawViewModel (void);
+void GLM_DrawEntities (qboolean translucent);
+void GLM_DrawViewModel (qboolean translucent);
+void GLM_Blend (float alpha);
 void GLM_BeginParticles (void);
 void GLM_EndParticles (void);
 

@@ -35,6 +35,7 @@ static const char *uniform_names[UF_COUNT] =
 	"u_scale", "u_origin", "u_lightvec", "u_ambient", "u_shade", "u_normals", "u_cmap",
 	"u_particle", "u_viewport",
 	"u_vrect", "u_shifts", "u_warp", "u_blend", "u_coloured", "u_litpalette",
+	"u_fog", "u_fogbands", "u_skyfog", "u_eye",
 };
 
 static const char header[] =
@@ -45,7 +46,8 @@ static const char precision[] =
 	"precision highp int;\n"
 	"precision highp sampler2D;\n"
 	"precision highp usampler2DArray;\n"
-	"precision highp sampler3D;\n";
+	"precision highp sampler3D;\n"
+	"precision highp sampler2DArray;\n";
 
 // The linear look's textures are sampled through the sampler gl_main.c binds,
 // trilinear and anisotropic.
@@ -93,6 +95,21 @@ static const char palette_glsl[] =
 	"	if (u_litpalette != 0 && lit(index, 0, block) != lit(index, 63, block))\n"
 	"		c = colour(int(texture(u_rgbmap, c).r * 255.0 + 0.5)).rgb;\n"
 	"	return c;\n"
+	"}\n"
+	// Fog, as QuakeSpasm draws it (GL_EXP2): its colour over the pixel by the
+	// distance times its density (u_fog: colour, density / 64). With
+	// u_fogbands its share is banded into so many steps, as the colormap
+	// bands the light (the nearest look).
+	"uniform vec4 u_fog;\n"
+	"uniform float u_fogbands;\n"
+	"vec3 fogged(vec3 c) {\n"
+	"	if (u_fog.w <= 0.0)\n"
+	"		return c;\n"
+	"	float d = u_fog.w / gl_FragCoord.w;\n"
+	"	float f = clamp(exp2(-1.442695 * d * d), 0.0, 1.0);\n"
+	"	if (u_fogbands > 0.0)\n"
+	"		f = ceil(f * u_fogbands) / u_fogbands;\n"
+	"	return mix(u_fog.rgb, c, f);\n"
 	"}\n";
 
 // A brush model's surfaces: its vertices with their texture coordinates in
@@ -108,10 +125,12 @@ static const char world_vs[] =
 	"layout(location = 4) in uvec2 a_extra;\n"
 	"out vec2 v_st;\n"
 	"out vec2 v_lm;\n"
+	"out vec3 v_pos;\n"
 	"flat out uvec4 v_rect;\n"
 	"flat out uvec2 v_extra;\n"
 	"void main() {\n"
 	"	gl_Position = u_mvp * vec4(a_pos, 1.0);\n"
+	"	v_pos = a_pos;\n"
 	"	v_st = a_st;\n"
 	"	v_lm = a_lm;\n"
 	"	v_rect = a_rect;\n"
@@ -131,6 +150,7 @@ static const char world_fs[] =
 	"uniform vec4 u_mip;\n"
 	"uniform int u_minmip;\n"
 	"uniform int u_coloured;\n"
+	"uniform float u_alpha;\n"
 	"in vec2 v_st;\n"
 	"in vec2 v_lm;\n"
 	"flat in uvec4 v_rect;\n"
@@ -156,7 +176,7 @@ static const char world_fs[] =
 	"#ifdef LINEAR\n"
 	"	vec4 c = texture(u_tex, v_st / vec2(u_size));\n"
 	"	vec3 light = lightAt(v_lm + vec2(0.5, -0.5) / 16.0);\n"
-	"	o_colour = vec4(c.rgb * mix(vec3(1.0), brightness3(light / 256.0), c.a), 1.0);\n"
+	"	o_colour = vec4(fogged(c.rgb * mix(vec3(1.0), brightness3(light / 256.0), c.a)), u_alpha);\n"
 	"#else\n"
 	"	float scale = u_mip.x * gl_FragCoord.w * float(v_extra.y);\n"
 	"	int mip = scale >= u_mip.y ? 0 : scale >= u_mip.z ? 1 : scale >= u_mip.w ? 2 : 3;\n"
@@ -168,7 +188,7 @@ static const char world_fs[] =
 	"	int index = indexAt(u_tex, at, mip);\n"
 	"	vec2 lightat = vec2(texel.x + 1.0, texel.y) * step;\n"
 	"	vec3 light = lightAt(v_lm + (lightat - v_st) / 16.0);\n"
-	"	o_colour = vec4(litColour(index, ivec3(light) >> 8, 0), 1.0);\n"
+	"	o_colour = vec4(fogged(litColour(index, ivec3(light) >> 8, 0)), u_alpha);\n"
 	"#endif\n"
 	"}\n";
 
@@ -188,14 +208,14 @@ static const char turb_fs[] =
 	"#ifdef LINEAR\n"
 	"	float t = u_time * 20.0;\n"
 	"	vec2 warped = v_st + 8.0 + 8.0 * sin((v_st.yx + t) * CYCLE);\n"
-	"	o_colour = vec4(texture(u_tex, warped / vec2(u_size)).rgb, u_alpha);\n"
+	"	o_colour = vec4(fogged(texture(u_tex, warped / vec2(u_size)).rgb), u_alpha);\n"
 	"#else\n"
 	"	float t = float(int(u_time * 20.0) & 127);\n"
 	"	vec2 texel = floor(v_st);\n"
 	"	vec2 warped = floor(v_st + 8.0 + 8.0 * sin((mod(texel.yx, 128.0) + t) * CYCLE));\n"
 	"	vec2 size = vec2(u_size);\n"
 	"	ivec2 at = ivec2(warped - floor(warped / size) * size);\n"
-	"	o_colour = vec4(colour(indexAt(u_tex, at, 0)).rgb, u_alpha);\n"
+	"	o_colour = vec4(fogged(colour(indexAt(u_tex, at, 0)).rgb), u_alpha);\n"
 	"#endif\n"
 	"}\n";
 
@@ -213,8 +233,35 @@ static const char sky_fs[] =
 	"uniform vec3 u_vup;\n"
 	"uniform vec4 u_sky;\n"
 	"uniform vec2 u_frame;\n"
+	"uniform float u_skyfog;\n"
+	"uniform vec3 u_eye;\n"
+	"uniform highp sampler2DArray u_box;\n"
+	"in vec3 v_pos;\n"
 	"out vec4 o_colour;\n"
+	// A skybox's (gl_sky.c) face and place for a direction from the eye, as
+	// QuakeSpasm maps them (its vec_to_st and skytexorder).
+	"float component(vec3 d, int j) {\n"
+	"	return j > 0 ? d[j - 1] : -d[-j - 1];\n"
+	"}\n"
+	"vec4 skybox(vec3 d) {\n"
+	"	vec3 a = abs(d);\n"
+	"	int axis = a.x > a.y && a.x > a.z ? (d.x < 0.0 ? 1 : 0) : a.y > a.z && a.y > a.x ? (d.y < 0.0 ? 2 : 3) : (d.z < 0.0 ? 5 : 4);\n"
+	"	ivec3 map[6] = ivec3[6](ivec3(-2, 3, 1), ivec3(2, 3, -1), ivec3(1, 3, 2), ivec3(-1, 3, -2), ivec3(-2, -1, 3), ivec3(-2, 1, -3));\n"
+	"	int order[6] = int[6](0, 2, 1, 3, 4, 5);\n"
+	"	ivec3 m = map[axis];\n"
+	"	float dv = component(d, m.z);\n"
+	"	vec2 st = vec2(component(d, m.x), component(d, m.y)) / dv;\n"
+	"	st = (st + 1.0) * 0.5;\n"
+	"	st.y = 1.0 - st.y;\n"
+	"	return texture(u_box, vec3(clamp(st, 0.0, 1.0), float(order[axis])));\n"
+	"}\n"
 	"void main() {\n"
+	"#ifdef SKYBOX\n"
+	"	o_colour = vec4(skybox(v_pos - u_eye).rgb, 1.0);\n"
+	"	if (u_fog.w > 0.0)\n"
+	"		o_colour.rgb = mix(o_colour.rgb, u_fog.rgb, u_skyfog);\n"
+	"	return;\n"
+	"#endif\n"
 	"	float u = gl_FragCoord.x - 0.5;\n"
 	"	float v = u_frame.y - gl_FragCoord.y - 0.5;\n"
 	"	float wu = 8192.0 * (u - u_sky.x) / u_sky.z;\n"
@@ -227,12 +274,16 @@ static const char sky_fs[] =
 	"	vec4 back = texture(u_tex, st / 128.0);\n"
 	"	vec4 front = texture(u_front, (st + u_sky.w) / 128.0);\n"
 	"	o_colour = vec4(mix(back.rgb, front.rgb, front.a), 1.0);\n"
+	"	if (u_fog.w > 0.0)\n"
+	"		o_colour.rgb = mix(o_colour.rgb, u_fog.rgb, u_skyfog);\n"
 	"#else\n"
 	"	vec2 texel = floor(st);\n"
 	"	ivec2 b = ivec2(mod(texel, 128.0));\n"
 	"	ivec2 f = ivec2(mod(texel + floor(u_sky.w), 128.0));\n"
 	"	int front = indexAt(u_front, f, 0);\n"
 	"	o_colour = colour(front != 0 ? front : indexAt(u_tex, b, 0));\n"
+	"	if (u_fog.w > 0.0)\n"
+	"		o_colour.rgb = mix(o_colour.rgb, u_fog.rgb, u_skyfog);\n"
 	"#endif\n"
 	"}\n";
 
@@ -273,16 +324,17 @@ static const char alias_fs[] =
 	"uniform sampler2D u_tex;\n"
 	"uniform ivec2 u_size;\n"
 	"uniform int u_cmap;\n"
+	"uniform float u_alpha;\n"
 	"in vec2 v_st;\n"
 	"in vec3 v_light;\n"
 	"out vec4 o_colour;\n"
 	"void main() {\n"
 	"#ifdef LINEAR\n"
 	"	vec4 c = texture(u_tex, v_st / vec2(u_size));\n"
-	"	o_colour = vec4(c.rgb * mix(vec3(1.0), brightness3(v_light / 256.0), c.a), 1.0);\n"
+	"	o_colour = vec4(fogged(c.rgb * mix(vec3(1.0), brightness3(v_light / 256.0), c.a)), u_alpha);\n"
 	"#else\n"
 	"	ivec2 at = clamp(ivec2(floor(v_st)), ivec2(0), u_size - 1);\n"
-	"	o_colour = vec4(litColour(indexAt(u_tex, at, 0), ivec3(v_light) >> 8, u_cmap), 1.0);\n"
+	"	o_colour = vec4(fogged(litColour(indexAt(u_tex, at, 0), ivec3(v_light) >> 8, u_cmap)), u_alpha);\n"
 	"#endif\n"
 	"}\n";
 
@@ -300,18 +352,19 @@ static const char sprite_vs[] =
 static const char sprite_fs[] =
 	"uniform sampler2D u_tex;\n"
 	"uniform ivec2 u_size;\n"
+	"uniform float u_alpha;\n"
 	"in vec2 v_uv;\n"
 	"out vec4 o_colour;\n"
 	"void main() {\n"
 	"#ifdef LINEAR\n"
 	"	vec4 c = texture(u_tex, v_uv);\n"
 	"	if (c.a < 0.5) discard;\n"
-	"	o_colour = vec4(c.rgb / c.a, 1.0);\n"
+	"	o_colour = vec4(fogged(c.rgb / c.a), u_alpha);\n"
 	"#else\n"
 	"	ivec2 at = clamp(ivec2(floor(v_uv * vec2(u_size))), ivec2(0), u_size - 1);\n"
 	"	int index = indexAt(u_tex, at, 0);\n"
 	"	if (index == 255) discard;\n"
-	"	o_colour = colour(index);\n"
+	"	o_colour = vec4(fogged(colour(index).rgb), u_alpha);\n"
 	"#endif\n"
 	"}\n";
 
@@ -346,7 +399,7 @@ static const char particle_fs[] =
 	"flat in int v_colour;\n"
 	"out vec4 o_colour;\n"
 	"void main() {\n"
-	"	o_colour = colour(v_colour);\n"
+	"	o_colour = vec4(fogged(colour(v_colour).rgb), 1.0);\n"
 	"}\n";
 
 // The last pass, over the whole frame: the 2D the engine drew into
@@ -437,9 +490,11 @@ static void GL_Sampler (GLuint program, const char *name, int unit)
 		glUniform1i (at, unit);
 }
 
-static qboolean GL_BuildProgram (glprogramid_t id, const char *name, const char *vs, const char *fs, qboolean linear)
+// `flags`: 1 the linear look's variant (LINEAR), 2 a skybox's (SKYBOX).
+static qboolean GL_BuildProgram (glprogramid_t id, const char *name, const char *vs, const char *fs, int flags)
 {
-	const char	*defines = linear ? "#define LINEAR\n" : "";
+	static const char	*variants[4] = {"", "#define LINEAR\n", "#define SKYBOX\n", "#define LINEAR\n#define SKYBOX\n"};
+	const char	*defines = variants[flags & 3];
 	GLuint		v, f, program;
 	GLint		ok;
 	char		log[1024];
@@ -482,6 +537,7 @@ static qboolean GL_BuildProgram (glprogramid_t id, const char *name, const char 
 	GL_Sampler (program, "u_palette", TU_PALETTE);
 	GL_Sampler (program, "u_gamma", TU_GAMMA);
 	GL_Sampler (program, "u_rgbmap", TU_RGBMAP);
+	GL_Sampler (program, "u_box", TU_TEXTURE);
 	return true;
 }
 
@@ -494,6 +550,7 @@ qboolean GL_BuildPrograms (void)
 		if (!GL_BuildProgram (P_WORLD + linear, "world", world_vs, world_fs, linear)
 			|| !GL_BuildProgram (P_TURB + linear, "turbulence", world_vs, turb_fs, linear)
 			|| !GL_BuildProgram (P_SKY + linear, "sky", world_vs, sky_fs, linear)
+			|| !GL_BuildProgram (P_SKYBOX + linear, "skybox", world_vs, sky_fs, linear ? 3 : 2)
 			|| !GL_BuildProgram (P_ALIAS + linear, "alias model", alias_vs, alias_fs, linear)
 			|| !GL_BuildProgram (P_SPRITE + linear, "sprite", sprite_vs, sprite_fs, linear))
 			return false;

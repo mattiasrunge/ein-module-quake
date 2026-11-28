@@ -124,6 +124,7 @@ void GL_Register (void)
 	Cvar_RegisterVariable (&r_telealpha);
 	Cvar_RegisterVariable (&r_watervis);
 	GLM_Register ();
+	GLS_Register ();
 	Cvar_RegisterVariable (&gl_texture_anisotropy);
 	Cvar_RegisterVariable (&r_litpalette);
 }
@@ -722,6 +723,7 @@ void GL_RenderView (void)
 	glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glEnable (GL_DEPTH_TEST);
 	GL_Anisotropy ();
+	GLS_Frame ();
 	GL_LinearSampler (TU_TEXTURE, false);
 	for (i = 0 ; i < P_COUNT ; i++)
 		if (gl_programs[i].u[UF_LITPALETTE] >= 0)
@@ -732,12 +734,14 @@ void GL_RenderView (void)
 	GL_LinearSampler (TU_SECOND, false);
 
 	GLW_DrawWorld ();
-	GLM_DrawEntities ();
-	GLM_DrawViewModel ();
+	GLM_DrawEntities (false);
+	GLM_DrawViewModel (false);
 	GLM_BeginParticles ();
 	R_DrawParticles ();
 	GLM_EndParticles ();
 	GLW_DrawWater ();
+	GLM_DrawEntities (true);
+	GLM_DrawViewModel (true);
 
 	glDisable (GL_DEPTH_TEST);
 	glBindSampler (TU_TEXTURE, 0);
@@ -753,6 +757,7 @@ void GL_RenderView (void)
 
 void GL_NewMap (void)
 {
+	GLS_NewMap ();
 	gl_gen++;
 	marked_leaf = NULL;
 	if (started)
