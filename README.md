@@ -3,7 +3,7 @@
 A module for [EiN](https://einhq.eu) that plays Quake, Quake II and Quake III
 Arena, and the games made for their engines, in the browser, with sound and
 music, alone or together: a game someone hosts runs on
-EiN, and others here, or on another EiN they are invited from, join it. Its games
+EiN, and others here, or someone a game is shared with by a link, join it. Its games
 are on EiN's **Games** page, which the games module gives: the module brings the
 engines and its games, and the games module the page each is played on, the
 saves, the sound, the dropped files and the playing together.
@@ -293,13 +293,18 @@ has played on for five minutes stops by itself.
 
 The game's own **Multiplayer** menu sets who you are in a game: your name, and
 your colours in Quake or your model and skin in Quake II (**player setup**,
-beside the keys you play together with). Joining and starting a game are the
-page's, so that menu no longer offers them. In Quake III, **Setup**
+beside the keys you play together with). It also finds the servers of the game
+that run here, as on a home network: in Quake, **Join a Game** > **Search for
+local games**; in Quake II, **join network server** > **refresh server list**;
+in Quake III, the server browser's **LAN** list. Each is at an address of its
+own, `10.66.1.1` and on, which `connect` in the console takes as well. Starting
+a server is the page's: a server started in the game would run in your browser,
+where nobody else reaches it, so Quake's **New Game** is passed over and Quake
+II's **start network server** is not there. In Quake III, **Setup**
 
-> **Player** sets your name and model; its own **Multiplayer** menu finds no
-> servers, since the page joins them, and a server started there runs in your
-> browser, where nobody else reaches it. Its **Single Player** arenas, against
-> bots, are played in the browser, as any game on your own.
+> **Player** sets your name and model; a server its **Multiplayer** menu starts
+> runs in your browser, where nobody else reaches it. Its **Single Player**
+> arenas, against bots, are played in the browser, as any game on your own.
 
 The game's server runs on EiN, not in anyone's browser: the module's
 `quake-server` service runs each hosted game as Quake's, Quake II's or Quake
@@ -311,42 +316,40 @@ scripts and bots, so it holds a fraction of the game; its pk3s are then not its
 players', so it asks for none of them (`sv_pure 0`), and each player plays with
 their own copy of the game. Its players see a warning that they lack its pk3s,
 which they may pass over. The games module's `GameServers` does the rest: it listens on each
-game's socket node, seats each connection under its account's name (`guest` for
-an invitation's) at a fake address (10.66.0.2 and on), which a page reloaded
-gets again, and carries the game's datagrams both ways. The server is 10.66.0.1
-to each player; the game connects to it as to any other server. The server is
+game's socket node, seats each connection under its account's name (`visitor`
+for a share link's) at a fake address (10.66.0.2 and on), which a page reloaded
+gets again, and carries the game's datagrams both ways. To a player each server
+is at an address of its own, 10.66.1.1 and on; the game connects to it as to
+any other server, and its search for local games, a broadcast, reaches them all. The server is
 given the game's maps beside its paks too, so a map dropped on the Games page
 can be hosted. A page in a hidden tab stops the game, as it always has: the
 player stands still in the game, and the server drops them after a while
 (Quake II's after two minutes, Quake's after five).
 
 An administrator starts the service with `service start quake-server`; it runs
-until it is stopped. The hosted games are in
-`/groups/users/games/servers/quake`, a folder each with its `server.json` and its
-`socket`; the service empties it when it starts, since no game outlives it.
+until it is stopped. The hosted games are in each game's folder, in
+`.servers`, a folder each with its `server.json` and its `socket`; the service
+empties them when it starts, since no game outlives it.
 
-### Someone from another EiN
+### Someone without an account
 
-While a server runs, **Invite** gives a link to send to someone on another EiN.
-On the game's page there they choose **Connect** and paste it, and **Play** then
-enters the game on your server; **Disconnect** leaves it. They play with their
-own EiN's copy of the game, so it has to be there (the same game, or one of the
-same engine with the map). **Connect** is there while no server of the game runs
-on their own EiN, and **Start server** while they are not connected to another.
-The link is one of EiN's invitations: it connects to the game's socket, without
-an account here, for twelve hours, and `invitation list` and `invitation remove`
-show and end it.
+**⋮** > **Share** on a game's page makes a link to the game that you send to
+someone without an account here: they open it in their browser and play the
+game, alone or on a server of it that runs here, under the name they give in the
+game. Nothing of theirs is kept. It is the games module's share link (its
+documentation has the rest); `quake-games <folder>` lists the game in that
+folder alone, which is all they read.
 
 ### In the terminal
 
-The games module's commands host, list, join, invite to and stop the games, of
-this module as of any other; a game is the module's name and the game's folder:
+The games module's commands host, list, join and stop the games, of this module
+as of any other; a game is the module's name and the game's folder:
 
 | Command                                                   | What it does                                                                        |
 | --------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | `games-host quake <game> [map] [--max N] [--mode M]`      | Hosts a game (`--mode deathmatch` or `coop`) and prints its id once its server runs |
 | `games-servers [--module quake]`                          | Lists the hosted games, with who plays in each                                      |
-| `games-join <id>`, `games-invite <id>`, `games-stop <id>` | The way into a game, a guest's invitation to it, and stopping it                    |
+| `games-join <id>`, `games-stop <id>`                      | The way into a game, and stopping it                                                |
 
 The game's own console works as well: `status`, `say`, `kill`. A Quake III
 game's server runs no bots of its own.

@@ -64,9 +64,10 @@ const ENGINES: Record<Exclude<EngineName, 'quake3'>, EngineSpec> = {
  *
  * A player whose config.cfg has no name of their own plays under `name`, their account's. With `map`
  * the game starts on that map, as `+map` on its command line does; with `online` it connects to a
- * server once it has started, through `online.network`.
+ * server once it has started, through `online.network`. With `servers` the menus' search for local
+ * games finds every server of the game, and joins any of them.
  */
-export async function startEngine({ game, sound, log, kept, onKeep, name, map, online }: Omit<StartOptions<InstalledGame>, 'demo'>): Promise<RunningGame> {
+export async function startEngine({ game, sound, log, kept, onKeep, name, map, online, servers }: Omit<StartOptions<InstalledGame>, 'demo'>): Promise<RunningGame> {
   const family = game.family;
   if (family === 'quake3') throw new Error(`${game.title} is a Quake 3 game, which startQuake3 starts`);
   const spec = ENGINES[family];
@@ -96,5 +97,5 @@ export async function startEngine({ game, sound, log, kept, onKeep, name, map, o
       family === 'quake2'
         ? typingControls(post, { key: quake2Key, button: quake3MouseKey, wheel: WHEEL.quake2 })
         : keyControls(post, { key: quakeKey, button: mouseKey, wheel: WHEEL[family] }),
-  }, { sound, log, onKeep, online });
+  }, { sound, log, onKeep, online, servers });
 }

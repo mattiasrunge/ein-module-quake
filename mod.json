@@ -5,7 +5,7 @@
   "license": "GPL-2.0-or-later",
   "coreApi": "^0.15.77",
   "dependencies": {
-    "games": "^0.1.3-dev.3"
+    "games": "^0.1.3-dev.4"
   },
   "exports": {
     "./api": "./lib/api.ts"

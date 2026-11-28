@@ -37,9 +37,10 @@ const WASD = ['bind w +forward', 'bind s +back', 'bind a +moveleft', 'bind d +mo
  *
  * A player whose q3config.cfg has no name of their own plays under `name`, their account's. With
  * `map` the game starts on that map; with `online` it connects to a server once it has started,
- * through `online.network`.
+ * through `online.network`. With `servers` the server browser's LAN list finds every server of the
+ * game, and joins any of them.
  */
-export async function startQuake3({ game, sound, log, kept, onKeep, name, map, online }: StartOptions<InstalledGame>): Promise<RunningGame> {
+export async function startQuake3({ game, sound, log, kept, onKeep, name, map, online, servers }: StartOptions<InstalledGame>): Promise<RunningGame> {
   const gamedir = game.gamedir ?? 'baseq3';
   const folder = `${BASE}/${gamedir}`;
   const home = `${HOME}/${gamedir}`;
@@ -84,5 +85,5 @@ export async function startQuake3({ game, sound, log, kept, onKeep, name, map, o
     files: [...files, ...mine],
     // Quake 3's keys, and the characters they type for its text fields and console.
     controls: (post) => typingControls(post, { key: quake3Key, button: quake3MouseKey, wheel: WHEEL.quake3 }),
-  }, { sound, log, onKeep, online });
+  }, { sound, log, onKeep, online, servers });
 }

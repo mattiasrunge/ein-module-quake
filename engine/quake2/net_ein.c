@@ -177,13 +177,19 @@ qboolean NET_GetPacket(netsrc_t sock, netadr_t* net_from, sizebuf_t* net_message
 	return true;
 }
 
-// A broadcast, which the menus' server search sends, reaches nobody: there
-// is no network to broadcast on, only the one server a player joined.
+// A broadcast, which the menus' server search sends, goes to
+// 255.255.255.255: the page's network passes it to every server of the
+// game, and each answers from an address of its own.
 void NET_SendPacket(netsrc_t sock, int length, void* data, netadr_t to)
 {
 	if (to.type == NA_LOOPBACK)
 	{
 		NET_SendLoopPacket(sock, length, data, to);
+		return;
+	}
+	if (to.type == NA_BROADCAST)
+	{
+		ein_net_send(NET_PortOf(sock), 0xffffffff, BigShort(to.port) & 0xffff, data, length);
 		return;
 	}
 	if (to.type == NA_IP)

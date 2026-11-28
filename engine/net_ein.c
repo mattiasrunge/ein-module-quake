@@ -263,11 +263,12 @@ static int EIN_Write (int socket, byte *buf, int len, struct qsockaddr *addr)
 	return len;
 }
 
-// A broadcast, which the menus' search for games sends, reaches nobody:
-// there is no network to broadcast on, only the one server a player
-// joined.
+// A broadcast, which the menus' search for games sends, goes to
+// 255.255.255.255 on Quake's port: the page's network passes it to every
+// server of the game, and each answers from an address of its own.
 static int EIN_Broadcast (int socket, byte *buf, int len)
 {
+	ein_net_send (socket, 0xffffffff, net_hostport, buf, len);
 	return len;
 }
 

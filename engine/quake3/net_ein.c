@@ -196,13 +196,17 @@ qboolean NET_IsLocalAddress( netadr_t adr ) {
 Sys_SendPacket
 
 A broadcast, which the server browser's search for local servers sends,
-reaches nobody: there is only the one server a player joined.
+goes to 255.255.255.255: the page's network passes it to every server of
+the game, and each answers from an address of its own.
 ==================
 */
 void Sys_SendPacket( int length, const void *data, netadr_t to ) {
-	if ( to.type != NA_IP || !port )
+	if ( !port )
 		return;
-	ein_net_send( port, NET_IpOf( &to ), BigShort( to.port ) & 0xffff, data, length );
+	if ( to.type == NA_BROADCAST )
+		ein_net_send( port, 0xffffffff, BigShort( to.port ) & 0xffff, data, length );
+	else if ( to.type == NA_IP )
+		ein_net_send( port, NET_IpOf( &to ), BigShort( to.port ) & 0xffff, data, length );
 }
 
 /*

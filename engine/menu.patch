@@ -1,37 +1,74 @@
 diff --git a/source/menu.c b/source/menu.c
-index 137a28a..6b7e295 100644
+index 7fd32d6..9a7ef2f 100644
 --- a/source/menu.c
 +++ b/source/menu.c
-@@ -604,11 +604,11 @@ int	m_multiplayer_cursor;
+@@ -603,12 +603,20 @@ void M_Save_Key (int k)
+ int	m_multiplayer_cursor;
  #define	MULTIPLAYER_ITEMS	3
  
++extern int m_net_cursor;
++
++// Games are started from EiN's page, so New Game, which would host one in
++// the player's own tab where nobody reaches it, is passed over: the menu is
++// Join a Game, which searches for and joins the servers EiN runs, and Setup.
++#define NEW_GAME_ITEM	1
  
-+// Games are joined and started from EiN's page, so Multiplayer is the player's setup alone: the
-+// menu of joining, starting and setting up is one picture, mp_menu.lmp, and is not shown.
  void M_Menu_MultiPlayer_f (void)
  {
--	key_dest = key_menu;
--	m_state = m_multiplayer;
--	m_entersound = true;
-+	M_Menu_Setup_f ();
+ 	key_dest = key_menu;
+ 	m_state = m_multiplayer;
+ 	m_entersound = true;
++	if (m_multiplayer_cursor == NEW_GAME_ITEM)
++		m_multiplayer_cursor = 0;
  }
  
  
-@@ -745,7 +745,7 @@ void M_Setup_Key (int k)
- 	switch (k)
- 	{
- 	case K_ESCAPE:
--		M_Menu_MultiPlayer_f ();
-+		M_Menu_Main_f ();
+@@ -642,13 +650,17 @@ void M_MultiPlayer_Key (int key)
+ 
+ 	case K_DOWNARROW:
+ 		S_LocalSound ("misc/menu1.wav");
+-		if (++m_multiplayer_cursor >= MULTIPLAYER_ITEMS)
++		if (++m_multiplayer_cursor == NEW_GAME_ITEM)
++			m_multiplayer_cursor++;
++		if (m_multiplayer_cursor >= MULTIPLAYER_ITEMS)
+ 			m_multiplayer_cursor = 0;
  		break;
  
  	case K_UPARROW:
-@@ -797,7 +797,7 @@ forward:
- 		if (setup_top != setup_oldtop || setup_bottom != setup_oldbottom)
- 			Cbuf_AddText( va ("color %i %i\n", setup_top, setup_bottom) );
- 		m_entersound = true;
--		M_Menu_MultiPlayer_f ();
-+		M_Menu_Main_f ();
+ 		S_LocalSound ("misc/menu1.wav");
+-		if (--m_multiplayer_cursor < 0)
++		if (--m_multiplayer_cursor == NEW_GAME_ITEM)
++			m_multiplayer_cursor--;
++		if (m_multiplayer_cursor < 0)
+ 			m_multiplayer_cursor = MULTIPLAYER_ITEMS - 1;
  		break;
  
- 	case K_BACKSPACE:
+@@ -657,13 +669,12 @@ void M_MultiPlayer_Key (int key)
+ 		switch (m_multiplayer_cursor)
+ 		{
+ 		case 0:
+-			if (serialAvailable || ipxAvailable || tcpipAvailable)
+-				M_Menu_Net_f ();
+-			break;
+-
+-		case 1:
+-			if (serialAvailable || ipxAvailable || tcpipAvailable)
+-				M_Menu_Net_f ();
++			// The network is EiN's alone, as TCP/IP: its menu searches and joins.
++			if (tcpipAvailable)
++			{
++				m_net_cursor = 3;
++				M_Menu_LanConfig_f ();
++			}
+ 			break;
+ 
+ 		case 2:
+@@ -2195,7 +2206,7 @@ void M_LanConfig_Key (int key)
+ 	switch (key)
+ 	{
+ 	case K_ESCAPE:
+-		M_Menu_Net_f ();
++		M_Menu_MultiPlayer_f ();
+ 		break;
+ 
+ 	case K_UPARROW:
