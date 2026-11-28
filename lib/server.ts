@@ -45,8 +45,11 @@ type ServerSpec = {
 const QUAKE3_BASE = '/q3';
 const QUAKE3_HOME = '/home';
 
-/** What a server is called in the games' own server lists, beside its map: whose it is, as the page says it. */
-const hostname = (info: ServerInfo): string => `${info.startedBy}'s server`;
+/**
+ * What a server is called in the games' own server lists, beside its map: the account that started
+ * it, one word, which each engine's command line keeps whole (Quake's splits a word at a quote).
+ */
+const hostname = (info: ServerInfo): string => info.startedBy;
 
 const SPECS: Record<EngineName, ServerSpec> = {
   quake2: {
