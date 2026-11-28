@@ -34,7 +34,6 @@ baseq2/
 baseq3/
 ├── pak0.pk3
 ├── pak1.pk3 … pak8.pk3   the 1.32 point release
-├── q3key                 optional, the CD key
 └── mymap.pk3             maps and mods come as pk3s
 ```
 

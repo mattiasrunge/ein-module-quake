@@ -22,14 +22,13 @@ See the GNU General Public License for more details.
 // hands the page what was drawn after each. Keys come with ein_key, already
 // in Quake 3's key codes, the characters they type with ein_char, and the
 // mouse's movement with ein_mouse; Quake 3's menus have a pointer of their
-// own, which the mouse moves too. The player's q3config.cfg, and for id's
-// whole game their CD key in q3key, are files in the game's folder of the
-// home folder: the worker writes them there before ein_start and hears from
-// ein_wrote when Quake 3 has written one. Sound is snd_ein.c, the network
-// net_ein.c. After each tick the worker asks ein_menu whether the page is to
-// give the mouse back, and ein_fullscreen whether to show the frame
-// fullscreen, which the game's options set; ein_set_fullscreen tells the
-// game the browser left fullscreen itself.
+// own, which the mouse moves too. The player's q3config.cfg is a file in the
+// game's folder of the home folder: the worker writes it there before
+// ein_start and hears from ein_wrote when Quake 3 has written it. Sound is
+// snd_ein.c, the network net_ein.c. After each tick the worker asks ein_menu
+// whether the page is to give the mouse back, and ein_fullscreen whether to
+// show the frame fullscreen, which the game's options set; ein_set_fullscreen
+// tells the game the browser left fullscreen itself.
 
 #include <emscripten.h>
 

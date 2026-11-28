@@ -32,11 +32,6 @@ export type InstalledGame = {
    * of its own for any other (`baseoa`), which ioquake3 then plays as a game of its own.
    */
   gamedir?: string;
-  /**
-   * A Quake 3 game's file in its folder with the CD key it is played with (`KEY_FILE`), when it has
-   * one: the household's key, which a player's own, typed in the game's menu, comes before.
-   */
-  cdkey?: string;
   /** Bytes, the paks together. */
   size: number;
   /** Bytes of each of its paks, in the order of `paks`: what a Quake 3 game's worker reads them by. */

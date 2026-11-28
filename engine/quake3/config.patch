@@ -1,18 +1,8 @@
 diff --git a/code/qcommon/common.c b/code/qcommon/common.c
-index 76e7b908..797bed40 100644
+index 76e7b908..1db9abd9 100644
 --- a/code/qcommon/common.c
 +++ b/code/qcommon/common.c
-@@ -2566,6 +2566,9 @@ static void Com_WriteCDKey( const char *filename, const char *ikey ) {
- 	FS_Printf( f, "// id Software and Activision will NOT ask you to send this file to them.\r\n");
- 
- 	FS_FCloseFile( f );
-+#ifdef EIN
-+	Sys_Wrote( fbuffer );
-+#endif
- out:
- #ifndef _WIN32
- 	umask(savedumask);
-@@ -2937,6 +2940,9 @@ void Com_WriteConfigToFile( const char *filename ) {
+@@ -2937,6 +2937,9 @@ void Com_WriteConfigToFile( const char *filename ) {
  	Key_WriteBindings (f);
  	Cvar_WriteVariables (f);
  	FS_FCloseFile( f );

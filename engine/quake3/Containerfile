@@ -32,13 +32,12 @@ RUN git -C /src apply /src/main.patch
 COPY frame.patch /src/
 RUN git -C /src apply /src/frame.patch
 
-# q3config.cfg, or the CD key in q3key, written tells the page, which keeps it in the player's home
-# (Sys_Wrote, quake3_ein.c).
+# q3config.cfg written tells the page, which keeps it in the player's home (Sys_Wrote, quake3_ein.c).
 COPY config.patch /src/
 RUN git -C /src apply /src/config.patch
 
-# A game played standalone, id's demo or a game of its own as OpenArena is, has no CD key, so its
-# menus do not ask for one; id's whole game asks for the player's own, as Quake III Arena did.
+# No game asks for a CD key, nor has CD Key in its menus' Setup: only id's authorize server checked a
+# key, and the network the page carries (net_ein.c) never reaches it.
 COPY cdkey.patch /src/
 RUN git -C /src apply /src/cdkey.patch
 

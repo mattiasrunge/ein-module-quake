@@ -369,8 +369,7 @@ you go to another page of EiN's.
   an earlier release of this module's Quake II may not load into a later one.
 
 - Quake III keeps no saved games, only its settings, `q3config.cfg`, written
-  whenever they change, and for id's whole game your CD key, `q3key`. A game
-  played standalone, the demo or one of its own as OpenArena is, has no key.
+  whenever they change.
 
 Without an account, saves and settings last only as long as the page.
 
@@ -402,7 +401,6 @@ it goes into when more than one could take it:
 - another pak, `pak1.pak` and on, into a game's folder.
 - a pk3 into a Quake III game's folder: a map someone made comes as one, with
   its textures and levelshot, and Quake III loads every pk3 in the folder.
-- a `q3key` or `key.txt` into a Quake III game's folder, its CD key.
 - a folder called `music` into a game's folder (below).
 
 Which engine plays it, the paks say: a folder of pk3s and no `pak0.pak` is a
@@ -421,13 +419,9 @@ game, and any other a Quake one.
   their own (a `gamex86.dll`), are not yet.
 - id's whole Quake III Arena: drop the `baseq3` folder of your Quake III Arena,
   with `pak0.pk3` and the 1.32 point release's `pak1.pk3` to `pak8.pk3`. The
-  list calls a Quake III game with the arena `q3dm0` **Quake III Arena**. Its
-  CD key can come with it: a `q3key` file in the folder, as Quake III Arena
-  writes it, or a `key.txt` with the key on a line of its own (`ABCD-EFGH-…`,
-  with dashes or spaces or without); everyone here then plays with it. Without
-  one, its menus ask each player for a key the first time, as Quake III Arena
-  did, and keep it with their settings (below); a player's own key comes before
-  the folder's. Its mission pack, Team Arena, is not played yet.
+  list calls a Quake III game with the arena `q3dm0` **Quake III Arena**. It
+  asks for no CD key: the key was only ever checked by id's servers, which a
+  game here never reaches. Its mission pack, Team Arena, is not played yet.
 - A game of its own for Quake 3's engine, as OpenArena is: drop the folder of
   its pk3s. It is played in a folder named as its own, as ioquake3 plays a game
   that is not id's.
@@ -492,7 +486,7 @@ them, and **music** turns the music on and off.
 | `ui/pages/game.tsx`                                                               | A game's page, `/games/quake/<game>`: the games module's page for a game, with the module's adapter.                                                                                                                              |
 | `ui/cards/demo.tsx`                                                               | The dashboard card, offered in `etc/dashboard.d/cards.json`: the games module's demo card, a game running its demos.                                                                                                              |
 | `ui/adapter.ts`                                                                   | The adapter the games module plays the games with: lists them, starts one, maps the keys, the mouse and the wheel, and names the saves kept.                                                                                      |
-| `ui/quake/engine.ts`, `ui/quake/quake3.ts`                                        | Start Quake and Quake II, and Quake III, in the engine worker with the games module's `startWorkerGame`: what each is given, its command line and its keys; Quake III's the characters they type too, and the household's CD key. |
+| `ui/quake/engine.ts`, `ui/quake/quake3.ts`                                        | Start Quake and Quake II, and Quake III, in the engine worker with the games module's `startWorkerGame`: what each is given, its command line and its keys; Quake III's the characters they type too.                             |
 | `ui/quake/typing.ts`                                                              | The keys of Yamagi Quake II and Quake III, with the characters they type for the console and the menus' fields.                                                                                                                   |
 | `ui/quake/files.ts`                                                               | The engines' builds in `assets/`, and a game's paks, read as the engine asks, and the files beside them, fetched whole.                                                                                                           |
 | `ui/quake/engine-worker.ts`, `ui/quake/start.ts`                                  | The worker every engine runs in (`ui.workers` in `mod.json`), on the games module's `serveEngine`: each engine's start call, its frame from WebGL or from its memory, its sound and its input; and what the page starts it with.  |
@@ -554,8 +548,8 @@ them, and **music** turns the music on and off.
 | `engine/quake3/Containerfile`                                                     | Quake III's build: pinned emsdk image and ioquake3 commit.                                                                                                                                                                        |
 | `engine/quake3/main.patch`                                                        | Makes the system layer's main `Sys_Main`, which sets the game up and returns, without SDL.                                                                                                                                        |
 | `engine/quake3/frame.patch`                                                       | Returns at once from a frame that is not due yet, rather than waiting for its time.                                                                                                                                               |
-| `engine/quake3/config.patch`                                                      | Tells the page when Quake III has written its settings or the CD key, so it can keep them.                                                                                                                                        |
-| `engine/quake3/cdkey.patch`                                                       | Asks no CD key of a game played standalone, the demo or a game of its own.                                                                                                                                                        |
+| `engine/quake3/config.patch`                                                      | Tells the page when Quake III has written its settings, so it can keep them.                                                                                                                                                      |
+| `engine/quake3/cdkey.patch`                                                       | Asks no game for a CD key, which only id's servers checked, and drops CD Key from the menus' Setup.                                                                                                                               |
 | `engine/quake3/truncate.patch`                                                    | Makes a QVM's cast of a float to an int truncate, as C's does, where ioquake3's interpreter rounded it off x86.                                                                                                                   |
 | `engine/quake3/graphics.patch`                                                    | Makes ioquake3's Setup > System the page's: the modes the engine offers, no driver, extensions, colour depth or texture bits, presets that leave the mode and fullscreen.                                                         |
 | `engine/quake3/openarena-graphics.patch`                                          | The same for OpenArena 0.8.8's Setup > System, without its bloom too.                                                                                                                                                             |

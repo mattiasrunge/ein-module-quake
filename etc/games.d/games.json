@@ -11,7 +11,6 @@
     { "place": "game", "label": "a Quake map", "name": "\\.bsp$", "magic": [{ "at": 0, "hex": "1d000000" }], "into": "maps", "families": ["quake"] },
     { "place": "game", "label": "a Quake II map", "name": "\\.bsp$", "magic": [{ "at": 0, "hex": "4942535026000000" }], "into": "maps", "families": ["quake2"] },
     { "place": "game", "label": "a Quake 3 map", "name": "\\.bsp$", "magic": [{ "at": 0, "hex": "494253502e000000" }], "into": "maps", "families": ["quake3"] },
-    { "place": "game", "label": "a Quake III CD key", "name": "^(q3key|key\\.txt)$", "families": ["quake3"] },
     { "place": "game", "label": "a Quake 3 map or mod's pk3", "name": "\\.pk3$", "magic": [{ "at": 0, "hex": "504b0304" }], "families": ["quake3"] },
     { "place": "game", "label": "another pak of a game", "name": "^pak[1-9][0-9]*\\.pak$", "magic": [{ "at": 0, "text": "PACK" }] },
     { "place": "game", "label": "a game's music", "name": "^music$" }

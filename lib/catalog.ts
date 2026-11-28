@@ -9,7 +9,6 @@ import {
   engineOf,
   gamedirOf,
   GAMES,
-  KEY_FILE,
   mapsOf,
   OFFERS,
   PAK_FILE,
@@ -37,9 +36,9 @@ async function filesUnder(cmd: Command, path: string, prefix = ''): Promise<stri
  * What the engine reads of the game in the folder `folder`: its paks, in the order the engine loads
  * them, and the files beside them in the folders it reads as it reads a pak's (`DATA_FOLDERS`, and
  * Quake 3's `QUAKE3_FOLDERS`), by their paths in it; whether it is a Quake 3 game, one with pk3s
- * and no `pak0.pak`; and a Quake 3 game's CD key file, when it has one. No paks is no game.
+ * and no `pak0.pak`. No paks is no game.
  */
-export async function gameFiles(cmd: Command, folder: string): Promise<{ paks: string[]; files: string[]; quake3: boolean; cdkey?: string }> {
+export async function gameFiles(cmd: Command, folder: string): Promise<{ paks: string[]; files: string[]; quake3: boolean }> {
   // Quake and Quake II load pak0, pak1 and on, and stop at the first number missing; Quake 3 loads
   // every pk3 there is.
   const found = new Map<number, string>();
@@ -60,8 +59,7 @@ export async function gameFiles(cmd: Command, folder: string): Promise<{ paks: s
   if (quake3) paks.push(...pk3s.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())));
   else while (found.has(paks.length)) paks.push(found.get(paks.length)!);
   const files = (await Promise.all(folders.map((name) => filesUnder(cmd, `${folder}/${name}`, `${name}/`)))).flat();
-  const cdkey = quake3 ? children.find((child) => child.node.type !== 'directory' && KEY_FILE.test(child.name))?.name : undefined;
-  return { paks, files, quake3, ...(cdkey ? { cdkey } : {}) };
+  return { paks, files, quake3 };
 }
 
 /** `bytes` as a person reads a size: `18 MB`. */
@@ -72,7 +70,7 @@ const sizeText = (bytes: number): string =>
 async function readGame(cmd: Command, name: string): Promise<InstalledGame | undefined> {
   const vfs = cmd.sys.vfs;
   const path = `${GAMES}/${name}`;
-  const { paks, files, quake3, cdkey } = await gameFiles(cmd, path);
+  const { paks, files, quake3 } = await gameFiles(cmd, path);
   if (paks.length === 0) return undefined;
   const sizes = await Promise.all(paks.map(async (pak) => (await vfs.get<NodeAttrs & { size?: number }>(cmd.access, `${path}/${pak}`)).attrs.size ?? 0));
   // What the paks hold says which game it is; a pak that cannot be read says nothing.
@@ -109,7 +107,6 @@ async function readGame(cmd: Command, name: string): Promise<InstalledGame | und
     ...(cover ? { cover } : {}),
     paks,
     ...(quake3 ? { gamedir: gamedirOf(name, title) } : {}),
-    ...(cdkey ? { cdkey } : {}),
     size,
     sizes,
     files,

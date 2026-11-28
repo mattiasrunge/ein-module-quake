@@ -31,21 +31,9 @@ const OWN_CODE: Record<string, { asset: string; name: string }[]> = {
 const WASD = ['bind w +forward', 'bind s +back', 'bind a +moveleft', 'bind d +moveright', 'bind mouse1 +attack', 'bind space +moveup'];
 
 /**
- * The CD key in a key file's text: its first line that has one, the 16 letters and digits of it, as
- * it is printed (`ABCD-EFGH-…`) or as Quake III writes it in `q3key`, followed by its comments.
- */
-function cdKeyOf(text: string): string | undefined {
-  for (const line of text.split(/\r?\n/)) {
-    const key = line.replace(/[\s-]/g, '');
-    if (/^[a-z0-9]{16}$/i.test(key)) return key.toLowerCase();
-  }
-  return undefined;
-}
-
-/**
  * Start the Quake 3 game `game` in the module's engine worker (`engine-worker.ts`), which reads its
- * pk3s from EiN as ioquake3 asks for them. The files beside them, the game code the module brings for
- * it, and the household's CD key are handed over whole.
+ * pk3s from EiN as ioquake3 asks for them. The files beside them and the game code the module brings
+ * for it are handed over whole.
  *
  * A player whose q3config.cfg has no name of their own plays under `name`, their account's. With
  * `map` the game starts on that map; with `online` it connects to a server once it has started,
@@ -57,10 +45,6 @@ export async function startQuake3({ game, sound, log, kept, onKeep, name, map, o
   const home = `${HOME}/${gamedir}`;
   const files = await looseFiles(game, folder);
   for (const pk3 of OWN_CODE[gamedir] ?? []) files.push({ path: `${folder}/${pk3.name}`, data: await fetchFile(`${ASSETS}/${pk3.asset}`) });
-  // The household's CD key, in the game's folder, where Quake 3 looks for q3key after the player's
-  // own home: a key the player typed in the game's menu comes first.
-  const key = game.cdkey ? cdKeyOf(new TextDecoder().decode(await fetchFile(`${game.path}/${game.cdkey}`))) : undefined;
-  if (key) files.push({ path: `${folder}/q3key`, data: new TextEncoder().encode(`${key}\n`) });
 
   // The command line: the folders and the video and sound, which Quake 3 sets before it starts
   // drawing, then what runs once it has, which the page writes into a file of its own (Quake 3 would
