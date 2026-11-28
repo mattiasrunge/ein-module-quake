@@ -1,0 +1,27 @@
+diff --git a/source/model.h b/source/model.h
+index c05f539..f564c49 100644
+--- a/source/model.h
++++ b/source/model.h
+@@ -395,5 +395,6 @@ void	Mod_TouchModel (char *name);
+ 
+ mleaf_t *Mod_PointInLeaf (float *p, model_t *model);
+ byte	*Mod_LeafPVS (mleaf_t *leaf, model_t *model);
++byte	*Mod_WaterPVS (mleaf_t *leaf, model_t *model);	// watervis_ein.c
+ 
+ #endif	// __MODEL__
+diff --git a/source/sv_main.c b/source/sv_main.c
+index 525d1cb..1393cb3 100644
+--- a/source/sv_main.c
++++ b/source/sv_main.c
+@@ -378,7 +378,10 @@ void SV_AddToFatPVS (vec3_t org, mnode_t *node)
+ 		{
+ 			if (node->contents != CONTENTS_SOLID)
+ 			{
+-				pvs = Mod_LeafPVS ( (mleaf_t *)node, sv.worldmodel);
++				// with what it sees through liquids, on a map vised as if
++				// they were walls (watervis_ein.c): the client may draw them
++				// translucent, and see what is behind them
++				pvs = Mod_WaterPVS ( (mleaf_t *)node, sv.worldmodel);
+ 				for (i=0 ; i<fatbytes ; i++)
+ 					fatpvs[i] |= pvs[i];
+ 			}

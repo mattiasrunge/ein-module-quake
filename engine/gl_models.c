@@ -58,6 +58,13 @@ typedef struct glalias_s
 	int			numskins;
 	int			*skinoffsets;	// each skin's pixels, by their offset in the header
 	GLuint		*skins;
+	GLuint		*colours;		// the linear look's, each skin's colours, made when drawn
+	struct
+	{
+		int		skin, colours;	// the skin, and the player's colours it is in
+		GLuint	texture;
+	}			players[8];		// the linear look's skins in players' colours
+	int			nextplayer;
 	int			skinwidth, skinheight;
 	struct glalias_s	*next;
 } glalias_t;
@@ -184,6 +191,7 @@ static glalias_t *GLM_BuildAlias (model_t *model)
 			a->skinoffsets[a->numskins++] = skingroup->skindescs[j].skin;
 	}
 	a->skins = malloc (a->numskins * sizeof (GLuint));
+	a->colours = calloc (a->numskins, sizeof (GLuint));
 	for (i = 0 ; i < a->numskins ; i++)
 	{
 		pixels[0] = (byte *) hdr + a->skinoffsets[i];
@@ -267,7 +275,7 @@ static int GLM_Frame (glalias_t *a, aliashdr_t *hdr, mdl_t *mdl, entity_t *e)
 }
 
 // The skin the entity shows now, as R_AliasSetupSkin chooses it.
-static GLuint GLM_Skin (glalias_t *a, aliashdr_t *hdr, mdl_t *mdl, entity_t *e)
+static int GLM_Skin (glalias_t *a, aliashdr_t *hdr, mdl_t *mdl, entity_t *e)
 {
 	maliasskindesc_t	*skindesc;
 	maliasskingroup_t	*group;
@@ -292,8 +300,68 @@ static GLuint GLM_Skin (glalias_t *a, aliashdr_t *hdr, mdl_t *mdl, entity_t *e)
 	}
 	for (i = 0 ; i < a->numskins ; i++)
 		if (a->skinoffsets[i] == offset)
-			return a->skins[i];
-	return a->skins[0];
+			return i;
+	return 0;
+}
+
+/*
+=============
+GLM_SkinColours
+
+The linear look's skin `skin`: its colours, filtered and mipmapped, the
+light's falling on all but its fullbright texels; for a player in their
+colours (cl.scores[].colors), their shirt's and their pants' ranges moved
+as CL_NewTranslation moves them, a few kept at a time.
+=============
+*/
+static GLuint GLM_SkinColours (glalias_t *a, aliashdr_t *hdr, int skin, entity_t *e)
+{
+	byte	translate[256], *pixels, *source;
+	int		i, colours = -1, top, bottom, size = a->skinwidth * a->skinheight;
+	GLuint	*slot;
+
+	for (i = 0 ; cl.scores && e->colormap != vid.colormap && i < cl.maxclients ; i++)
+		if (e->colormap == cl.scores[i].translations)
+			colours = cl.scores[i].colors;
+
+	if (colours < 0)
+		slot = &a->colours[skin];
+	else
+	{
+		for (i = 0 ; i < 8 ; i++)
+			if (a->players[i].texture && a->players[i].skin == skin && a->players[i].colours == colours)
+				return a->players[i].texture;
+		i = a->nextplayer;
+		a->nextplayer = (i + 1) % 8;
+		if (a->players[i].texture)
+			glDeleteTextures (1, &a->players[i].texture);
+		a->players[i].texture = 0;
+		a->players[i].skin = skin;
+		a->players[i].colours = colours;
+		slot = &a->players[i].texture;
+	}
+	if (*slot)
+		return *slot;
+
+	source = (byte *) hdr + a->skinoffsets[skin];
+	pixels = malloc (size);
+	for (i = 0 ; i < 256 ; i++)
+		translate[i] = i;
+	if (colours >= 0)
+	{
+		top = colours & 0xf0;
+		bottom = (colours & 15) << 4;
+		for (i = 0 ; i < 16 ; i++)
+		{
+			translate[TOP_RANGE + i] = top < 128 ? top + i : top + 15 - i;
+			translate[BOTTOM_RANGE + i] = bottom < 128 ? bottom + i : bottom + 15 - i;
+		}
+	}
+	for (i = 0 ; i < size ; i++)
+		pixels[i] = translate[source[i]];
+	*slot = GL_ColourTexture (a->skinwidth, a->skinheight, pixels, CT_MIPMAP | CT_FULLBRIGHT);
+	free (pixels);
+	return *slot;
 }
 
 /*
@@ -313,7 +381,7 @@ static void GLM_DrawAlias (entity_t *e, int ambient, int shade)
 	glprogram_t		*p;
 	vec3_t			angles, forward, right, up, lightvec = {-1, 0, 0};
 	float			mvp[16], light;
-	int				pose;
+	int				pose, skin;
 
 	a = GLM_Alias (e->model);
 	hdr = Mod_Extradata (e->model);
@@ -346,14 +414,22 @@ static void GLM_DrawAlias (entity_t *e, int ambient, int shade)
 	glUniform1f (p->u[UF_SHADE], (shade < 0 ? 0 : shade) * VID_GRADES);
 
 	glUniform2i (p->u[UF_SIZE], a->skinwidth, a->skinheight);
-	glUniform1i (p->u[UF_CMAP], GL_PlayerColormap (e->colormap));
-	GL_Bind (TU_TEXTURE, GL_TEXTURE_2D, GLM_Skin (a, hdr, mdl, e));
+	skin = GLM_Skin (a, hdr, mdl, e);
+	if (gl_linear)
+		GL_Bind (TU_TEXTURE, GL_TEXTURE_2D, GLM_SkinColours (a, hdr, skin, e));
+	else
+	{
+		glUniform1i (p->u[UF_CMAP], GL_PlayerColormap (e->colormap));
+		GL_Bind (TU_TEXTURE, GL_TEXTURE_2D, a->skins[skin]);
+	}
+	GL_LinearSampler (TU_TEXTURE, true);
 
 	glBindVertexArray (a->vao);
 	glBindBuffer (GL_ARRAY_BUFFER, a->poses_vbo);
 	glVertexAttribIPointer (0, 4, GL_UNSIGNED_BYTE, 0, (void *) (intptr_t) (pose * a->nummesh * 4));
 	glDrawElements (GL_TRIANGLES, a->numindices, GL_UNSIGNED_SHORT, 0);
 	glBindVertexArray (0);
+	GL_LinearSampler (TU_TEXTURE, false);
 }
 
 //=============================================================================
@@ -386,7 +462,7 @@ static glsprite_t *GLM_SpriteFrame (mspriteframe_t *frame)
 		sprites = s;
 	}
 	if (gl_linear && !s->rgba)
-		s->rgba = GLW_Keep (GL_ColourTexture (frame->width, frame->height, frame->pixels, CT_255));
+		s->rgba = GLW_Keep (GL_ColourTexture (frame->width, frame->height, frame->pixels, CT_MIPMAP | CT_255));
 	if (!gl_linear && !s->index)
 	{
 		pixels[0] = frame->pixels;
@@ -493,7 +569,9 @@ static void GLM_DrawSprite (entity_t *e)
 	glBindVertexArray (sprite_vao);
 	glBindBuffer (GL_ARRAY_BUFFER, sprite_vbo);
 	glBufferData (GL_ARRAY_BUFFER, sizeof (verts), verts, GL_STREAM_DRAW);
+	GL_LinearSampler (TU_TEXTURE, true);
 	glDrawArrays (GL_TRIANGLE_FAN, 0, 4);
+	GL_LinearSampler (TU_TEXTURE, false);
 	glBindVertexArray (0);
 }
 

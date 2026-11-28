@@ -7,8 +7,9 @@ set -eu
 
 # The engine's sources: quakegeneric's makefile's list without its null system, sound and CD
 # drivers, its network of the loopback alone and its own start-up; this build's network in its place
-# (net_ein.c, with id's datagram driver, net_dgrm.c).
-COMMON="chase cl_demo cl_input cl_main cl_parse cl_tent cmd common console crc cvar d_edge d_fill d_init d_modech d_part d_polyse d_scan d_sky d_sprite d_surf d_vars d_zpoint draw host_cmd host in_null keys mathlib menu model net_loop net_main net_dgrm net_ein net_vcr nonintel pr_cmds pr_edict pr_exec r_aclip r_alias r_bsp r_draw r_edge r_efrag r_light r_main r_misc r_part r_sky r_sprite r_surf r_vars sbar screen sv_main sv_move sv_phys sv_user vid_null view wad world zone sys_ein"
+# (net_ein.c, with id's datagram driver, net_dgrm.c), and what a leaf sees through liquids
+# (watervis_ein.c).
+COMMON="chase cl_demo cl_input cl_main cl_parse cl_tent cmd common console crc cvar d_edge d_fill d_init d_modech d_part d_polyse d_scan d_sky d_sprite d_surf d_vars d_zpoint draw host_cmd host in_null keys mathlib menu model net_loop net_main net_dgrm net_ein net_vcr nonintel pr_cmds pr_edict pr_exec r_aclip r_alias r_bsp r_draw r_edge r_efrag r_light r_main r_misc r_part r_sky r_sprite r_surf r_vars sbar screen sv_main sv_move sv_phys sv_user vid_null view wad world zone sys_ein watervis_ein"
 # The game's: the page's frame, keys and mouse, id's mixer with the page's sound card, the page's CD,
 # and the WebGL 2 renderer beside the software one.
 CLIENT="snd_dma snd_mem snd_mix quakegeneric_ein snd_ein cd_ein gl_main gl_world gl_models gl_shaders"

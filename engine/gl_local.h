@@ -96,9 +96,15 @@ extern float	gl_curve[VID_GRADES];	// a colormap row's brightness, for the linea
 extern int		gl_gen;				// the map's: what was built of an older one is gone
 extern int		gl_lightgen;		// the light's: lightmaps lit before are lit again
 extern int		gl_fullbrights;		// the first of the palette's fullbright colours
-extern cvar_t	r_wateralpha;
+extern cvar_t	r_wateralpha, r_slimealpha, r_lavaalpha, r_telealpha;
+
+#ifndef GL_TEXTURE_MAX_ANISOTROPY_EXT
+#define GL_TEXTURE_MAX_ANISOTROPY_EXT		0x84FE
+#define GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT	0x84FF
+#endif
 
 glprogram_t *GL_UseProgram (glprogramid_t id);
+void GL_LinearSampler (int unit, qboolean clamp);
 void GL_Bind (int unit, GLenum target, GLuint texture);
 void GL_EntityMatrix (entity_t *e, qboolean alias, float *out);
 void GL_MatMul (const float *a, const float *b, float *out);
@@ -116,6 +122,7 @@ qboolean GL_BoxOutside (vec3_t mins, vec3_t maxs);
 
 // gl_world.c
 GLuint GLW_Keep (GLuint texture);		// a texture of the map's, deleted with it
+float GLW_LiquidAlpha (texture_t *t);
 void GLW_NewMap (void);
 void GLW_DrawWorld (void);
 void GLW_DrawBrushEntity (entity_t *e);

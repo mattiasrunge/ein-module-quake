@@ -46,6 +46,9 @@ static const char precision[] =
 	"precision highp sampler2D;\n"
 	"precision highp usampler2DArray;\n";
 
+// The linear look's textures are sampled through the sampler gl_main.c binds,
+// trilinear and anisotropic.
+//
 // The palette and the colormap, which every fragment shader but the last
 // pass' looks colours up in: a colour is the palette's at an index, and the
 // colormap's row `row` turns a texel's index into the index of its colour
@@ -235,7 +238,8 @@ static const char alias_vs[] =
 
 // The skin's texel, through the entity's colormap (a player's colours),
 // in the light between the vertices, banded to its row as D_PolysetDraw
-// does. Linear: four texels blended, each between two rows.
+// does. Linear: the skin's colours in the player's (gl_models.c), filtered
+// between its mip levels, lit smoothly but for its fullbright texels.
 static const char alias_fs[] =
 	"uniform sampler2D u_tex;\n"
 	"uniform ivec2 u_size;\n"
@@ -243,24 +247,10 @@ static const char alias_fs[] =
 	"in vec2 v_st;\n"
 	"in float v_light;\n"
 	"out vec4 o_colour;\n"
-	"#ifdef LINEAR\n"
-	"vec3 texel(ivec2 at, int r0, int r1, float rf) {\n"
-	"	int index = indexAt(u_tex, clamp(at, ivec2(0), u_size - 1), 0);\n"
-	"	return mix(colour(lit(index, r0, u_cmap)).rgb, colour(lit(index, r1, u_cmap)).rgb, rf);\n"
-	"}\n"
-	"#endif\n"
 	"void main() {\n"
 	"#ifdef LINEAR\n"
-	"	float row = clamp(v_light / 256.0, 0.0, 63.0);\n"
-	"	int r0 = int(row), r1 = min(r0 + 1, 63);\n"
-	"	float rf = row - float(r0);\n"
-	"	vec2 p = v_st - 0.5;\n"
-	"	vec2 f = floor(p);\n"
-	"	vec2 fr = p - f;\n"
-	"	ivec2 a = ivec2(f);\n"
-	"	vec3 c = mix(mix(texel(a, r0, r1, rf), texel(a + ivec2(1, 0), r0, r1, rf), fr.x),\n"
-	"		mix(texel(a + ivec2(0, 1), r0, r1, rf), texel(a + ivec2(1, 1), r0, r1, rf), fr.x), fr.y);\n"
-	"	o_colour = vec4(c, 1.0);\n"
+	"	vec4 c = texture(u_tex, v_st / vec2(u_size));\n"
+	"	o_colour = vec4(c.rgb * mix(1.0, brightness(v_light / 256.0), c.a), 1.0);\n"
 	"#else\n"
 	"	ivec2 at = clamp(ivec2(floor(v_st)), ivec2(0), u_size - 1);\n"
 	"	o_colour = colour(lit(indexAt(u_tex, at, 0), int(v_light) >> 8, u_cmap));\n"

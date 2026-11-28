@@ -182,12 +182,25 @@ the view under water sways as it did there, at the frame's size, and the
 particles are its squares. It draws more of the computer's graphics card and
 less of its processor, each pixel in perspective, and its textures' smaller
 mip levels farther than the software renderer chose them, per pixel rather than
-per surface. **Filtering**, below it, chooses **Nearest**, the software
-renderer's look, or **Linear**, smoothed and mipmapped textures and smooth
-light as GLQuake drew them (`gl_filter nearest` or `linear`). The console's
-`r_wateralpha` makes the water translucent, 0.5 half, in WebGL only; Quake's
-maps were made for opaque water, so one that is not built for it shows what is
-behind its water only where its visibility reaches. A browser without WebGL 2
+per surface. **Filtering**, below it, chooses **Linear**, the first setting:
+textures filtered between their mip levels (trilinear) and, on floors and walls
+seen at a slant, along the slope too (`gl_texture_anisotropy`, 8 samples, 1 for
+none), with smooth light, as GLQuake drew them but as bright as the software
+renderer; or **Nearest**, the software renderer's look (`gl_filter linear` or
+`nearest`).
+
+Water is translucent in WebGL, half (`r_wateralpha 0.5`), and slime with it;
+lava and teleporters are opaque (`r_slimealpha`, `r_lavaalpha` and
+`r_telealpha`, each 0 to follow `r_wateralpha`, as QuakeSpasm has them; 1 is
+opaque). id's maps were made for opaque water: their visibility treats water
+as a wall, so through translucent water they would show the void and miss the
+monsters behind it. On such a map the game sees through its liquids itself:
+where a place sees a liquid's surface, it sees what is behind it as well
+(`engine/watervis_ein.c`), and the server sends the monsters and items there, so
+they are seen through the water too. A map made for translucent water is drawn
+by its own visibility. What the monsters see is unchanged. `r_watervis 0` draws
+only what the map's own visibility has. The software renderer draws the liquids
+opaque. A browser without WebGL 2
 draws with the software renderer, and the menu says **no WebGL**. The settings
 are kept with the others.
 
@@ -451,6 +464,7 @@ them, and **music** turns the music on and off.
 | `engine/gl_world.c`                                                               | The WebGL renderer's world and brush models: their surfaces, lightmaps, water and sky.                                                                                                                                            |
 | `engine/gl_models.c`                                                              | The WebGL renderer's alias models, sprites and particles.                                                                                                                                                                         |
 | `engine/gl_shaders.c`                                                             | The WebGL renderer's GLSL ES 3.00 shaders. `engine/gl_null.c` is the dedicated server's, which draws nothing.                                                                                                                     |
+| `engine/watervis_ein.c`                                                           | What a leaf sees through liquids on a map vised as if they were walls, for translucent water.                                                                                                                                     |
 | `engine/sys_ein.c`                                                                | The system driver: files, the clock, and Quit and errors that end the game.                                                                                                                                                       |
 | `engine/snd_ein.c`                                                                | The sound card: the ring Quake's mixer paints, handed to the page.                                                                                                                                                                |
 | `engine/cd_ein.c`                                                                 | The CD player: tracks and their volume, handed to the page.                                                                                                                                                                       |
@@ -459,6 +473,7 @@ them, and **music** turns the music on and off.
 | `engine/scale.patch`                                                              | Draws the menus, the status bar and the console at a scale of the frame's height, so they keep their size.                                                                                                                        |
 | `engine/files.patch`                                                              | Tells the page when Quake has saved a game or written its settings, so it can keep them.                                                                                                                                          |
 | `engine/webgl.patch`                                                              | Hands the view, a new map and the particles to the WebGL renderer while it draws, and puts the renderer and its filtering in Video Options.                                                                                       |
+| `engine/watervis.patch`                                                           | Has the server send what a player sees through liquids too (`engine/watervis_ein.c`).                                                                                                                                             |
 | `engine/long-strings.patch`                                                       | Saves strings longer than 256 bytes, as LibreQuake's are, instead of overrunning the buffer they were written into.                                                                                                               |
 | `engine/net_ein.c`, `engine/connect.patch`                                        | Quake's network: the loopback, and id's datagram driver over the page's or the worker's; connecting without waiting in a loop for answers.                                                                                        |
 | `engine/controls.patch`                                                           | Puts the previous weapon (`impulse 12`) beside the next in Customize controls, and a Crosshair line in Options.                                                                                                                   |
@@ -517,8 +532,8 @@ local exporter: each engine twice, the game and its dedicated server
 with `engine/resolution.patch`, `engine/scale.patch`, `engine/files.patch` and
 `engine/long-strings.patch` applied, id Software's `snd_dma.c`, `snd_mem.c`,
 `snd_mix.c` and `net_dgrm.c` from WinQuake at the commit it pins, with
-`engine/connect.patch`, `engine/menu.patch`, `engine/controls.patch` and
-`engine/webgl.patch` applied, and the `engine/` files added.
+`engine/connect.patch`, `engine/menu.patch`, `engine/controls.patch`,
+`engine/webgl.patch` and `engine/watervis.patch` applied, and the `engine/` files added.
 The source of `assets/quake2.wasm` is Yamagi Quake II at the commit
 `engine/quake2/Containerfile` pins, its 8.70 release, with
 `engine/quake2/main.patch`, `engine/quake2/system.patch`,

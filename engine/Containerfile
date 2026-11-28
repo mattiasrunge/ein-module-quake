@@ -81,15 +81,20 @@ RUN git -C /src apply /src/controls.patch
 COPY webgl.patch /src/
 RUN git -C /src apply /src/webgl.patch
 
+# id's maps were vised as if their liquids were walls: the server sends what a leaf sees through them
+# too (watervis_ein.c), so what is behind translucent water is there to draw.
+COPY watervis.patch /src/
+RUN git -C /src apply /src/watervis.patch
+
 WORKDIR /src/source
-COPY quakegeneric_ein.c sys_ein.c snd_ein.c cd_ein.c net_ein.c server_ein.c build.sh ./
+COPY quakegeneric_ein.c sys_ein.c snd_ein.c cd_ein.c net_ein.c server_ein.c watervis_ein.c build.sh ./
 COPY gl_ein.h gl_local.h gl_main.c gl_world.c gl_models.c gl_shaders.c gl_null.c ./
 
 # The game and its dedicated server (build.sh). Two compilers at a time keep the build's memory small
 # beside a running EiN.
 ENV EMCC_CORES=2
 RUN sh build.sh \
-  && echo "quakegeneric ${QUAKEGENERIC_COMMIT} with resolution.patch, scale.patch, files.patch, long-strings.patch, connect.patch, menu.patch, controls.patch and webgl.patch, id Software's Quake ${QUAKE_COMMIT}'s WinQuake sound and datagram driver, modes up to 1920x1200, a WebGL 2 renderer beside the software one: the game and its dedicated server; emsdk 6.0.13" > /out/quake-build.txt
+  && echo "quakegeneric ${QUAKEGENERIC_COMMIT} with resolution.patch, scale.patch, files.patch, long-strings.patch, connect.patch, menu.patch, controls.patch, webgl.patch and watervis.patch, id Software's Quake ${QUAKE_COMMIT}'s WinQuake sound and datagram driver, modes up to 1920x1200, a WebGL 2 renderer beside the software one: the game and its dedicated server; emsdk 6.0.13" > /out/quake-build.txt
 
 FROM scratch
 COPY --from=build /out/ /

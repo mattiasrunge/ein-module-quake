@@ -45,10 +45,35 @@ int			gl_gen = 1;
 int			gl_lightgen = 1;
 int			gl_fullbrights = 224;
 
-// Translucent water, opaque (1) as Quake's maps are made for, unless the
-// player asks: a map not built for it shows what is behind the water only
-// where its visibility lets it.
-cvar_t		r_wateralpha = {"r_wateralpha", "1", true};
+// How opaque the liquids are drawn, as QuakeSpasm has them: water half,
+// and slime with it (r_slimealpha 0 follows r_wateralpha), lava and
+// teleporters opaque. A map vised with its liquids opaque, as id's are,
+// sees through them all the same (watervis_ein.c).
+cvar_t		r_wateralpha = {"r_wateralpha", "0.5", true};
+cvar_t		r_slimealpha = {"r_slimealpha", "0", true};
+cvar_t		r_lavaalpha = {"r_lavaalpha", "1", true};
+cvar_t		r_telealpha = {"r_telealpha", "1", true};
+
+// Whether translucent liquids see through to what is behind them on a map
+// vised with them opaque (watervis_ein.c); 0 draws only what the map's own
+// visibility has, with holes where it stops.
+cvar_t		r_watervis = {"r_watervis", "1", true};
+
+// How many samples along the slope a linear texture takes on a surface
+// seen at a slant (the browser's EXT_texture_filter_anisotropic), up to the
+// graphics card's most; 1 is none.
+cvar_t		gl_texture_anisotropy = {"gl_texture_anisotropy", "8", true};
+
+// The linear look's samplers, mipmapped: repeating, and clamped at the
+// edges for skins and sprites.
+static GLuint	sampler_repeat, sampler_clamp;
+static float	anisotropy_max, anisotropy_set = -1;
+
+// The leaf GL_MarkLeaves marked from, whether through the liquids, and
+// r_visframecount then.
+static mleaf_t	*marked_leaf;
+static qboolean	marked_through;
+static int		marked_frame;
 
 static EMSCRIPTEN_WEBGL_CONTEXT_HANDLE	context;
 static qboolean	started, starting;
@@ -71,8 +96,7 @@ static qboolean	view_warped;
 // in front of which the view sees.
 static float	frustum[4][4];
 
-// r_main.c's, and view.c's gamma table, which no header declares.
-void R_MarkLeaves (void);
+// view.c's gamma table, which no header declares.
 extern byte		gammatable[256];
 
 // The canvas the page gave the engine, by the name Emscripten's WebGL and
@@ -86,6 +110,39 @@ EM_JS(int, gl_canvas, (void), {
 void GL_Register (void)
 {
 	Cvar_RegisterVariable (&r_wateralpha);
+	Cvar_RegisterVariable (&r_slimealpha);
+	Cvar_RegisterVariable (&r_lavaalpha);
+	Cvar_RegisterVariable (&r_telealpha);
+	Cvar_RegisterVariable (&r_watervis);
+	Cvar_RegisterVariable (&gl_texture_anisotropy);
+}
+
+/*
+=============
+GL_LinearSampler
+
+The linear look's sampler on the texture unit, clamped at the edges or
+repeating; none (0) for the nearest look's texelFetch.
+=============
+*/
+void GL_LinearSampler (int unit, qboolean clamp)
+{
+	glBindSampler (unit, !gl_linear ? 0 : clamp ? sampler_clamp : sampler_repeat);
+}
+
+static void GL_Anisotropy (void)
+{
+	float	value = gl_texture_anisotropy.value;
+
+	if (value < 1)
+		value = 1;
+	if (value > anisotropy_max)
+		value = anisotropy_max;
+	if (value == anisotropy_set || anisotropy_max < 1)
+		return;
+	anisotropy_set = value;
+	glSamplerParameterf (sampler_repeat, GL_TEXTURE_MAX_ANISOTROPY_EXT, value);
+	glSamplerParameterf (sampler_clamp, GL_TEXTURE_MAX_ANISOTROPY_EXT, value);
 }
 
 //=============================================================================
@@ -390,6 +447,17 @@ static qboolean GL_Start (void)
 		glUniform1fv (gl_programs[i].u[UF_CURVE], VID_GRADES, gl_curve);
 	}
 
+	glGenSamplers (1, &sampler_repeat);
+	glGenSamplers (1, &sampler_clamp);
+	glSamplerParameteri (sampler_repeat, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+	glSamplerParameteri (sampler_repeat, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glSamplerParameteri (sampler_clamp, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+	glSamplerParameteri (sampler_clamp, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glSamplerParameteri (sampler_clamp, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glSamplerParameteri (sampler_clamp, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	if (emscripten_webgl_enable_extension (context, "EXT_texture_filter_anisotropic"))
+		glGetFloatv (GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &anisotropy_max);
+
 	glDepthFunc (GL_LEQUAL);
 	started = true;
 	return true;
@@ -445,6 +513,45 @@ static void GL_Resize (void)
 
 //=============================================================================
 
+// Whether a liquid is drawn translucent this frame.
+static qboolean GL_LiquidsTranslucent (void)
+{
+	return r_wateralpha.value < 1 || (r_slimealpha.value > 0 && r_slimealpha.value < 1)
+		|| (r_lavaalpha.value > 0 && r_lavaalpha.value < 1) || (r_telealpha.value > 0 && r_telealpha.value < 1);
+}
+
+/*
+=============
+GL_MarkLeaves
+
+Marks the leaves the view's leaf sees, as R_MarkLeaves does, and while a
+liquid is translucent those it sees through them too (Mod_WaterPVS), on a
+map vised with them opaque.
+=============
+*/
+static void GL_MarkLeaves (void)
+{
+	qboolean	through = r_watervis.value && GL_LiquidsTranslucent ();
+	mnode_t		*node;
+	byte		*vis;
+	int			i;
+
+	if (r_viewleaf == marked_leaf && through == marked_through && r_visframecount == marked_frame)
+		return;
+	r_visframecount++;
+	vis = through ? Mod_WaterPVS (r_viewleaf, cl.worldmodel) : Mod_LeafPVS (r_viewleaf, cl.worldmodel);
+	for (i = 0 ; i < cl.worldmodel->numleafs ; i++)
+	{
+		if (!(vis[i >> 3] & (1 << (i & 7))))
+			continue;
+		for (node = (mnode_t *) &cl.worldmodel->leafs[i + 1] ; node && node->visframe != r_visframecount ; node = node->parent)
+			node->visframe = r_visframecount;
+	}
+	marked_leaf = r_viewleaf;
+	marked_through = through;
+	marked_frame = r_visframecount;
+}
+
 /*
 =============
 GL_SetupView
@@ -487,7 +594,7 @@ static void GL_SetupView (void)
 	r_oldviewleaf = r_viewleaf;
 	r_viewleaf = Mod_PointInLeaf (r_origin, cl.worldmodel);
 	r_dowarp = r_waterwarp.value && (r_viewleaf->contents <= CONTENTS_WATER);
-	R_MarkLeaves ();
+	GL_MarkLeaves ();
 
 	// The software renderer's projection: fov_x across the view, square
 	// pixels; near enough that a surface the eye is close to, as water's
@@ -549,6 +656,9 @@ void GL_RenderView (void)
 	glDepthMask (GL_TRUE);
 	glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glEnable (GL_DEPTH_TEST);
+	GL_Anisotropy ();
+	GL_LinearSampler (TU_TEXTURE, false);
+	GL_LinearSampler (TU_SECOND, false);
 
 	GLW_DrawWorld ();
 	GLM_DrawEntities ();
@@ -559,6 +669,8 @@ void GL_RenderView (void)
 	GLW_DrawWater ();
 
 	glDisable (GL_DEPTH_TEST);
+	glBindSampler (TU_TEXTURE, 0);
+	glBindSampler (TU_SECOND, 0);
 	glBindFramebuffer (GL_FRAMEBUFFER, 0);
 
 	V_SetContentsColor (r_viewleaf->contents);
@@ -571,6 +683,7 @@ void GL_RenderView (void)
 void GL_NewMap (void)
 {
 	gl_gen++;
+	marked_leaf = NULL;
 	if (started)
 		GLW_NewMap ();
 }

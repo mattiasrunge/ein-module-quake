@@ -92,7 +92,7 @@ index d154abc..c3cccf6 100644
  	delta = (byte *)&dummy - r_stack_start;
  	if (delta < -10000 || delta > 10000)
 diff --git a/source/vid_null.c b/source/vid_null.c
-index 2b6e680..50820d4 100644
+index 2b6e680..1f07627 100644
 --- a/source/vid_null.c
 +++ b/source/vid_null.c
 @@ -33,6 +33,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
@@ -108,12 +108,12 @@ index 2b6e680..50820d4 100644
  cvar_t	vid_fullscreen = {"vid_fullscreen", "0"};
  
 +// Which renderer draws the frames: WebGL 2 ("gl", gl_main.c) or the
-+// software one ("soft"); and how WebGL filters the textures: "nearest", the
-+// software renderer's look, or "linear", mipmapped, as GLQuake did.
++// software one ("soft"); and how WebGL filters the textures: "linear",
++// trilinear between mip levels, or "nearest", the software renderer's look.
 +// config.cfg keeps both. A browser without WebGL 2 draws with the software
 +// renderer whatever vid_renderer says.
 +cvar_t	vid_renderer = {"vid_renderer", "gl", true};
-+cvar_t	gl_filter = {"gl_filter", "nearest", true};
++cvar_t	gl_filter = {"gl_filter", "linear", true};
 +
  // The line Video Options' cursor is on: a mode, or VID_FULLSCREEN, the line
 -// after the modes and a blank one.

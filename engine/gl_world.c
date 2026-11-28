@@ -81,8 +81,8 @@ static int			num_chained;
 static glbatch_t	batches[MAX_BATCHES];
 static int			num_batches;
 
-// The world's water, slime and lava, drawn after the rest when they are
-// translucent (r_wateralpha).
+// The world's water, slime, lava and teleporters, drawn after the rest
+// when they are translucent (GLW_LiquidAlpha).
 static msurface_t	*water_chain;
 static glbrush_t	*water_brush;
 static qboolean		in_world;
@@ -159,8 +159,8 @@ static void GLW_Texture (texture_t *t, int flags)
 		}
 		if (gl_linear)
 		{
-			t->gl_rgba = GLW_Keep (GL_ColourTexture (128, 128, back, CT_REPEAT));
-			t->gl_frontrgba = GLW_Keep (GL_ColourTexture (128, 128, front, CT_REPEAT | CT_ZERO));
+			t->gl_rgba = GLW_Keep (GL_ColourTexture (128, 128, back, CT_MIPMAP | CT_REPEAT));
+			t->gl_frontrgba = GLW_Keep (GL_ColourTexture (128, 128, front, CT_MIPMAP | CT_REPEAT | CT_ZERO));
 		}
 		else
 		{
@@ -297,6 +297,30 @@ static void GLW_BuildLightmap (glbrush_t *b, msurface_t *surf)
 		b->dirty[layer][0] = surf->gl_light[1];
 	if (b->dirty[layer][1] < surf->gl_light[1] + tmax)
 		b->dirty[layer][1] = surf->gl_light[1] + tmax;
+}
+
+/*
+=============
+GLW_LiquidAlpha
+
+How opaque a liquid's surface is drawn: r_lavaalpha, r_slimealpha or
+r_telealpha by its texture's name, as QuakeSpasm has them, and r_wateralpha
+for water and for those of them at 0.
+=============
+*/
+float GLW_LiquidAlpha (texture_t *t)
+{
+	float	alpha = 0;
+
+	if (!Q_strncasecmp (t->name, "*lava", 5))
+		alpha = r_lavaalpha.value;
+	else if (!Q_strncasecmp (t->name, "*tele", 5))
+		alpha = r_telealpha.value;
+	else if (!Q_strncasecmp (t->name, "*slime", 6))
+		alpha = r_slimealpha.value;
+	if (alpha <= 0)
+		alpha = r_wateralpha.value;
+	return alpha < 0 ? 0 : alpha > 1 ? 1 : alpha;
 }
 
 static qboolean GLW_Lit (msurface_t *surf)
@@ -527,7 +551,7 @@ static void GLW_Chain (glbrush_t *b, msurface_t *surf)
 
 	if (GLW_Lit (surf))
 		GLW_CheckLightmap (b, surf);
-	if ((surf->flags & SURF_DRAWTURB) && r_wateralpha.value < 1 && in_world)
+	if ((surf->flags & SURF_DRAWTURB) && in_world && GLW_LiquidAlpha (t) < 1)
 	{
 		surf->gl_next = water_chain;
 		water_chain = surf;
@@ -594,13 +618,15 @@ static void GLW_DrawBatch (glbatch_t *batch)
 GLW_DrawBatches
 
 The batches, with the model's lightmaps: the lit surfaces, then the
-turbulent ones (translucent with `alpha` below 1), then the sky. Each
+turbulent ones (translucent as GLW_LiquidAlpha says with `translucent`,
+else opaque), then the sky. Each
 texture is the one its animation shows now (R_TextureAnimation, for
 currententity).
 =============
 */
-static void GLW_DrawBatches (glbrush_t *b, float *mvp, float alpha)
+static void GLW_DrawBatches (glbrush_t *b, float *mvp, qboolean translucent)
 {
+	float			alpha;
 	extern cvar_t	d_mipscale, d_mipcap;
 	glprogram_t		*p;
 	texture_t		*t;
@@ -637,13 +663,7 @@ static void GLW_DrawBatches (glbrush_t *b, float *mvp, float alpha)
 				{
 					p = GL_UseProgram (gl_linear ? P_TURB_LINEAR : P_TURB);
 					glUniform1f (p->u[UF_TIME], cl.time);
-					glUniform1f (p->u[UF_ALPHA], alpha);
-					if (alpha < 1)
-					{
-						glEnable (GL_BLEND);
-						glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-						glDepthMask (GL_FALSE);
-					}
+					glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 				}
 				else
 				{
@@ -664,9 +684,19 @@ static void GLW_DrawBatches (glbrush_t *b, float *mvp, float alpha)
 			if (batch->flags & SURF_DRAWSKY)
 				GL_Bind (TU_SECOND, GL_TEXTURE_2D, gl_linear ? t->gl_frontrgba : t->gl_front);
 			glUniform2i (p->u[UF_SIZE], t->width, t->height);
+			if (pass == 1)
+			{
+				alpha = translucent ? GLW_LiquidAlpha (batch->texture) : 1;
+				glUniform1f (p->u[UF_ALPHA], alpha);
+				if (alpha < 1)
+					glEnable (GL_BLEND);
+				else
+					glDisable (GL_BLEND);
+				glDepthMask (alpha < 1 ? GL_FALSE : GL_TRUE);
+			}
 			GLW_DrawBatch (batch);
 		}
-		if (pass == 1 && p && alpha < 1)
+		if (pass == 1 && p)
 		{
 			glDisable (GL_BLEND);
 			glDepthMask (GL_TRUE);
@@ -749,7 +779,7 @@ void GLW_DrawWorld (void)
 	GLW_WorldNode (b, cl.worldmodel->nodes);
 	in_world = false;
 	GLW_Batch ();
-	GLW_DrawBatches (b, gl_viewproj, 1);
+	GLW_DrawBatches (b, gl_viewproj, false);
 }
 
 /*
@@ -820,7 +850,7 @@ void GLW_DrawBrushEntity (entity_t *e)
 	}
 	GLW_Batch ();
 	GL_EntityMatrix (e, false, mvp);
-	GLW_DrawBatches (b, mvp, r_wateralpha.value < 1 ? r_wateralpha.value : 1);
+	GLW_DrawBatches (b, mvp, true);
 	currententity = &cl_entities[0];
 }
 
@@ -843,5 +873,5 @@ void GLW_DrawWater (void)
 		t->gl_chain = surf;
 	}
 	GLW_Batch ();
-	GLW_DrawBatches (water_brush, gl_viewproj, r_wateralpha.value);
+	GLW_DrawBatches (water_brush, gl_viewproj, true);
 }
