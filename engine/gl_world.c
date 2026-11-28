@@ -56,7 +56,10 @@ typedef struct glbrush_s
 	GLuint			vao, vbo;
 	GLuint			lightmap;
 	int				layers;
-	unsigned short	*light;			// the lightmap's samples
+	unsigned short	*light;			// the lightmap's samples, `channels` each
+	int				channels;		// 1, or 3 with a .lit's colours
+	byte			*lightdata;		// the BSP's light (model->lightdata)
+	byte			*lit;			// its colours, a .lit's: three bytes for each of its
 	int				dirty[LM_LAYERS][2];	// rows of a layer lit since put on the texture
 	int				lightgen;
 	struct glbrush_s	*next;
@@ -113,6 +116,7 @@ void GLW_NewMap (void)
 		glDeleteBuffers (1, &b->vbo);
 		glDeleteTextures (1, &b->lightmap);
 		free (b->light);
+		free (b->lit);
 		free (b);
 	}
 	brushes = NULL;
@@ -250,10 +254,10 @@ the dynamic lights, then bounded, inverted and shifted.
 */
 static void GLW_BuildLightmap (glbrush_t *b, msurface_t *surf)
 {
-	unsigned		blocklights[18 * 18];
+	unsigned		blocklights[3][18 * 18];
 	unsigned short	*dest;
 	byte			*lightmap;
-	int				smax, tmax, size, i, s, t, maps, value, layer;
+	int				smax, tmax, size, i, s, t, c, maps, value, layer, channels = b->channels;
 
 	smax = (surf->extents[0] >> 4) + 1;
 	tmax = (surf->extents[1] >> 4) + 1;
@@ -262,37 +266,46 @@ static void GLW_BuildLightmap (glbrush_t *b, msurface_t *surf)
 	for (maps = 0 ; maps < MAXLIGHTMAPS ; maps++)
 		surf->gl_cached[maps] = surf->styles[maps] == 255 ? 0 : d_lightstylevalue[surf->styles[maps]];
 
-	if (r_fullbright.value || !cl.worldmodel->lightdata)
-		memset (blocklights, 0, size * sizeof (unsigned));
-	else
+	// Each colour of a .lit as the BSP's own light; dynamic lights are white.
+	for (c = 0 ; c < channels ; c++)
 	{
+		if (r_fullbright.value || !cl.worldmodel->lightdata)
+		{
+			memset (blocklights[c], 0, size * sizeof (unsigned));
+			continue;
+		}
 		for (i = 0 ; i < size ; i++)
-			blocklights[i] = r_refdef.ambientlight << 8;
+			blocklights[c][i] = r_refdef.ambientlight << 8;
 		lightmap = surf->samples;
 		if (lightmap)
+		{
+			if (channels == 3)
+				lightmap = b->lit + (lightmap - b->lightdata) * 3 + c;
 			for (maps = 0 ; maps < MAXLIGHTMAPS && surf->styles[maps] != 255 ; maps++)
 			{
 				value = d_lightstylevalue[surf->styles[maps]];
 				for (i = 0 ; i < size ; i++)
-					blocklights[i] += lightmap[i] * value;
-				lightmap += size;
+					blocklights[c][i] += lightmap[i * channels] * value;
+				lightmap += size * channels;
 			}
+		}
 		if (surf->gl_dlit)
-			GLW_AddDynamicLights (surf, blocklights);
+			GLW_AddDynamicLights (surf, blocklights[c]);
 		for (i = 0 ; i < size ; i++)
 		{
-			value = (255 * 256 - (int) blocklights[i]) >> (8 - VID_CBITS);
+			value = (255 * 256 - (int) blocklights[c][i]) >> (8 - VID_CBITS);
 			if (value < (1 << 6))
 				value = (1 << 6);
-			blocklights[i] = value;
+			blocklights[c][i] = value;
 		}
 	}
 
 	layer = surf->gl_light[2];
-	dest = b->light + (layer * LM_SIZE + surf->gl_light[1]) * LM_SIZE + surf->gl_light[0];
-	for (t = 0 ; t < tmax ; t++, dest += LM_SIZE)
+	dest = b->light + ((layer * LM_SIZE + surf->gl_light[1]) * LM_SIZE + surf->gl_light[0]) * channels;
+	for (t = 0 ; t < tmax ; t++, dest += LM_SIZE * channels)
 		for (s = 0 ; s < smax ; s++)
-			dest[s] = blocklights[t * smax + s];
+			for (c = 0 ; c < channels ; c++)
+				dest[s * channels + c] = blocklights[c][t * smax + s];
 	if (b->dirty[layer][0] > surf->gl_light[1])
 		b->dirty[layer][0] = surf->gl_light[1];
 	if (b->dirty[layer][1] < surf->gl_light[1] + tmax)
@@ -366,8 +379,9 @@ static void GLW_UploadLightmaps (glbrush_t *b)
 		hi = b->dirty[layer][1];
 		if (lo >= hi)
 			continue;
-		glTexSubImage3D (GL_TEXTURE_2D_ARRAY, 0, 0, lo, layer, LM_SIZE, hi - lo, 1, GL_RED_INTEGER, GL_UNSIGNED_SHORT,
-			b->light + (layer * LM_SIZE + lo) * LM_SIZE);
+		glTexSubImage3D (GL_TEXTURE_2D_ARRAY, 0, 0, lo, layer, LM_SIZE, hi - lo, 1,
+			b->channels == 3 ? GL_RGB_INTEGER : GL_RED_INTEGER, GL_UNSIGNED_SHORT,
+			b->light + (layer * LM_SIZE + lo) * LM_SIZE * b->channels);
 		b->dirty[layer][0] = LM_SIZE;
 		b->dirty[layer][1] = 0;
 	}
@@ -420,6 +434,74 @@ static qboolean GLW_AllocLightmap (unsigned short (*allocated)[LM_SIZE], int *la
 		return true;
 	}
 	return false;
+}
+
+// How much of the BSP's light its surfaces use: as far as their samples reach.
+static int GLW_LightSize (model_t *model)
+{
+	msurface_t	*surf;
+	int			i, maps, end, size = 0;
+
+	for (i = 0, surf = model->surfaces ; i < model->numsurfaces ; i++, surf++)
+	{
+		if (!surf->samples || !GLW_Lit (surf))
+			continue;
+		for (maps = 0 ; maps < MAXLIGHTMAPS && surf->styles[maps] != 255 ; maps++)
+			;
+		end = surf->samples - model->lightdata
+			+ maps * ((surf->extents[0] >> 4) + 1) * ((surf->extents[1] >> 4) + 1);
+		if (end > size)
+			size = end;
+	}
+	return size;
+}
+
+/*
+=============
+GLW_LoadLit
+
+The colours of the BSP's light, from a .lit beside it (maps/<map>.lit, as
+QuakeSpasm looks for it): "QLIT", version 1, then three bytes for each byte
+of the BSP's light. Without one, or with one of another size, the light is
+the BSP's own, white.
+=============
+*/
+static void GLW_LoadLit (glbrush_t *b, model_t *model)
+{
+	char	name[MAX_QPATH];
+	byte	*data;
+	int		mark, size, lightsize;
+	model_t	*named = model;
+
+	b->channels = 1;
+	b->lightdata = model->lightdata;
+	b->lit = NULL;
+	// a submodel ("*1") is its BSP's: the world's
+	if (model->name[0] == '*' && cl.worldmodel && model->surfaces == cl.worldmodel->surfaces)
+		named = cl.worldmodel;
+	if (!model->lightdata || named->name[0] == '*')
+		return;
+	COM_StripExtension (named->name, name);
+	strcat (name, ".lit");
+	mark = Hunk_LowMark ();
+	data = COM_LoadHunkFile (name);
+	if (!data)
+		return;
+	size = com_filesize;
+	lightsize = GLW_LightSize (named);
+	// QuakeSpasm holds it to the BSP's light lump's size, which the model
+	// does not keep: it covers every surface's samples here.
+	if (size >= 8 && !memcmp (data, "QLIT", 4) && LittleLong (((int *) data)[1]) == 1
+		&& (size - 8) % 3 == 0 && size >= 8 + lightsize * 3)
+	{
+		b->lit = malloc (size - 8);
+		memcpy (b->lit, data + 8, size - 8);
+		b->channels = 3;
+		Con_DPrintf ("%s: coloured light\n", name);
+	}
+	else
+		Con_Printf ("%s is not a .lit of %s\n", name, named->name);
+	Hunk_FreeToLowMark (mark);
 }
 
 static glbrush_t *GLW_Build (model_t *model)
@@ -499,7 +581,8 @@ static glbrush_t *GLW_Build (model_t *model)
 
 	if (!b->layers)
 		b->layers = 1;
-	b->light = calloc (b->layers * LM_SIZE * LM_SIZE, sizeof (unsigned short));
+	GLW_LoadLit (b, model);
+	b->light = calloc (b->layers * LM_SIZE * LM_SIZE * b->channels, sizeof (unsigned short));
 	for (layer = 0 ; layer < b->layers ; layer++)
 	{
 		b->dirty[layer][0] = LM_SIZE;
@@ -510,7 +593,7 @@ static glbrush_t *GLW_Build (model_t *model)
 			GLW_BuildLightmap (b, &model->surfaces[i]);
 	glGenTextures (1, &b->lightmap);
 	GL_Bind (TU_LIGHTMAP, GL_TEXTURE_2D_ARRAY, b->lightmap);
-	glTexStorage3D (GL_TEXTURE_2D_ARRAY, 1, GL_R16UI, LM_SIZE, LM_SIZE, b->layers);
+	glTexStorage3D (GL_TEXTURE_2D_ARRAY, 1, b->channels == 3 ? GL_RGB16UI : GL_R16UI, LM_SIZE, LM_SIZE, b->layers);
 	glTexParameteri (GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri (GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	GLW_UploadLightmaps (b);
@@ -521,6 +604,103 @@ static glbrush_t *GLW_Build (model_t *model)
 }
 
 // The model's BSP's buffers, built the first time it is drawn on the map.
+/*
+=============
+GLW_LightTint
+
+The colour of the light below `point` on the world, as R_LightPoint finds
+its brightness: each colour of the .lit's light there against the BSP's
+own, (1, 1, 1) on a map without one. An alias model there is lit in it.
+=============
+*/
+static qboolean GLW_TintNode (glbrush_t *b, mnode_t *node, vec3_t start, vec3_t end, vec3_t tint)
+{
+	float		front, back, frac, mono, rgb[3];
+	int			side, i, c, s, t, ds, dt, maps, size, offset, scale;
+	vec3_t		mid;
+	msurface_t	*surf;
+	mtexinfo_t	*tex;
+
+	while (node->contents >= 0)
+	{
+		front = DotProduct (start, node->plane->normal) - node->plane->dist;
+		back = DotProduct (end, node->plane->normal) - node->plane->dist;
+		side = front < 0;
+		if ((back < 0) == side)
+		{
+			node = node->children[side];
+			continue;
+		}
+		frac = front / (front - back);
+		for (i = 0 ; i < 3 ; i++)
+			mid[i] = start[i] + (end[i] - start[i]) * frac;
+		if (GLW_TintNode (b, node->children[side], start, mid, tint))
+			return true;
+		surf = cl.worldmodel->surfaces + node->firstsurface;
+		for (i = 0 ; i < node->numsurfaces ; i++, surf++)
+		{
+			if (surf->flags & SURF_DRAWTILED)
+				continue;
+			tex = surf->texinfo;
+			s = DotProduct (mid, tex->vecs[0]) + tex->vecs[0][3];
+			t = DotProduct (mid, tex->vecs[1]) + tex->vecs[1][3];
+			if (s < surf->texturemins[0] || t < surf->texturemins[1])
+				continue;
+			ds = s - surf->texturemins[0];
+			dt = t - surf->texturemins[1];
+			if (ds > surf->extents[0] || dt > surf->extents[1])
+				continue;
+			if (!surf->samples)
+				return true;
+			size = ((surf->extents[0] >> 4) + 1) * ((surf->extents[1] >> 4) + 1);
+			offset = surf->samples - b->lightdata + (dt >> 4) * ((surf->extents[0] >> 4) + 1) + (ds >> 4);
+			mono = rgb[0] = rgb[1] = rgb[2] = 0;
+			for (maps = 0 ; maps < MAXLIGHTMAPS && surf->styles[maps] != 255 ; maps++, offset += size)
+			{
+				scale = d_lightstylevalue[surf->styles[maps]];
+				mono += b->lightdata[offset] * scale;
+				for (c = 0 ; c < 3 ; c++)
+					rgb[c] += b->lit[offset * 3 + c] * scale;
+			}
+			for (c = 0 ; c < 3 ; c++)
+				tint[c] = mono > 0 ? rgb[c] / mono : 1;
+			return true;
+		}
+		start = mid;
+		node = node->children[!side];
+	}
+	return false;
+}
+
+qboolean GLW_Coloured (void)
+{
+	glbrush_t	*b;
+
+	for (b = brushes ; b ; b = b->next)
+		if (b->surfaces == cl.worldmodel->surfaces && b->gen == gl_gen)
+			return b->channels == 3;
+	return false;
+}
+
+void GLW_LightTint (vec3_t point, vec3_t tint)
+{
+	glbrush_t	*b;
+	vec3_t		end;
+	int			c;
+
+	tint[0] = tint[1] = tint[2] = 1;
+	for (b = brushes ; b ; b = b->next)
+		if (b->surfaces == cl.worldmodel->surfaces && b->gen == gl_gen)
+			break;
+	if (!b || b->channels != 3)
+		return;
+	VectorCopy (point, end);
+	end[2] -= 2048;
+	GLW_TintNode (b, cl.worldmodel->nodes, point, end, tint);
+	for (c = 0 ; c < 3 ; c++)
+		tint[c] = tint[c] < 0 ? 0 : tint[c] > 3 ? 3 : tint[c];
+}
+
 static glbrush_t *GLW_Brush (model_t *model)
 {
 	glbrush_t	*b;
@@ -658,6 +838,7 @@ static void GLW_DrawBatches (glbrush_t *b, float *mvp, qboolean translucent)
 					glUniform4f (p->u[UF_MIP], gl_xscale, 1.0 * d_mipscale.value, 0.5 * 0.8 * d_mipscale.value,
 						0.25 * 0.8 * d_mipscale.value);
 					glUniform1i (p->u[UF_MINMIP], minmip < 0 ? 0 : minmip > 3 ? 3 : minmip);
+					glUniform1i (p->u[UF_COLOURED], b->channels == 3);
 				}
 				else if (pass == 1)
 				{

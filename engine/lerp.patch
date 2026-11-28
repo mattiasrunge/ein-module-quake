@@ -1,0 +1,37 @@
+diff --git a/source/cl_parse.c b/source/cl_parse.c
+index 7107cd6..a794258 100644
+--- a/source/cl_parse.c
++++ b/source/cl_parse.c
+@@ -454,6 +454,7 @@ if (bits&(1<<i))
+ 
+ 	if ( bits & U_NOLERP )
+ 		ent->forcelink = true;
++	ent->gl_step = (bits & U_NOLERP) != 0;	// a monster's steps: gl_models.c blends them
+ 
+ 	if ( forcelink )
+ 	{	// didn't have an update last message
+diff --git a/source/render.h b/source/render.h
+index 92ad315..0f38e5a 100644
+--- a/source/render.h
++++ b/source/render.h
+@@ -67,6 +67,20 @@ typedef struct entity_s
+ 	struct mnode_s			*topnode;		// for bmodels, first world node
+ 											//  that splits bmodel, or NULL if
+ 											//  not split
++
++// the WebGL renderer's blending between poses and moves (gl_models.c):
++// whether the server moves it in steps (U_NOLERP, a MOVETYPE_STEP
++// monster), the model and the frame it was last drawn in, how many pose
++// changes still not to blend, the poses (previous, current) and when the
++// current one began, how long it lasts, and the moves likewise
++	qboolean				gl_step;
++	struct model_s			*gl_model;
++	int						gl_frame;
++	int						gl_reset;
++	short					gl_pose[2];
++	float					gl_posestart, gl_posetime;
++	float					gl_movestart;
++	vec3_t					gl_origin[2], gl_angles[2];
+ } entity_t;
+ 
+ // !!! if this is changed, it must be changed in asm_draw.h too !!!

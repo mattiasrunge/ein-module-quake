@@ -34,7 +34,7 @@ static const char *uniform_names[UF_COUNT] =
 	"u_vpn", "u_vright", "u_vup", "u_sky", "u_frame",
 	"u_scale", "u_origin", "u_lightvec", "u_ambient", "u_shade", "u_normals", "u_cmap",
 	"u_particle", "u_viewport",
-	"u_vrect", "u_shifts", "u_warp",
+	"u_vrect", "u_shifts", "u_warp", "u_blend", "u_coloured", "u_litpalette",
 };
 
 static const char header[] =
@@ -44,7 +44,8 @@ static const char precision[] =
 	"precision highp float;\n"
 	"precision highp int;\n"
 	"precision highp sampler2D;\n"
-	"precision highp usampler2DArray;\n";
+	"precision highp usampler2DArray;\n"
+	"precision highp sampler3D;\n";
 
 // The linear look's textures are sampled through the sampler gl_main.c binds,
 // trilinear and anisotropic.
@@ -73,6 +74,25 @@ static const char palette_glsl[] =
 	"	float r = clamp(row, 0.0, 63.0);\n"
 	"	int i = min(int(r), 62);\n"
 	"	return mix(u_curve[i], u_curve[i + 1], r - float(i));\n"
+	"}\n"
+	"vec3 brightness3(vec3 rows) {\n"
+	"	return vec3(brightness(rows.r), brightness(rows.g), brightness(rows.b));\n"
+	"}\n"
+	// A texel in light of a row for each colour: in white light (the rows
+	// alike) the colormap's colour, as the software renderer has it; in
+	// coloured light each colour through the colormap at its own row, and
+	// with u_litpalette that put back on the palette, its nearest colour
+	// the light falls on (u_rgbmap, gl_main.c), but for fullbright texels.
+	"uniform highp sampler3D u_rgbmap;\n"
+	"uniform int u_litpalette;\n"
+	"vec3 litColour(int index, ivec3 rows, int block) {\n"
+	"	int red = lit(index, rows.r, block);\n"
+	"	if (rows.r == rows.g && rows.g == rows.b)\n"
+	"		return colour(red).rgb;\n"
+	"	vec3 c = vec3(colour(red).r, colour(lit(index, rows.g, block)).g, colour(lit(index, rows.b, block)).b);\n"
+	"	if (u_litpalette != 0 && lit(index, 0, block) != lit(index, 63, block))\n"
+	"		c = colour(int(texture(u_rgbmap, c).r * 255.0 + 0.5)).rgb;\n"
+	"	return c;\n"
 	"}\n";
 
 // A brush model's surfaces: its vertices with their texture coordinates in
@@ -110,28 +130,33 @@ static const char world_fs[] =
 	"uniform highp usampler2DArray u_light;\n"
 	"uniform vec4 u_mip;\n"
 	"uniform int u_minmip;\n"
+	"uniform int u_coloured;\n"
 	"in vec2 v_st;\n"
 	"in vec2 v_lm;\n"
 	"flat in uvec4 v_rect;\n"
 	"flat in uvec2 v_extra;\n"
 	"out vec4 o_colour;\n"
-	"float lightAt(vec2 lm) {\n"
+	"vec3 sample3(ivec3 at) {\n"
+	"	uvec4 v = texelFetch(u_light, at, 0);\n"
+	"	return u_coloured != 0 ? vec3(v.rgb) : vec3(float(v.r));\n"
+	"}\n"
+	"vec3 lightAt(vec2 lm) {\n"
 	"	vec2 f = floor(lm);\n"
 	"	vec2 fr = lm - f;\n"
 	"	ivec2 lo = ivec2(v_rect.xy), hi = ivec2(v_rect.zw);\n"
 	"	ivec2 a = clamp(ivec2(f), lo, hi), b = clamp(ivec2(f) + 1, lo, hi);\n"
 	"	int layer = int(v_extra.x);\n"
-	"	float l00 = float(texelFetch(u_light, ivec3(a.x, a.y, layer), 0).r);\n"
-	"	float l10 = float(texelFetch(u_light, ivec3(b.x, a.y, layer), 0).r);\n"
-	"	float l01 = float(texelFetch(u_light, ivec3(a.x, b.y, layer), 0).r);\n"
-	"	float l11 = float(texelFetch(u_light, ivec3(b.x, b.y, layer), 0).r);\n"
+	"	vec3 l00 = sample3(ivec3(a.x, a.y, layer));\n"
+	"	vec3 l10 = sample3(ivec3(b.x, a.y, layer));\n"
+	"	vec3 l01 = sample3(ivec3(a.x, b.y, layer));\n"
+	"	vec3 l11 = sample3(ivec3(b.x, b.y, layer));\n"
 	"	return mix(mix(l00, l10, fr.x), mix(l01, l11, fr.x), fr.y);\n"
 	"}\n"
 	"void main() {\n"
 	"#ifdef LINEAR\n"
 	"	vec4 c = texture(u_tex, v_st / vec2(u_size));\n"
-	"	float light = lightAt(v_lm + vec2(0.5, -0.5) / 16.0);\n"
-	"	o_colour = vec4(c.rgb * mix(1.0, brightness(light / 256.0), c.a), 1.0);\n"
+	"	vec3 light = lightAt(v_lm + vec2(0.5, -0.5) / 16.0);\n"
+	"	o_colour = vec4(c.rgb * mix(vec3(1.0), brightness3(light / 256.0), c.a), 1.0);\n"
 	"#else\n"
 	"	float scale = u_mip.x * gl_FragCoord.w * float(v_extra.y);\n"
 	"	int mip = scale >= u_mip.y ? 0 : scale >= u_mip.z ? 1 : scale >= u_mip.w ? 2 : 3;\n"
@@ -142,8 +167,8 @@ static const char world_fs[] =
 	"	ivec2 at = ivec2(texel - floor(texel / size) * size);\n"
 	"	int index = indexAt(u_tex, at, mip);\n"
 	"	vec2 lightat = vec2(texel.x + 1.0, texel.y) * step;\n"
-	"	float light = lightAt(v_lm + (lightat - v_st) / 16.0);\n"
-	"	o_colour = colour(lit(index, int(light) >> 8, 0));\n"
+	"	vec3 light = lightAt(v_lm + (lightat - v_st) / 16.0);\n"
+	"	o_colour = vec4(litColour(index, ivec3(light) >> 8, 0), 1.0);\n"
 	"#endif\n"
 	"}\n";
 
@@ -211,29 +236,33 @@ static const char sky_fs[] =
 	"#endif\n"
 	"}\n";
 
-// An alias model's pose: its vertices' bytes, scaled to the model, and the
-// index of each's normal, lit as R_AliasTransformFinalVert lights it, in
-// the colormap's 256ths of a row; and the skin's texels at each.
+// An alias model's two poses, blended (u_blend: 0 the first, 1 the second;
+// gl_models.c): their vertices' bytes, scaled to the model, and the index
+// of each's normal, lit as R_AliasTransformFinalVert lights it, a colour at
+// a time, in the colormap's 256ths of a row; and the skin's texels at each.
 static const char alias_vs[] =
 	"uniform mat4 u_mvp;\n"
 	"uniform vec3 u_scale;\n"
 	"uniform vec3 u_origin;\n"
 	"uniform vec3 u_lightvec;\n"
-	"uniform float u_ambient;\n"
-	"uniform float u_shade;\n"
+	"uniform vec3 u_ambient;\n"
+	"uniform vec3 u_shade;\n"
+	"uniform float u_blend;\n"
 	"uniform vec3 u_normals[162];\n"
 	"layout(location = 0) in uvec4 a_vert;\n"
 	"layout(location = 1) in vec2 a_st;\n"
+	"layout(location = 2) in uvec4 a_vert2;\n"
 	"out vec2 v_st;\n"
-	"out float v_light;\n"
+	"out vec3 v_light;\n"
+	"vec3 lightOf(uint normal) {\n"
+	"	float cosine = dot(u_normals[min(normal, 161u)], u_lightvec);\n"
+	"	return cosine < 0.0 ? max(vec3(0.0), u_ambient + trunc(u_shade * cosine)) : u_ambient;\n"
+	"}\n"
 	"void main() {\n"
-	"	gl_Position = u_mvp * vec4(vec3(a_vert.xyz) * u_scale + u_origin, 1.0);\n"
-	"	float cosine = dot(u_normals[min(a_vert.w, 161u)], u_lightvec);\n"
-	"	float light = u_ambient;\n"
-	"	if (cosine < 0.0)\n"
-	"		light = max(0.0, light + trunc(u_shade * cosine));\n"
+	"	vec3 position = mix(vec3(a_vert.xyz), vec3(a_vert2.xyz), u_blend);\n"
+	"	gl_Position = u_mvp * vec4(position * u_scale + u_origin, 1.0);\n"
 	"	v_st = a_st;\n"
-	"	v_light = light;\n"
+	"	v_light = mix(lightOf(a_vert.w), lightOf(a_vert2.w), u_blend);\n"
 	"}\n";
 
 // The skin's texel, through the entity's colormap (a player's colours),
@@ -245,15 +274,15 @@ static const char alias_fs[] =
 	"uniform ivec2 u_size;\n"
 	"uniform int u_cmap;\n"
 	"in vec2 v_st;\n"
-	"in float v_light;\n"
+	"in vec3 v_light;\n"
 	"out vec4 o_colour;\n"
 	"void main() {\n"
 	"#ifdef LINEAR\n"
 	"	vec4 c = texture(u_tex, v_st / vec2(u_size));\n"
-	"	o_colour = vec4(c.rgb * mix(1.0, brightness(v_light / 256.0), c.a), 1.0);\n"
+	"	o_colour = vec4(c.rgb * mix(vec3(1.0), brightness3(v_light / 256.0), c.a), 1.0);\n"
 	"#else\n"
 	"	ivec2 at = clamp(ivec2(floor(v_st)), ivec2(0), u_size - 1);\n"
-	"	o_colour = colour(lit(indexAt(u_tex, at, 0), int(v_light) >> 8, u_cmap));\n"
+	"	o_colour = vec4(litColour(indexAt(u_tex, at, 0), ivec3(v_light) >> 8, u_cmap), 1.0);\n"
 	"#endif\n"
 	"}\n";
 
@@ -452,6 +481,7 @@ static qboolean GL_BuildProgram (glprogramid_t id, const char *name, const char 
 	GL_Sampler (program, "u_colormap", TU_COLORMAP);
 	GL_Sampler (program, "u_palette", TU_PALETTE);
 	GL_Sampler (program, "u_gamma", TU_GAMMA);
+	GL_Sampler (program, "u_rgbmap", TU_RGBMAP);
 	return true;
 }
 

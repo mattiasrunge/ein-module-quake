@@ -44,6 +44,7 @@ See the GNU General Public License for more details.
 #define TU_COLORMAP		3
 #define TU_PALETTE		4
 #define TU_GAMMA		5
+#define TU_RGBMAP		6
 
 // The colormap texture: the engine's 64 rows, then each player's colours
 // (cl.scores[].translations), 64 rows each.
@@ -71,7 +72,7 @@ typedef enum
 	UF_VPN, UF_VRIGHT, UF_VUP, UF_SKY, UF_FRAME,
 	UF_SCALE, UF_ORIGIN, UF_LIGHTVEC, UF_AMBIENT, UF_SHADE, UF_NORMALS, UF_CMAP,
 	UF_PARTICLE, UF_VIEWPORT,
-	UF_VRECT, UF_SHIFTS, UF_WARP,
+	UF_VRECT, UF_SHIFTS, UF_WARP, UF_BLEND, UF_COLOURED, UF_LITPALETTE,
 	UF_COUNT
 } gluniformid_t;
 
@@ -107,6 +108,7 @@ glprogram_t *GL_UseProgram (glprogramid_t id);
 void GL_LinearSampler (int unit, qboolean clamp);
 void GL_Bind (int unit, GLenum target, GLuint texture);
 void GL_EntityMatrix (entity_t *e, qboolean alias, float *out);
+void GL_Matrix (vec3_t origin, vec3_t angles, qboolean alias, float *out);
 void GL_MatMul (const float *a, const float *b, float *out);
 GLuint GL_IndexTexture (int width, int height, int levels, byte **pixels);
 // GL_ColourTexture's flags.
@@ -123,12 +125,15 @@ qboolean GL_BoxOutside (vec3_t mins, vec3_t maxs);
 // gl_world.c
 GLuint GLW_Keep (GLuint texture);		// a texture of the map's, deleted with it
 float GLW_LiquidAlpha (texture_t *t);
+void GLW_LightTint (vec3_t point, vec3_t tint);
+qboolean GLW_Coloured (void);		// the world is lit in colours
 void GLW_NewMap (void);
 void GLW_DrawWorld (void);
 void GLW_DrawBrushEntity (entity_t *e);
 void GLW_DrawWater (void);
 
 // gl_models.c
+void GLM_Register (void);
 void GLM_DrawEntities (void);
 void GLM_DrawViewModel (void);
 void GLM_BeginParticles (void);

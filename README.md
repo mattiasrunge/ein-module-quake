@@ -202,7 +202,27 @@ where a place sees a liquid's surface, it sees what is behind it as well
 they are seen through the water too. A map made for translucent water is drawn
 by its own visibility. What the monsters see is unchanged. `r_watervis 0` draws
 only what the map's own visibility has. The software renderer draws the liquids
-opaque. A browser without WebGL 2
+opaque.
+
+The WebGL renderer blends the models' poses and the monsters' steps, as
+QuakeSpasm does: a monster or a weapon between two of its frames moves
+smoothly rather than in the server's tenths of a second (`r_lerpmodels`, 0 to
+turn it off, and `r_lerpmove` for the monsters' steps); doors and lifts move
+between the server's updates in either renderer, as they always have. A model whose frames
+are flames (`r_nolerp_list`), a jump of a hundred units (a teleport or a
+respawn), a muzzle's flash and a monster just come into view are not blended.
+The software renderer draws the poses as they come.
+
+A map with coloured light has it in WebGL: a `.lit` beside the map
+(`maps/<map>.lit`, in a pak or in the game's `maps` folder), as QuakeSpasm reads
+it; LibreQuake brings its own. The dynamic lights stay white. Linear filtering
+lights each colour of the textures by its own light, as bright as the white
+light is; Nearest lights each colour through the colormap at its own light, so
+the light still falls in Quake's bands (`r_litpalette 1` puts the colour back on
+the palette's nearest colour instead, as software engines with coloured light
+did, at the cost of the light's own hue). The models take the light's colour
+where they stand. A map without a `.lit` is lit white, as before; the shareware
+episode reads no file outside its pak, so a `.lit` for it has to be in a pak. A browser without WebGL 2
 draws with the software renderer, and the menu says **no WebGL**. The settings
 are kept with the others.
 
@@ -478,6 +498,7 @@ them, and **music** turns the music on and off.
 | `engine/files.patch`                                                              | Tells the page when Quake has saved a game or written its settings, so it can keep them.                                                                                                                                          |
 | `engine/webgl.patch`                                                              | Hands the view, a new map and the particles to the WebGL renderer while it draws, and puts the renderer and its filtering in Video Options.                                                                                       |
 | `engine/watervis.patch`                                                           | Has the server send what a player sees through liquids too (`engine/watervis_ein.c`).                                                                                                                                             |
+| `engine/lerp.patch`                                                               | Keeps on each entity what the WebGL renderer blends its poses and moves with.                                                                                                                                                     |
 | `engine/long-strings.patch`                                                       | Saves strings longer than 256 bytes, as LibreQuake's are, instead of overrunning the buffer they were written into.                                                                                                               |
 | `engine/net_ein.c`, `engine/connect.patch`                                        | Quake's network: the loopback, and id's datagram driver over the page's or the worker's; connecting without waiting in a loop for answers.                                                                                        |
 | `engine/controls.patch`                                                           | Puts the previous weapon (`impulse 12`) beside the next in Customize controls, and a Crosshair line in Options.                                                                                                                   |
@@ -537,7 +558,7 @@ with `engine/resolution.patch`, `engine/scale.patch`, `engine/files.patch` and
 `engine/long-strings.patch` applied, id Software's `snd_dma.c`, `snd_mem.c`,
 `snd_mix.c` and `net_dgrm.c` from WinQuake at the commit it pins, with
 `engine/connect.patch`, `engine/menu.patch`, `engine/controls.patch`,
-`engine/webgl.patch` and `engine/watervis.patch` applied, and the `engine/` files added.
+`engine/webgl.patch`, `engine/watervis.patch` and `engine/lerp.patch` applied, and the `engine/` files added.
 The source of `assets/quake2.wasm` is Yamagi Quake II at the commit
 `engine/quake2/Containerfile` pins, its 8.70 release, with
 `engine/quake2/main.patch`, `engine/quake2/system.patch`,

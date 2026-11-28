@@ -64,6 +64,15 @@ cvar_t		r_watervis = {"r_watervis", "1", true};
 // graphics card's most; 1 is none.
 cvar_t		gl_texture_anisotropy = {"gl_texture_anisotropy", "8", true};
 
+// How the nearest look draws coloured light (a .lit's): 0 each colour
+// through the colormap at its own light; 1 that put back on the palette's
+// nearest colour, as the software engines with coloured light do.
+cvar_t		r_litpalette = {"r_litpalette", "0", true};
+
+// The palette's nearest colour the light falls on to each of 32 by 32 by
+// 32 colours (r_litpalette 1).
+static GLuint	rgbmap_texture;
+
 // The linear look's samplers, mipmapped: repeating, and clamped at the
 // edges for skins and sprites.
 static GLuint	sampler_repeat, sampler_clamp;
@@ -114,7 +123,9 @@ void GL_Register (void)
 	Cvar_RegisterVariable (&r_lavaalpha);
 	Cvar_RegisterVariable (&r_telealpha);
 	Cvar_RegisterVariable (&r_watervis);
+	GLM_Register ();
 	Cvar_RegisterVariable (&gl_texture_anisotropy);
+	Cvar_RegisterVariable (&r_litpalette);
 }
 
 /*
@@ -169,17 +180,23 @@ is the other way round, as R_AliasSetUpTransform has it.
 */
 void GL_EntityMatrix (entity_t *e, qboolean alias, float *out)
 {
+	GL_Matrix (e->origin, e->angles, alias, out);
+}
+
+// The same for a model at `origin`, turned by `angles`.
+void GL_Matrix (vec3_t origin, vec3_t entangles, qboolean alias, float *out)
+{
 	vec3_t	angles, forward, right, up;
 	float	model[16];
 
-	VectorCopy (e->angles, angles);
+	VectorCopy (entangles, angles);
 	if (alias)
 		angles[PITCH] = -angles[PITCH];
 	AngleVectors (angles, forward, right, up);
 	model[0] = forward[0]; model[1] = forward[1]; model[2] = forward[2]; model[3] = 0;
 	model[4] = -right[0]; model[5] = -right[1]; model[6] = -right[2]; model[7] = 0;
 	model[8] = up[0]; model[9] = up[1]; model[10] = up[2]; model[11] = 0;
-	model[12] = e->origin[0]; model[13] = e->origin[1]; model[14] = e->origin[2]; model[15] = 1;
+	model[12] = origin[0]; model[13] = origin[1]; model[14] = origin[2]; model[15] = 1;
 	GL_MatMul (gl_viewproj, model, out);
 }
 
@@ -370,6 +387,53 @@ static void GL_Curve (void)
 
 /*
 =============
+GL_RgbMap
+
+The nearest of the palette's colours the light falls on (not its
+fullbright ones) to the middle of each cell of a 32 cube of colours.
+=============
+*/
+static void GL_RgbMap (void)
+{
+	byte	*map = malloc (32 * 32 * 32);
+	int		r, g, b, c, d, best, bestd, dr, dg, db;
+	byte	*pal;
+
+	for (b = 0 ; b < 32 ; b++)
+		for (g = 0 ; g < 32 ; g++)
+			for (r = 0 ; r < 32 ; r++)
+			{
+				best = 0;
+				bestd = 1 << 30;
+				for (c = 0 ; c < gl_fullbrights ; c++)
+				{
+					pal = host_basepal + c * 3;
+					dr = pal[0] - (r * 8 + 4);
+					dg = pal[1] - (g * 8 + 4);
+					db = pal[2] - (b * 8 + 4);
+					d = dr * dr + dg * dg + db * db;
+					if (d < bestd)
+					{
+						bestd = d;
+						best = c;
+					}
+				}
+				map[(b * 32 + g) * 32 + r] = best;
+			}
+	glGenTextures (1, &rgbmap_texture);
+	GL_Bind (TU_RGBMAP, GL_TEXTURE_3D, rgbmap_texture);
+	glTexStorage3D (GL_TEXTURE_3D, 1, GL_R8, 32, 32, 32);
+	glTexSubImage3D (GL_TEXTURE_3D, 0, 0, 0, 0, 32, 32, 32, GL_RED, GL_UNSIGNED_BYTE, map);
+	glTexParameteri (GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri (GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri (GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri (GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri (GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+	free (map);
+}
+
+/*
+=============
 GL_Start
 
 Makes the context and everything it keeps; false when the browser has no
@@ -439,6 +503,7 @@ static qboolean GL_Start (void)
 	glTexSubImage2D (GL_TEXTURE_2D, 0, 0, 0, 256, 1, GL_RED, GL_UNSIGNED_BYTE, gamma_uploaded);
 
 	GL_Curve ();
+	GL_RgbMap ();
 	for (i = 0 ; i < P_COUNT ; i++)
 	{
 		if (gl_programs[i].u[UF_CURVE] < 0)
@@ -637,7 +702,7 @@ static void GL_SetupView (void)
 void GL_RenderView (void)
 {
 	byte	*pal;
-	int		y;
+	int		y, i;
 
 	if (!cl_entities[0].model || !cl.worldmodel)
 		Sys_Error ("R_RenderView: NULL worldmodel");
@@ -658,6 +723,12 @@ void GL_RenderView (void)
 	glEnable (GL_DEPTH_TEST);
 	GL_Anisotropy ();
 	GL_LinearSampler (TU_TEXTURE, false);
+	for (i = 0 ; i < P_COUNT ; i++)
+		if (gl_programs[i].u[UF_LITPALETTE] >= 0)
+		{
+			glUseProgram (gl_programs[i].id);
+			glUniform1i (gl_programs[i].u[UF_LITPALETTE], r_litpalette.value != 0);
+		}
 	GL_LinearSampler (TU_SECOND, false);
 
 	GLW_DrawWorld ();

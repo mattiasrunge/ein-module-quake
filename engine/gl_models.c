@@ -46,6 +46,15 @@ mspriteframe_t *R_GetSpriteframe (msprite_t *psprite);
 // R_AliasSetupLighting's least light.
 #define LIGHT_MIN	5
 
+// Blending between an alias model's poses and between a stepping monster's
+// moves, as QuakeSpasm has them: r_lerpmodels 1 blends but for the models
+// in r_nolerp_list (flames, whose frames are no motion), 2 those too;
+// r_lerpmove 1 blends the moves of monsters, which the server moves 10
+// times a second. The software renderer blends neither.
+cvar_t	r_lerpmodels = {"r_lerpmodels", "1", true};
+cvar_t	r_lerpmove = {"r_lerpmove", "1", true};
+cvar_t	r_nolerp_list = {"r_nolerp_list", "progs/flame.mdl,progs/flame2.mdl,progs/braztall.mdl,progs/brazshrt.mdl,progs/longtrch.mdl,progs/flame_pyre.mdl,progs/v_saw.mdl,progs/v_xfist.mdl,progs/h2stuff/newfire.mdl"};
+
 typedef struct glalias_s
 {
 	model_t		*model;
@@ -204,6 +213,7 @@ static glalias_t *GLM_BuildAlias (model_t *model)
 	glBindBuffer (GL_ARRAY_BUFFER, a->poses_vbo);
 	glBufferData (GL_ARRAY_BUFFER, a->numposes * a->nummesh * 4, poses, GL_STATIC_DRAW);
 	glEnableVertexAttribArray (0);
+	glEnableVertexAttribArray (2);
 	glGenBuffers (1, &a->st_vbo);
 	glBindBuffer (GL_ARRAY_BUFFER, a->st_vbo);
 	glBufferData (GL_ARRAY_BUFFER, a->nummesh * 2 * sizeof (float), st, GL_STATIC_DRAW);
@@ -253,12 +263,13 @@ The pose the entity's frame shows now, as R_AliasSetupFrame chooses it: a
 group's by the time, without blending between poses.
 =============
 */
-static int GLM_Frame (glalias_t *a, aliashdr_t *hdr, mdl_t *mdl, entity_t *e)
+static int GLM_Frame (glalias_t *a, aliashdr_t *hdr, mdl_t *mdl, entity_t *e, float *interval)
 {
 	maliasgroup_t	*group;
 	float			*intervals, full, target, time;
 	int				frame = e->frame, i;
 
+	*interval = 0.1;
 	if (frame >= mdl->numframes || frame < 0)
 		frame = 0;
 	if (hdr->frames[frame].type == ALIAS_SINGLE)
@@ -271,7 +282,138 @@ static int GLM_Frame (glalias_t *a, aliashdr_t *hdr, mdl_t *mdl, entity_t *e)
 	for (i = 0 ; i < group->numframes - 1 ; i++)
 		if (intervals[i] > target)
 			break;
+	*interval = i ? intervals[i] - intervals[i - 1] : intervals[0];
+	if (*interval <= 0)
+		*interval = 0.1;
 	return GLM_Pose (a, group->frames[i].frame);
+}
+
+// Whether the model is one r_nolerp_list names.
+static qboolean GLM_NoLerp (model_t *model)
+{
+	const char	*list = r_nolerp_list.string, *at;
+	int			length = strlen (model->name);
+
+	for (at = strstr (list, model->name) ; at ; at = strstr (at + 1, model->name))
+		if ((at == list || at[-1] == ',') && (at[length] == ',' || !at[length]))
+			return true;
+	return false;
+}
+
+/*
+=============
+GLM_Lerp
+
+The poses to blend between and how far, and where the entity is drawn, as
+QuakeSpasm's R_SetupAliasFrame and R_SetupEntityTransform have them. A pose
+that changes starts a blend of its interval (0.1 seconds, or its group's)
+from the pose before; a stepping monster's move a blend of 0.1 seconds from
+where it was. Nothing is blended across a change of model, after the entity
+was not drawn the frame before (it was not in the last update, or out of
+view), across a jump of over 100 units (a teleport), or for two pose
+changes after a muzzle flash, which its flare's frames show.
+=============
+*/
+static void GLM_Lerp (entity_t *e, int pose, float interval, int *pose1, int *pose2, float *blend, vec3_t origin, vec3_t angles)
+{
+	qboolean	fresh, muzzle;
+	vec3_t		d;
+	float		move;
+	int			i;
+
+	fresh = e->gl_model != e->model || (e->gl_frame != r_framecount && e->gl_frame != r_framecount - 1);
+	e->gl_model = e->model;
+	e->gl_frame = r_framecount;
+
+	muzzle = ((e == &cl.viewent ? cl_entities[cl.viewentity].effects : e->effects) & EF_MUZZLEFLASH)
+		&& r_lerpmodels.value != 2;
+	if (muzzle)
+		e->gl_reset = 2;
+	e->gl_posetime = interval;
+	if (fresh || e->gl_reset == 2)
+	{
+		e->gl_posestart = 0;
+		e->gl_pose[0] = e->gl_pose[1] = pose;
+		if (e->gl_reset == 2 && !muzzle)
+			e->gl_reset = 1;
+	}
+	else if (e->gl_pose[1] != pose)
+	{
+		if (e->gl_reset == 1)
+		{
+			e->gl_posestart = 0;
+			e->gl_pose[0] = pose;
+			e->gl_reset = 0;
+		}
+		else
+		{
+			e->gl_posestart = cl.time;
+			e->gl_pose[0] = e->gl_pose[1];
+		}
+		e->gl_pose[1] = pose;
+	}
+
+	if (r_lerpmodels.value && !(r_lerpmodels.value != 2 && GLM_NoLerp (e->model)))
+	{
+		*blend = (cl.time - e->gl_posestart) / e->gl_posetime;
+		*blend = *blend < 0 ? 0 : *blend > 1 ? 1 : *blend;
+		if (*blend == 1)
+			e->gl_pose[0] = e->gl_pose[1];
+		*pose1 = e->gl_pose[0];
+		*pose2 = e->gl_pose[1];
+	}
+	else
+	{
+		*blend = 1;
+		*pose1 = *pose2 = pose;
+	}
+
+	for (i = 0 ; i < 3 ; i++)
+		if (fabs (e->origin[i] - e->gl_origin[1][i]) > 100)
+			fresh = true;
+	if (fresh)
+	{
+		e->gl_movestart = 0;
+		VectorCopy (e->origin, e->gl_origin[0]);
+		VectorCopy (e->origin, e->gl_origin[1]);
+		VectorCopy (e->angles, e->gl_angles[0]);
+		VectorCopy (e->angles, e->gl_angles[1]);
+	}
+	else if (!VectorCompare (e->origin, e->gl_origin[1]) || !VectorCompare (e->angles, e->gl_angles[1]))
+	{
+		e->gl_movestart = cl.time;
+		VectorCopy (e->gl_origin[1], e->gl_origin[0]);
+		VectorCopy (e->origin, e->gl_origin[1]);
+		VectorCopy (e->gl_angles[1], e->gl_angles[0]);
+		VectorCopy (e->angles, e->gl_angles[1]);
+	}
+
+	if (!r_lerpmove.value || e == &cl.viewent || !e->gl_step)
+	{
+		VectorCopy (e->origin, origin);
+		VectorCopy (e->angles, angles);
+		return;
+	}
+	move = (cl.time - e->gl_movestart) / 0.1;
+	move = move < 0 ? 0 : move > 1 ? 1 : move;
+	VectorSubtract (e->gl_origin[1], e->gl_origin[0], d);
+	VectorMA (e->gl_origin[0], move, d, origin);
+	VectorSubtract (e->gl_angles[1], e->gl_angles[0], d);
+	for (i = 0 ; i < 3 ; i++)
+	{
+		if (d[i] > 180)
+			d[i] -= 360;
+		if (d[i] < -180)
+			d[i] += 360;
+		angles[i] = e->gl_angles[0][i] + d[i] * move;
+	}
+}
+
+void GLM_Register (void)
+{
+	Cvar_RegisterVariable (&r_lerpmodels);
+	Cvar_RegisterVariable (&r_lerpmove);
+	Cvar_RegisterVariable (&r_nolerp_list);
 }
 
 // The skin the entity shows now, as R_AliasSetupSkin chooses it.
@@ -372,21 +514,22 @@ The entity's model, lit as R_AliasSetupLighting lights it from `ambient`
 and `shade`, the light coming along (-1, 0, 0) of the world.
 =============
 */
-static void GLM_DrawAlias (entity_t *e, int ambient, int shade)
+static void GLM_DrawAlias (entity_t *e, int ambient, int shade, vec3_t tint)
 {
 	static qboolean	normals_set[2];
 	glalias_t		*a;
 	aliashdr_t		*hdr;
 	mdl_t			*mdl;
 	glprogram_t		*p;
-	vec3_t			angles, forward, right, up, lightvec = {-1, 0, 0};
-	float			mvp[16], light;
-	int				pose, skin;
+	vec3_t			angles, forward, right, up, lightvec = {-1, 0, 0}, origin, lerped;
+	float			mvp[16], light[3], shades[3], interval, blend;
+	int				pose, pose1, pose2, skin, c, value;
 
 	a = GLM_Alias (e->model);
 	hdr = Mod_Extradata (e->model);
 	mdl = (mdl_t *) ((byte *) hdr + hdr->model);
-	pose = GLM_Frame (a, hdr, mdl, e);
+	pose = GLM_Frame (a, hdr, mdl, e, &interval);
+	GLM_Lerp (e, pose, interval, &pose1, &pose2, &blend, origin, lerped);
 
 	p = GL_UseProgram (gl_linear ? P_ALIAS_LINEAR : P_ALIAS);
 	if (!normals_set[gl_linear])
@@ -395,23 +538,31 @@ static void GLM_DrawAlias (entity_t *e, int ambient, int shade)
 		normals_set[gl_linear] = true;
 	}
 
-	GL_EntityMatrix (e, true, mvp);
+	GL_Matrix (origin, lerped, true, mvp);
 	glUniformMatrix4fv (p->u[UF_MVP], 1, GL_FALSE, mvp);
+	glUniform1f (p->u[UF_BLEND], blend);
 	glUniform3fv (p->u[UF_SCALE], 1, mdl->scale);
 	glUniform3fv (p->u[UF_ORIGIN], 1, mdl->scale_origin);
 
-	VectorCopy (e->angles, angles);
+	VectorCopy (lerped, angles);
 	angles[PITCH] = -angles[PITCH];
 	AngleVectors (angles, forward, right, up);
 	glUniform3f (p->u[UF_LIGHTVEC], DotProduct (lightvec, forward), -DotProduct (lightvec, right),
 		DotProduct (lightvec, up));
-	if (ambient < LIGHT_MIN)
-		ambient = LIGHT_MIN;
-	light = (255 - ambient) << VID_CBITS;
-	if (light < LIGHT_MIN)
-		light = LIGHT_MIN;
-	glUniform1f (p->u[UF_AMBIENT], light);
-	glUniform1f (p->u[UF_SHADE], (shade < 0 ? 0 : shade) * VID_GRADES);
+	// Each colour's light as R_AliasSetupLighting makes it, the light's
+	// colour where it stands (tint, white but on a coloured map) taken in.
+	for (c = 0 ; c < 3 ; c++)
+	{
+		value = ambient * tint[c];
+		if (value < LIGHT_MIN)
+			value = LIGHT_MIN;
+		light[c] = (255 - value) << VID_CBITS;
+		if (light[c] < LIGHT_MIN)
+			light[c] = LIGHT_MIN;
+		shades[c] = (shade < 0 ? 0 : shade * tint[c]) * VID_GRADES;
+	}
+	glUniform3fv (p->u[UF_AMBIENT], 1, light);
+	glUniform3fv (p->u[UF_SHADE], 1, shades);
 
 	glUniform2i (p->u[UF_SIZE], a->skinwidth, a->skinheight);
 	skin = GLM_Skin (a, hdr, mdl, e);
@@ -426,7 +577,8 @@ static void GLM_DrawAlias (entity_t *e, int ambient, int shade)
 
 	glBindVertexArray (a->vao);
 	glBindBuffer (GL_ARRAY_BUFFER, a->poses_vbo);
-	glVertexAttribIPointer (0, 4, GL_UNSIGNED_BYTE, 0, (void *) (intptr_t) (pose * a->nummesh * 4));
+	glVertexAttribIPointer (0, 4, GL_UNSIGNED_BYTE, 0, (void *) (intptr_t) (pose1 * a->nummesh * 4));
+	glVertexAttribIPointer (2, 4, GL_UNSIGNED_BYTE, 0, (void *) (intptr_t) (pose2 * a->nummesh * 4));
 	glDrawElements (GL_TRIANGLES, a->numindices, GL_UNSIGNED_SHORT, 0);
 	glBindVertexArray (0);
 	GL_LinearSampler (TU_TEXTURE, false);
@@ -592,6 +744,7 @@ void GLM_DrawEntities (void)
 	entity_t	*e;
 	vec3_t		dist;
 	float		add;
+	vec3_t		tint;
 	int			i, lnum, ambient, shade;
 
 	if (!r_drawentities.value)
@@ -631,7 +784,8 @@ void GLM_DrawEntities (void)
 			ambient = 128;
 		if (ambient + shade > 192)
 			shade = 192 - ambient;
-		GLM_DrawAlias (e, ambient, shade);
+		GLW_LightTint (e->origin, tint);
+		GLM_DrawAlias (e, ambient, shade, tint);
 	}
 	currententity = &cl_entities[0];
 }
@@ -650,6 +804,7 @@ void GLM_DrawViewModel (void)
 	dlight_t	*dl;
 	vec3_t		dist;
 	float		add;
+	vec3_t		tint;
 	int			lnum, ambient, shade;
 
 	if (!r_drawviewmodel.value || r_fov_greater_than_90 || (cl.items & IT_INVISIBILITY)
@@ -676,8 +831,9 @@ void GLM_DrawViewModel (void)
 	if (ambient + shade > 192)
 		shade = 192 - ambient;
 
+	GLW_LightTint (e->origin, tint);
 	glDepthRangef (0, 0.3);
-	GLM_DrawAlias (e, ambient, shade);
+	GLM_DrawAlias (e, ambient, shade, tint);
 	glDepthRangef (0, 1);
 	currententity = &cl_entities[0];
 }
